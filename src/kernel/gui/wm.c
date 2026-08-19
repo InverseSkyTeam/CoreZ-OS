@@ -415,28 +415,29 @@ void wm_draw_bar(struct gfx_canvas* c, struct gfx_rect* clip) {
     struct gfx_rect bar = {0, 0, comp_screen_w(), COMP_BAR_H}, v;
     if (!gfx_rect_intersect(bar, *clip, &v)) return;
 
-    uint8_t bg = gfx_rgb(0, 0, 1);
-    gfx_fill(c, v.x, v.y, v.w, v.h, bg);
-    gfx_hline(c, 0, COMP_BAR_H - 1, comp_screen_w(), gfx_rgb(2, 4, 5));
+    gfx_fill(c, v.x, v.y, v.w, v.h, TH_BAR);
+    gfx_hline(c, 0, COMP_BAR_H - 1, comp_screen_w(), TH_BAR_LINE);
 
     
     int x = 8;
     for (int i = 0; i < WL_MAX_WS; i++) {
-        char label[4] = {' ', (char)('1' + i), ' ', 0};
         int cur = (i == g_cur_ws);
         int occ = g_ws[i].n > 0;
-        uint8_t fg = cur ? 15 : (occ ? gfx_rgb(3, 4, 5) : gfx_gray(10));
-        if (cur) gfx_fill(c, x - 2, 2, 28, COMP_BAR_H - 4, gfx_rgb(1, 2, 4));
-        gfx_text(c, x + 2, 3, label, fg, -1);
-        x += 30;
+        int px = x, py = 3, pw = 24, ph = 16;
+        uint8_t pill = cur ? TH_ACCENT : (occ ? gfx_gray(6) : gfx_gray(4));
+        gfx_fill_round(c, px, py, pw, ph, 7, pill);
+        char label[4] = {' ', (char)('1' + i), ' ', 0};
+        uint8_t fg = cur ? TH_TEXT : (occ ? gfx_gray(16) : gfx_gray(11));
+        gfx_text(c, px + (pw - 24) / 2, py + (ph - 16) / 2, label, fg, -1);
+        x += pw + 6;
     }
 
     
-    gfx_text(c, x + 8, 3, layout_name(g_ws[g_cur_ws].layout), gfx_rgb(5, 5, 0), -1);
+    gfx_text(c, x + 6, 3, layout_name(g_ws[g_cur_ws].layout), TH_ACCENT, -1);
 
     
     struct wl_surface* f = wm_focused_surface();
-    if (f) gfx_text(c, 220, 3, f->title, 15, -1);
+    if (f) gfx_text(c, x + 60, 3, f->title, TH_TEXT, -1);
 
     
     char right[48];
@@ -445,7 +446,9 @@ void wm_draw_bar(struct gfx_canvas* c, struct gfx_rect* clip) {
     right[0] = 0;
     strcat(right, "up ");
     strcat(right, num);
-    strcat(right, "s  NiTianOS/tile");
+    strcat(right, "s");
     int rx = comp_screen_w() - 4 - (int)strlen(right) * 8;
-    gfx_text(c, rx, 3, right, gfx_gray(16), -1);
+    gfx_text(c, rx, 3, right, TH_MUTED, -1);
+    int bx = rx - 6 - (int)strlen("NiTianOS") * 8;
+    gfx_text(c, bx, 3, "NiTianOS", TH_ACCENT, -1);
 }

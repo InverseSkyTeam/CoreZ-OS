@@ -243,3 +243,20 @@ void free_kernel_page(uint32_t vaddr) {
     lock_release(&mem_lock);
     asm_write_cr3(old_cr3);
 }
+
+void free_user_page(uint32_t vaddr) {
+    struct task_struct* cur = current_task;
+    lock_acquire(&mem_lock);
+    uint32_t* pte = pte_ptr(vaddr);
+    if (*pte & 1) {
+        uint32_t phy = *pte & 0xfffff000;
+        *pte = 0;
+        __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
+        pfree_raw(&kernel_pool, phy);
+        uint32_t bit_idx = (vaddr - cur->userprog_v_addr.vaddr_start) / PAGE_SIZE;
+        if (bit_idx < cur->userprog_v_addr.vaddr_bitmap.btmp_bytes_len * 8) {
+            bitmap_set(&cur->userprog_v_addr.vaddr_bitmap, bit_idx, 0);
+        }
+    }
+    lock_release(&mem_lock);
+}

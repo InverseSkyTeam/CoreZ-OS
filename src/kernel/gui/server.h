@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include "../thread/sync.h"
 #include "./gfx.h"
+#include "./theme.h"
 
 struct shm_pool;
 
@@ -113,5 +114,8 @@ void comp_destroy_surface_pool(struct wl_surface* s, struct shm_pool** pool);
 #define COMP_TITLE_H  18    
 #define COMP_BORDER   2     
 #define COMP_GAP      8     
+
+#define WIN_RADIUS    8     
+#define WIN_SHADOW    6     
 
 #endif

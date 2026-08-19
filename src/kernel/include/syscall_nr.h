@@ -29,6 +29,7 @@ enum syscall_nr {
     SYS_WAIT,
     SYS_PIPE,
     SYS_FD_REDIRECT,
+    SYS_BRK,
     SYS_GUI
 };
 

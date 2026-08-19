@@ -56,6 +56,81 @@ int gfx_rect_intersect(struct gfx_rect a, struct gfx_rect b, struct gfx_rect* ou
     return 1;
 }
 
+static int gfx_isqrt(int v) {
+    if (v <= 0) return 0;
+    int r = 0;
+    for (int b = 1 << 15; b > 0; b >>= 1) {
+        if (r + b <= 46340) {
+            int t = r + b;
+            if (t * t <= v) r = t;
+        }
+    }
+    return r;
+}
+
+void gfx_fill_round(struct gfx_canvas* c, int x, int y, int w, int h, int rad, uint8_t color) {
+    if (!c || !c->pixels) return;
+    struct gfx_rect clip = {0, 0, c->w, c->h};
+    struct gfx_rect r = {x, y, w, h}, v;
+    if (!gfx_rect_intersect(clip, r, &v)) return;
+    if (v.w <= 0 || v.h <= 0) return;
+    if (rad < 0) rad = 0;
+    if (rad * 2 > v.w) rad = v.w / 2;
+    if (rad * 2 > v.h) rad = v.h / 2;
+    int ok;
+    size_t mapped = gfx_canvas_mapped_bytes(c, &ok);
+    if (!ok || mapped == 0) return;
+    for (int row = 0; row < v.h; row++) {
+        int cy;
+        if (row < rad) cy = rad;
+        else if (row >= v.h - rad) cy = v.h - rad;
+        else cy = -1;
+        int inset = 0;
+        if (cy >= 0) {
+            int d = (cy == rad) ? (rad - row) : (row - cy);
+            int halfw = (d >= rad) ? 0 : gfx_isqrt(rad * rad - d * d);
+            inset = rad - halfw;
+        }
+        int x0 = v.x + inset;
+        int x1 = v.x + v.w - inset;
+        if (x1 <= x0) continue;
+        size_t off = (size_t)(v.y + row) * (size_t)c->pitch + (size_t)x0;
+        size_t end = off + (size_t)(x1 - x0);
+        if (end > mapped) continue;
+        uint8_t* p = c->pixels + off;
+        for (int i = x0; i < x1; i++) p[i - x0] = color;
+    }
+}
+
+void gfx_mask_round(struct gfx_canvas* c, int x, int y, int w, int h, int rad,
+                    uint8_t color, int corners) {
+    if (!c || !c->pixels || !corners) return;
+    struct gfx_rect clip = {0, 0, c->w, c->h};
+    struct gfx_rect r = {x, y, w, h}, v;
+    if (!gfx_rect_intersect(clip, r, &v)) return;
+    if (v.w <= 0 || v.h <= 0) return;
+    if (rad < 0) rad = 0;
+    if (rad * 2 > v.w) rad = v.w / 2;
+    if (rad * 2 > v.h) rad = v.h / 2;
+    for (int row = 0; row < v.h; row++) {
+        int cy;
+        if (row < rad) cy = rad;
+        else if (row >= v.h - rad) cy = v.h - rad;
+        else cy = -1;
+        if (cy < 0) continue;
+        int is_top = (cy == rad);
+        int cbits = is_top ? (corners & (GFX_CORNER_TL | GFX_CORNER_TR))
+                           : (corners & (GFX_CORNER_BL | GFX_CORNER_BR));
+        if (!cbits) continue;
+        int d = is_top ? (rad - row) : (row - cy);
+        int halfw = (d >= rad) ? 0 : gfx_isqrt(rad * rad - d * d);
+        int inset = rad - halfw;
+        if (inset <= 0) continue;
+        if (cbits & GFX_CORNER_TL) gfx_fill(c, v.x, v.y + row, inset, 1, color);
+        if (cbits & GFX_CORNER_TR) gfx_fill(c, v.x + v.w - inset, v.y + row, inset, 1, color);
+    }
+}
+
 void gfx_fill(struct gfx_canvas* c, int x, int y, int w, int h, uint8_t color) {
     struct gfx_rect clip = {0, 0, c->w, c->h};
     struct gfx_rect r = {x, y, w, h}, v;

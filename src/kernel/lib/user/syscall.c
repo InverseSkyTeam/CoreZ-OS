@@ -91,3 +91,17 @@ void fd_redirect(uint32_t old_local_fd, uint32_t new_local_fd) {
 int32_t gui_start(void) {
     return (int32_t)syscall0(SYS_GUI);
 }
+void* brk(void* addr) {
+    return (void*)syscall1(SYS_BRK, (uint32_t)addr);
+}
+void* sbrk(intptr_t inc) {
+    uint32_t ob = (uint32_t)syscall1(SYS_BRK, 0);
+    if (inc == 0) {
+        return (void*)ob;
+    }
+    uint32_t nb = (uint32_t)syscall1(SYS_BRK, ob + (uint32_t)inc);
+    if (nb == ob && inc > 0) {
+        return (void*)-1;
+    }
+    return (void*)ob;
+}

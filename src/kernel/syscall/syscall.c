@@ -111,6 +111,42 @@ static uint32_t sys_ps(void) {
     return 0;
 }
 
+static uint32_t sys_brk(uint32_t addr) {
+    struct task_struct* cur = current_task;
+    if (cur->user_brk == 0) {
+        cur->user_brk = USER_HEAP_BASE;
+    }
+    uint32_t base = USER_HEAP_BASE;
+    uint32_t limit = USER_HEAP_LIMIT;
+    uint32_t cur_brk = cur->user_brk;
+
+    if (addr == 0) {
+        return cur_brk;
+    }
+
+    uint32_t new_brk = addr;
+    if (new_brk < base)  new_brk = base;
+    if (new_brk > limit) new_brk = limit;
+
+    uint32_t old_page = (cur_brk + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    uint32_t new_page = (new_brk + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+    if (new_page > old_page) {
+        for (uint32_t p = old_page; p < new_page; p += PAGE_SIZE) {
+            if (get_a_page(p) == 0) {
+                kprintf("[brk] OOM, keep 0x%x\n", cur_brk);
+                return cur_brk;
+            }
+        }
+    } else if (new_page < old_page) {
+        for (uint32_t p = new_page; p < old_page; p += PAGE_SIZE) {
+            free_user_page(p);
+        }
+    }
+    cur->user_brk = new_brk;
+    return new_brk;
+}
+
 uint32_t syscall_handler(struct Registers* r) {
     uint32_t nr = r->eax;
     switch (nr) {
@@ -170,6 +206,8 @@ uint32_t syscall_handler(struct Registers* r) {
         return 0;
     case SYS_GUI:
         return (uint32_t)gui_session_run();
+    case SYS_BRK:
+        return (uint32_t)sys_brk((uint32_t)r->ebx);
     default:
         return (uint32_t)-1;
     }

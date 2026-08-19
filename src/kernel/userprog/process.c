@@ -93,6 +93,7 @@ void process_execute(void* filename, char* name) {
 
     create_user_vaddr_bitmap(thread);
     thread->pgdir = (uint32_t)create_page_dir();
+    thread->user_brk = 0;                      
 
     thread_ready(thread);
 }

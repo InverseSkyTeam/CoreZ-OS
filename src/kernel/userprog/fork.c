@@ -67,6 +67,7 @@ pid_t sys_fork(struct Registers* r) {
     }
     child->parent_pid = (int32_t)parent->pid;
     child->cwd_inode_nr = parent->cwd_inode_nr;
+    child->user_brk = parent->user_brk;
     for (uint32_t i = 0; i < MAX_FILES_OPEN_PER_PROC; i++) {
         child->fd_table[i] = parent->fd_table[i];
 

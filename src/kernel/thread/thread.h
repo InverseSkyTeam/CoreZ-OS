@@ -51,6 +51,7 @@ struct task_struct {
     uint32_t kernel_stack_top;
     uint32_t pgdir;
     struct virtual_addr userprog_v_addr;
+    uint32_t user_brk;                  
     uint32_t cwd_inode_nr;
     uint32_t fd_table[MAX_FILES_OPEN_PER_PROC];
     uint32_t stack_magic;

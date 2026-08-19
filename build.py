@@ -376,7 +376,6 @@ def task_objcopy_binary(name: str, src_elf: Path, out: Path, tools: Tools,
     return Task(
         name=name,
         cmd=[tools.objcopy, "-I", "binary", "-O", "elf32-i386", "-B", "i386",
-             "--rename-section", ".data=.rodata,ALLOC,LOAD,READONLY,DATA",
              src_elf.name, out.name],
         cwd=BUILD_DIR, out=out, deps=[],
         description=f"objcopy {symbol}", group="objcopy",
@@ -476,12 +475,14 @@ def make_plan(tools: Tools) -> BuildPlan:
         ("fork_demo",   "fork_demo.c",   "_start", []),
         ("prog_pipe",   "prog_pipe.c",   "_start", []),
         ("font_demo",   "font_demo.c",   "_start", ["-Os"]),
+        ("heap_demo",   "heap_demo.c",   "_start", []),
     ]
 
     USER_LIB_SOURCES = [
         (KERNEL_DIR / "lib" / "user", "stdio.c",   "up_stdio.o"),
         (KERNEL_DIR / "lib" / "user", "syscall.c", "up_syscall.o"),
         (KERNEL_DIR / "lib" / "str",  "str.c",     "up_str.o"),
+        (KERNEL_DIR / "lib" / "user", "stdlib.c",  "up_stdlib.o"),
     ]
 
     def compile_user_lib(out_dir: Path) -> List[Path]:
@@ -498,7 +499,8 @@ def make_plan(tools: Tools) -> BuildPlan:
     for prog_name, src_c, entry_flag, opt_flags in USER_PROGRAMS:
         nick_map = {"prog_no_arg": "up_no_arg", "prog_arg": "up_arg",
                     "cat": "up_cat", "fork_demo": "up_fork",
-                    "prog_pipe": "up_pipe", "font_demo": "up_font"}
+                    "prog_pipe": "up_pipe", "font_demo": "up_font",
+                    "heap_demo": "up_heap"}
         nick = nick_map.get(prog_name, f"up_{prog_name}")
         prog_obj = BUILD_DIR / f"{nick}.o"
         tasks.append(task_cc(nick, CMD_DIR / src_c, prog_obj, tools,
@@ -550,6 +552,7 @@ def make_plan(tools: Tools) -> BuildPlan:
     USER_DATA_OBJS = [
         "prog_no_arg_data.o", "prog_arg_data.o", "cat_data.o",
         "fork_demo_data.o", "prog_pipe_data.o", "font_demo_data.o",
+        "heap_demo_data.o",
     ]
     KERNEL_LINK_OBJS = (
         [BUILD_DIR / n for n in KERNEL_OBJS]

@@ -162,7 +162,6 @@ int32_t sys_execv(const char* path, const char* argv[]) {
 
     entry_point = load(path);
     if (entry_point == -1) {
-
         if (cur->pgdir != old_pgdir) {
             cur->pgdir = old_pgdir;
             page_dir_activate(cur);
@@ -172,6 +171,7 @@ int32_t sys_execv(const char* path, const char* argv[]) {
 
     memcpy(cur->name, path, 15);
     cur->name[15] = 0;
+    cur->user_brk = 0;                        
 
     for (uint32_t sp = USER_STACK3_VADDR - PAGE_SIZE; sp <= USER_STACK3_VADDR; sp += PAGE_SIZE) {
         uint32_t* pde = pde_ptr(sp);

@@ -6,11 +6,15 @@
 #include "../initer/pit/pit.h"
 #include "../initer/idt/interrupt.h"
 #include "../thread/thread.h"
+#include "../memory/pool/pool.h"
 
 static struct wl_client  g_clients[WL_MAX_CLIENTS];
 static struct wl_surface g_surfaces[WL_MAX_SURFACES];
 
 static struct gfx_canvas g_screen;
+static struct gfx_canvas g_back;
+static struct gfx_canvas* g_dst = &g_screen;
+static int g_double_buffer = 0;
 static int g_scrnx, g_scrny;
 
 static struct lock g_comp_lock;
@@ -22,7 +26,7 @@ struct gui_input { int type; int32_t a, b, c; };
 static volatile struct gui_input g_inq[GUI_INQ_SIZE];
 static volatile uint32_t g_inq_head = 0, g_inq_tail = 0;
 
-#define MAX_DAMAGE 16
+#define MAX_DAMAGE 48
 static struct gfx_rect g_damage[MAX_DAMAGE];
 static int g_damage_n = 0;
 static int g_damage_full = 0;
@@ -82,6 +86,22 @@ void comp_damage_rect(int x, int y, int w, int h) {
         lock_release(&g_comp_lock);
         return;
     }
+
+    for (int i = 0; i < g_damage_n; i++) {
+        struct gfx_rect u;
+        if (gfx_rect_intersect(v, g_damage[i], &u)) {
+            int x0 = v.x < g_damage[i].x ? v.x : g_damage[i].x;
+            int y0 = v.y < g_damage[i].y ? v.y : g_damage[i].y;
+            int x1 = (v.x + v.w) > (g_damage[i].x + g_damage[i].w)
+                         ? (v.x + v.w) : (g_damage[i].x + g_damage[i].w);
+            int y1 = (v.y + v.h) > (g_damage[i].y + g_damage[i].h)
+                         ? (v.y + v.h) : (g_damage[i].y + g_damage[i].h);
+            g_damage[i].x = x0; g_damage[i].y = y0;
+            g_damage[i].w = x1 - x0; g_damage[i].h = y1 - y0;
+            lock_release(&g_comp_lock);
+            return;
+        }
+    }
     if (g_damage_n >= MAX_DAMAGE) {
         g_damage_full = 1;
     } else {
@@ -92,9 +112,10 @@ void comp_damage_rect(int x, int y, int w, int h) {
 
 void comp_damage_surface(struct wl_surface* s) {
     if (!s || !s->used) return;
-    comp_damage_rect(s->x - COMP_BORDER, s->y - COMP_TITLE_H,
-                     s->w + 2 * COMP_BORDER,
-                     s->h + COMP_TITLE_H + COMP_BORDER);
+    int m = WIN_SHADOW + WIN_RADIUS + 2;
+    comp_damage_rect(s->x - COMP_BORDER - m, s->y - COMP_TITLE_H - m,
+                     s->w + 2 * COMP_BORDER + 2 * m,
+                     s->h + COMP_TITLE_H + COMP_BORDER + 2 * m);
 }
 
 void comp_post_key(uint8_t scancode, int pressed, uint8_t mods) {
@@ -243,14 +264,13 @@ void comp_destroy_surface_pool(struct wl_surface* s, struct shm_pool** pool) {
 }
 
 static uint8_t wallpaper_color(int y) {
-    int g = y * 2 / g_scrny;
-    int b = 1 + y * 2 / g_scrny;
-    return gfx_rgb(0, g, b);
+    int t = (y * 5) / g_scrny;
+    return gfx_rgb(0, t / 3, 1 + t / 2);
 }
 
 static void draw_wallpaper(struct gfx_rect* r) {
     for (int y = r->y; y < r->y + r->h; y++) {
-        gfx_hline(&g_screen, r->x, y, r->w, wallpaper_color(y));
+        gfx_hline(g_dst, r->x, y, r->w, wallpaper_color(y));
     }
 }
 
@@ -259,35 +279,61 @@ static void draw_window(struct wl_surface* s, struct gfx_rect* clip) {
     int fy = s->y - COMP_TITLE_H;
     int fw = s->w + 2 * COMP_BORDER;
     int fh = s->h + COMP_TITLE_H + COMP_BORDER;
+    int rad = WIN_RADIUS;
 
     struct gfx_rect frame = {fx, fy, fw, fh}, v;
     if (!gfx_rect_intersect(frame, *clip, &v)) return;
 
     int focused = (wm_focused_surface() == s);
-    uint8_t border_col = focused ? gfx_rgb(2, 4, 5) : gfx_gray(8);
-    uint8_t title_col  = focused ? gfx_rgb(1, 2, 4) : gfx_gray(4);
+    uint8_t border_col = focused ? TH_FRAME_FOC : TH_FRAME_UNF;
+    uint8_t title_col  = focused ? TH_TITLE_FOC : TH_TITLE_UNF;
 
-    gfx_fill(&g_screen, v.x, v.y, v.w, v.h, border_col);
-    struct gfx_rect tr = {fx, fy, fw, COMP_TITLE_H}, tv;
-    if (gfx_rect_intersect(tr, *clip, &tv)) {
-        gfx_fill(&g_screen, tv.x, tv.y, tv.w, tv.h, title_col);
-        gfx_text(&g_screen, fx + 6, fy + 1, s->title,
-                 focused ? 15 : 7, -1);
-        gfx_text(&g_screen, fx + fw - 14, fy + 1, "x",
-                 focused ? 15 : 7, -1);
-    }
+    
+    gfx_fill_round(g_dst, fx - WIN_SHADOW + 3, fy + 3,
+                   fw + 2 * WIN_SHADOW - 6, fh + 2 * WIN_SHADOW - 2,
+                   rad + WIN_SHADOW, TH_SHADOW);
+    gfx_fill_round(g_dst, fx - WIN_SHADOW + 5, fy + 5,
+                   fw + 2 * WIN_SHADOW - 10, fh + 2 * WIN_SHADOW - 6,
+                   rad + WIN_SHADOW - 2, TH_SHADOW2);
 
-    struct gfx_rect cr = {s->x, s->y, s->w, s->h}, cv;
-    if (gfx_rect_intersect(cr, *clip, &cv)) {
-        if (s->buf && s->buf_w == s->w && s->buf_h == s->h) {
-            struct gfx_canvas sc = { s->buf, s->w, s->w, s->h };
-            sc.bytes = (size_t)s->buf_w * (size_t)s->buf_h;
-            gfx_blit(&g_screen, cv.x, cv.y, &sc,
-                     cv.x - s->x, cv.y - s->y, cv.w, cv.h);
-        } else {
-            gfx_fill(&g_screen, cv.x, cv.y, cv.w, cv.h, gfx_gray(2));
+    
+    gfx_fill_round(g_dst, fx, fy, fw, fh, rad, border_col);
+
+    
+    gfx_fill_round(g_dst, fx + COMP_BORDER, fy + COMP_BORDER,
+                   fw - 2 * COMP_BORDER, fh - 2 * COMP_BORDER,
+                   rad - COMP_BORDER, title_col);
+
+    
+    gfx_text(g_dst, fx + 8, fy + 1, s->title,
+             focused ? TH_TEXT : TH_MUTED, -1);
+
+    
+    int bs = 12, cbx = fx + fw - 14, cby = fy + 1;
+    gfx_fill_round(g_dst, cbx, cby, bs, bs, 5,
+                   focused ? TH_CLOSE : gfx_gray(7));
+    gfx_text(g_dst, cbx + 2, cby, "x", TH_TEXT, -1);
+
+    
+    if (s->w > 0 && s->h > 0) {
+        struct gfx_rect content = { s->x, s->y, s->w, s->h };
+        struct gfx_rect iv;
+        if (gfx_rect_intersect(content, *clip, &iv)) {
+            if (s->buf && s->buf_w == s->w && s->buf_h == s->h) {
+                struct gfx_canvas sc = { s->buf, s->w, s->w, s->h };
+                sc.bytes = (size_t)s->buf_w * (size_t)s->buf_h;
+                gfx_blit(g_dst, iv.x, iv.y, &sc,
+                         iv.x - s->x, iv.y - s->y, iv.w, iv.h);
+            } else {
+                gfx_fill(g_dst, iv.x, iv.y, iv.w, iv.h, gfx_gray(2));
+            }
         }
     }
+
+    
+    gfx_mask_round(g_dst, fx, fy, fw, fh, rad,
+                   wallpaper_color(fy + fh - 1),
+                   GFX_CORNER_BL | GFX_CORNER_BR);
 }
 
 static void draw_cursor(void) {
@@ -298,9 +344,23 @@ static void draw_cursor(void) {
             if (p == '.') continue;
             int px = g_cur_x + col, py = g_cur_y + row;
             if (px < 0 || px >= g_scrnx || py < 0 || py >= g_scrny) continue;
-            g_screen.pixels[py * g_screen.pitch + px] = (p == '#') ? 0 : 15;
+            g_dst->pixels[py * g_dst->pitch + px] = (p == '#') ? 0 : 15;
         }
     }
+}
+
+static int rect_covered_by_window(struct gfx_rect* r,
+                                  struct wl_surface** vis, int vn) {
+    for (int j = 0; j < vn; j++) {
+        struct wl_surface* s = vis[j];
+        if (s->w <= 0 || s->h <= 0) continue;
+        if (r->x >= s->x && r->y >= s->y &&
+            r->x + r->w <= s->x + s->w &&
+            r->y + r->h <= s->y + s->h) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static void repaint(void) {
@@ -324,14 +384,22 @@ static void repaint(void) {
 
     for (int i = 0; i < n; i++) {
         struct gfx_rect* r = &rects[i];
-        draw_wallpaper(r);
+        if (!rect_covered_by_window(r, vis, vn)) draw_wallpaper(r);
         for (int j = 0; j < vn; j++) draw_window(vis[j], r);
-        wm_draw_bar(&g_screen, r);
+        wm_draw_bar(g_dst, r);
     }
 
     lock_release(&g_comp_lock);
 
     draw_cursor();
+
+    if (g_double_buffer) {
+        for (int i = 0; i < n; i++) {
+            struct gfx_rect* dr = &rects[i];
+            gfx_blit(&g_screen, dr->x, dr->y, &g_back,
+                     dr->x, dr->y, dr->w, dr->h);
+        }
+    }
 
     for (int i = 0; i < vn; i++) {
         struct wl_surface* s = vis[i];
@@ -350,6 +418,23 @@ void comp_init(void) {
     g_screen.w = g_scrnx;
     g_screen.h = g_scrny;
     g_screen.bytes = io_get_vram_bytes();
+
+    
+    size_t bsz = (size_t)g_scrnx * (size_t)g_scrny;
+    uint8_t* bp = get_kernel_pages((uint32_t)((bsz + (size_t)PAGE_SIZE - 1) / (size_t)PAGE_SIZE));
+    if (bp) {
+        g_back.pixels = bp;
+        g_back.pitch = g_scrnx;
+        g_back.w = g_scrnx;
+        g_back.h = g_scrny;
+        g_back.bytes = bsz;
+        g_double_buffer = 1;
+        g_dst = &g_back;
+    } else {
+        g_double_buffer = 0;
+        g_dst = &g_screen;
+    }
+
     lock_init(&g_comp_lock);
     shm_init();
     memset(g_clients, 0, sizeof(g_clients));

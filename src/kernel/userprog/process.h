@@ -7,6 +7,8 @@
 
 #define USER_VADDR_START 0x8048000
 #define USER_STACK3_VADDR (0xc0000000 - 0x1000)
+#define USER_HEAP_BASE    0xA0000000
+#define USER_HEAP_LIMIT   (USER_STACK3_VADDR - PAGE_SIZE)
 #define DEFAULT_PRIO 15
 
 extern void intr_exit(void);

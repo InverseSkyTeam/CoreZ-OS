@@ -60,4 +60,16 @@ void gfx_blit(struct gfx_canvas* dst, int dx, int dy,
 
 int gfx_rect_intersect(struct gfx_rect a, struct gfx_rect b, struct gfx_rect* out);
 
+
+#define GFX_CORNER_TL 1
+#define GFX_CORNER_TR 2
+#define GFX_CORNER_BL 4
+#define GFX_CORNER_BR 8
+#define GFX_CORNER_ALL (GFX_CORNER_TL | GFX_CORNER_TR | GFX_CORNER_BL | GFX_CORNER_BR)
+
+
+void gfx_fill_round(struct gfx_canvas* c, int x, int y, int w, int h, int rad, uint8_t color);
+void gfx_mask_round(struct gfx_canvas* c, int x, int y, int w, int h, int rad,
+                    uint8_t color, int corners);
+
 #endif

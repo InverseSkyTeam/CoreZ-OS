@@ -8,6 +8,7 @@
 #include "../thread/thread.h"
 #include "../initer/io/io.h"
 #include "../include/assert.h"
+#include "../gui/gui.h"
 
 #define MAX_ARG_NR 16
 
@@ -113,6 +114,9 @@ static void cmd_execute(int32_t argc, char** argv) {
         buildin_rmdir(argc, argv);
     } else if (!strcmp("rm", argv[0])) {
         buildin_rm(argc, argv);
+    } else if (!strcmp("gui", argv[0])) {
+        
+        gui_start();
     } else {
 
         int32_t pid = fork();

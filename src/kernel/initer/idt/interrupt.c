@@ -5,6 +5,7 @@
 #include "../pic/pic.h"
 #include "../pit/pit.h"
 #include "../../device/keyboard.h"
+#include "../../device/mouse.h"
 #include "../../device/ide.h"
 #include "../../thread/thread.h"
 
@@ -66,6 +67,15 @@ void isr_handler(struct Registers* r) {
     kprintf("  esi = 0x%x  edi = 0x%x  ebp = 0x%x  ds = 0x%x\n",
            r->esi, r->edi, r->ebp, r->ds);
 
+    uint32_t cr2;
+    asm volatile("mov %%cr2, %0" : "=r"(cr2));
+    kprintf("  cr2 (fault addr) = 0x%x\n", cr2);
+    if (cr2 >= 0xC1000000 && cr2 < 0xC1400000) {
+        kprintf("  (note: fault is inside kernel virtual pool 0xC1000000..0xC1400000)\n");
+    } else if (cr2 >= 0xE0000000) {
+        kprintf("  (note: fault is inside VRAM region 0xE0000000+)\n");
+    }
+
     asm_cli();
     for (;;) {
         asm_hlt();
@@ -92,6 +102,10 @@ void irq_handler(struct Registers* r) {
 
     if (irq == 1) {
         keyboard_handler();
+    }
+
+    if (irq == 12) {
+        mouse_handler();
     }
 
     if (irq == 14) {

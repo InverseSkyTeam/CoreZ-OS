@@ -149,30 +149,6 @@ $(BUILD_DIR)/wait_exit.o: $(SRC_DIR)/kernel/userprog/wait_exit.c $(KERNEL_HDRS) 
 $(BUILD_DIR)/fork.o: $(SRC_DIR)/kernel/userprog/fork.c $(KERNEL_HDRS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/mouse.o: $(SRC_DIR)/kernel/device/mouse.c $(KERNEL_HDRS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/gfx.o: $(SRC_DIR)/kernel/gui/gfx.c $(KERNEL_HDRS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/shm.o: $(SRC_DIR)/kernel/gui/shm.c $(KERNEL_HDRS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/guiserver.o: $(SRC_DIR)/kernel/gui/server.c $(KERNEL_HDRS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/layout.o: $(SRC_DIR)/kernel/gui/layout.c $(KERNEL_HDRS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/wm.o: $(SRC_DIR)/kernel/gui/wm.c $(KERNEL_HDRS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/guiclients.o: $(SRC_DIR)/kernel/gui/clients.c $(KERNEL_HDRS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/gui.o: $(SRC_DIR)/kernel/gui/gui.c $(KERNEL_HDRS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
 $(BUILD_DIR)/prog_no_arg.elf: $(SRC_DIR)/command/prog_no_arg.c \
                                $(SRC_DIR)/kernel/lib/user/stdio.c \
                                $(SRC_DIR)/kernel/lib/user/syscall.c \
@@ -323,14 +299,6 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/entry.o \
 						 $(BUILD_DIR)/wait_exit.o \
 						 $(BUILD_DIR)/fork.o \
 						 $(BUILD_DIR)/pipe.o \
-						 $(BUILD_DIR)/mouse.o \
-						 $(BUILD_DIR)/gfx.o \
-						 $(BUILD_DIR)/shm.o \
-						 $(BUILD_DIR)/guiserver.o \
-						 $(BUILD_DIR)/layout.o \
-						 $(BUILD_DIR)/wm.o \
-						 $(BUILD_DIR)/guiclients.o \
-						 $(BUILD_DIR)/gui.o \
                          $(LINKER_DIR)/kernel.ld | $(BUILD_DIR)
 	$(LD) -T $(LINKER_DIR)/kernel.ld -o $@ \
 	      $(BUILD_DIR)/entry.o \
@@ -376,15 +344,7 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/entry.o \
 		  $(BUILD_DIR)/font_subset_ttf_data.o \
 		  $(BUILD_DIR)/wait_exit.o \
 		  $(BUILD_DIR)/fork.o \
-		  $(BUILD_DIR)/pipe.o \
-		  $(BUILD_DIR)/mouse.o \
-		  $(BUILD_DIR)/gfx.o \
-		  $(BUILD_DIR)/shm.o \
-		  $(BUILD_DIR)/guiserver.o \
-		  $(BUILD_DIR)/layout.o \
-		  $(BUILD_DIR)/wm.o \
-		  $(BUILD_DIR)/guiclients.o \
-		  $(BUILD_DIR)/gui.o
+		  $(BUILD_DIR)/pipe.o
 
 $(BUILD_DIR)/kernel.bin: $(BUILD_DIR)/kernel.elf
 	$(OBJCOPY) -O binary $< $@

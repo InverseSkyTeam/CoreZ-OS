@@ -5,6 +5,23 @@ global asm_hlt
 asm_hlt: hlt
         ret
 
+
+
+
+global asm_xchg
+asm_xchg:
+        mov     eax, [esp+4]    
+        mov     ecx, [esp+8]    
+        xchg    [eax], ecx      
+        mov     eax, ecx
+        ret
+
+
+global asm_pause
+asm_pause:
+        pause
+        ret
+
 global asm_cli
 asm_cli: cli
         ret

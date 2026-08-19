@@ -171,6 +171,6 @@ syscall_common_stub:
     call syscall_handler
     add esp, 4
 
-    mov [esp + 44], eax ; eax = 44
+    mov [esp + 44], eax 
 
     jmp intr_exit

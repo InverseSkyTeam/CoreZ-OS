@@ -88,3 +88,6 @@ int32_t pipe(int32_t pipefd[2]) {
 void fd_redirect(uint32_t old_local_fd, uint32_t new_local_fd) {
     syscall2(SYS_FD_REDIRECT, (uint32_t)old_local_fd, (uint32_t)new_local_fd);
 }
+int32_t gui_start(void) {
+    return (int32_t)syscall0(SYS_GUI);
+}

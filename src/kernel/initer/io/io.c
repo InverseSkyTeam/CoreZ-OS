@@ -6,17 +6,36 @@ static uint8_t* g_vram      = (uint8_t*)0;
 static int      g_scrnx     = 0;
 static int      g_scrny     = 0;
 static int      g_pitch     = 0;
+static size_t   g_vram_bytes = 0;     
 static int      g_cursor_x  = 0;
 static int      g_cursor_y  = -20;
 static int      g_text_color = 7;
+static int      g_gui_active = 0;
+
+uint8_t* io_get_vram(void)  { return g_vram; }
+int      io_get_scrnx(void) { return g_scrnx; }
+int      io_get_scrny(void) { return g_scrny; }
+size_t   io_get_vram_bytes(void) { return g_vram_bytes; }
+
+void io_set_gui_active(int on) {
+    g_gui_active = on;
+    if (!on) {
+        g_cursor_x = 0;
+        g_cursor_y = 0;
+    }
+}
 
 #define PRINTF_LINE_GAP 20
 
-void initIO(uint8_t* vram, int scrnx, int scrny) {
+void initIO(uint8_t* vram, int scrnx, int scrny, uint32_t vram_bytes) {
     g_vram      = vram;
     g_scrnx     = scrnx;
     g_scrny     = scrny;
     g_pitch     = scrnx;
+    
+    
+    g_vram_bytes = (vram_bytes > 0) ? (size_t)vram_bytes
+                                    : (size_t)scrnx * (size_t)scrny;
     g_cursor_x  = 0;
     g_cursor_y  = 0;
     g_text_color = 7;
@@ -68,6 +87,11 @@ static void scroll_screen(void) {
 }
 
 static void putc(char c) {
+    if (g_gui_active) {
+        
+        outb(DEBUG_CONSOLE_PORT, (uint8_t)c);
+        return;
+    }
     if (c == '\n') {
         g_cursor_y += PRINTF_LINE_GAP;
         g_cursor_x = 0;

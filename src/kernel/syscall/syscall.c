@@ -15,6 +15,7 @@
 #include "../userprog/fork.h"
 #include "../userprog/wait_exit.h"
 #include "../shell/pipe.h"
+#include "../gui/gui.h"
 
 static uint32_t sys_getpid(void) {
     return current_task->pid;
@@ -167,6 +168,8 @@ uint32_t syscall_handler(struct Registers* r) {
     case SYS_FD_REDIRECT:
         sys_fd_redirect((uint32_t)r->ebx, (uint32_t)r->ecx);
         return 0;
+    case SYS_GUI:
+        return (uint32_t)gui_session_run();
     default:
         return (uint32_t)-1;
     }

@@ -10,6 +10,7 @@ VMODE   equ     0x0FF2
 SCRNX   equ     0x0FF4
 SCRNY   equ     0x0FF6
 VRAM    equ     0x0FF8
+VRAMBYTES equ  0x0FFC
 
 STACK_PHYS equ  0x00090000
 
@@ -39,6 +40,12 @@ kernel_addr:    dd      0
         mov     [SCRNY], ax
         mov     eax, [es:0x0028]
         mov     [VRAM], eax
+        
+        xor     eax, eax
+        mov     ax, [es:0x0010]
+        movzx   ecx, word [es:0x0014]
+        mul     ecx
+        mov     [VRAMBYTES], eax
         jmp     vbe_done
 
 vbe_fail:
@@ -49,6 +56,7 @@ vbe_fail:
         mov     word [SCRNX], 320
         mov     word [SCRNY], 200
         mov     dword [VRAM], 0x000A0000
+        mov     dword [VRAMBYTES], 64000   
 
 vbe_done:
         mov     ax, 0x1130

@@ -9,6 +9,7 @@
 #include "./memory/pool/pool.h"
 #include "./thread/thread.h"
 #include "./device/keyboard.h"
+#include "./device/mouse.h"
 #include "./device/ide.h"
 #include "./fs/fs.h"
 #include "./userprog/process.h"
@@ -40,6 +41,7 @@ struct BootInfo {
     uint16_t scrnx;
     uint16_t scrny;
     uint32_t vram;
+    uint32_t vram_bytes;   
 };
 
 static void k_thread_a(void* arg) {
@@ -91,7 +93,7 @@ static void write_prog(const char* name, const unsigned char* start, const unsig
 void KMain(void) {
     const struct BootInfo *bootInfo = (const struct BootInfo*)0x0FF0;
     initPalette();
-    initIO((uint8_t*)bootInfo->vram, bootInfo->scrnx, bootInfo->scrny);
+    initIO((uint8_t*)bootInfo->vram, bootInfo->scrnx, bootInfo->scrny, bootInfo->vram_bytes);
     initIDT();
     syscall_init();
     mm_init();
@@ -118,6 +120,7 @@ void KMain(void) {
     initPIT(PIT_HZ);
 
     keyboard_init();
+    mouse_init();
     thread_init();
     setTextColor(10);
     printf("[OK] thread mgr ready\n");

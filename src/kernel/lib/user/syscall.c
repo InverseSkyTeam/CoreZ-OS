@@ -162,6 +162,55 @@ int32_t clone(uint32_t flags, void* child_stack) {
     return (int32_t)syscall2(SYS_CLONE, flags, (uint32_t)child_stack);
 }
 
+int32_t fstat(int32_t fd, struct stat* buf) {
+    return (int32_t)syscall2(SYS_FSTAT, (uint32_t)fd, (uint32_t)buf);
+}
+int32_t dup(int32_t oldfd) {
+    return (int32_t)syscall1(SYS_DUP, (uint32_t)oldfd);
+}
+int32_t dup2(int32_t oldfd, int32_t newfd) {
+    return (int32_t)syscall2(SYS_DUP2, (uint32_t)oldfd, (uint32_t)newfd);
+}
+int32_t fcntl(int32_t fd, int32_t cmd, uint32_t arg) {
+    return (int32_t)syscall3(SYS_FCNTL, (uint32_t)fd, (uint32_t)cmd, arg);
+}
+int32_t getdents(int32_t fd, struct linux_dirent* dirp, uint32_t count) {
+    return (int32_t)syscall3(SYS_GETDENTS, (uint32_t)fd, (uint32_t)dirp, count);
+}
+int32_t readlink(const char* path, char* buf, uint32_t bufsiz) {
+    return (int32_t)syscall3(SYS_READLINK, (uint32_t)path, (uint32_t)buf, bufsiz);
+}
+int32_t access(const char* path, int32_t mode) {
+    return (int32_t)syscall2(SYS_ACCESS, (uint32_t)path, (uint32_t)mode);
+}
+int32_t rename(const char* oldpath, const char* newpath) {
+    return (int32_t)syscall2(SYS_RENAME, (uint32_t)oldpath, (uint32_t)newpath);
+}
+int32_t truncate(const char* path, int32_t length) {
+    return (int32_t)syscall2(SYS_TRUNCATE, (uint32_t)path, (uint32_t)length);
+}
+int32_t chmod(const char* path, uint32_t mode) {
+    return (int32_t)syscall2(SYS_CHMOD, (uint32_t)path, mode);
+}
+int32_t clock_gettime(int32_t clk_id, struct timespec* tp) {
+    return (int32_t)syscall2(SYS_CLOCK_GETTIME, (uint32_t)clk_id, (uint32_t)tp);
+}
+int32_t gettimeofday(struct timeval* tv, void* tz) {
+    return (int32_t)syscall2(SYS_GETTIMEOFDAY, (uint32_t)tv, (uint32_t)tz);
+}
+int32_t nanosleep(const struct timespec* req, struct timespec* rem) {
+    return (int32_t)syscall2(SYS_NANOSLEEP, (uint32_t)req, (uint32_t)rem);
+}
+uint32_t getuid(void)  { return syscall0(SYS_GETUID); }
+uint32_t getgid(void)  { return syscall0(SYS_GETGID); }
+uint32_t geteuid(void) { return syscall0(SYS_GETEUID); }
+uint32_t getegid(void) { return syscall0(SYS_GETEGID); }
+void exit_group(int32_t status) {
+    syscall1(SYS_EXIT_GROUP, (uint32_t)status);
+    for (;;) {
+    }
+}
+
 
 __attribute__((naked))
 void __restore(void) {

@@ -21,9 +21,80 @@
 #include "./linux_compat.h"
 #include "./mmap.h"
 #include "./futex.h"
+#include "./file_syscall.h"
+#include "../initer/pit/pit.h"
+#include "../initer/idt/interrupt.h"
+
+struct timespec {
+    int32_t tv_sec;
+    int32_t tv_nsec;
+};
+struct timeval {
+    int32_t tv_sec;
+    int32_t tv_usec;
+};
+
+#define CLOCK_REALTIME  0
+#define CLOCK_MONOTONIC 1
 
 static uint32_t sys_getpid(void) {
     return current_task->pid;
+}
+
+static int32_t sys_clock_gettime(int32_t clk_id, struct timespec* tp) {
+    if (tp == NULL) {
+        return -1;
+    }
+    (void)clk_id;    
+    memset(tp, 0, sizeof(*tp));
+    tp->tv_sec = (int32_t)(g_tick / PIT_HZ);
+    tp->tv_nsec = (int32_t)((g_tick % PIT_HZ) * (1000u * 1000u * 1000u / PIT_HZ));
+    return 0;
+}
+
+static int32_t sys_gettimeofday(struct timeval* tv, void* tz) {
+    if (tv == NULL) {
+        return -1;
+    }
+    (void)tz;  
+    memset(tv, 0, sizeof(*tv));
+    tv->tv_sec = (int32_t)(g_tick / PIT_HZ);
+    tv->tv_usec = (int32_t)((g_tick % PIT_HZ) * (1000u * 1000u / PIT_HZ));
+    return 0;
+}
+
+static int32_t sys_nanosleep(const struct timespec* req, struct timespec* rem) {
+    if (req == NULL || req->tv_sec < 0 || req->tv_nsec < 0) {
+        return -1;
+    }
+
+    uint32_t sec = (uint32_t)req->tv_sec;
+    uint32_t ms;
+    if (sec > 0x1fffff) {
+        ms = 0x7fffffffU;
+    } else {
+        ms = sec * 1000u;
+    }
+    ms += (uint32_t)req->tv_nsec / 1000000u;
+    if (ms > 0x7fffffffU) {
+        ms = 0x7fffffffU;
+    }
+    mtime_sleep(ms);
+    if (rem != NULL) {
+        memset(rem, 0, sizeof(*rem));
+    }
+    return 0;
+}
+
+static uint32_t sys_getuid(void)   { return 0; }
+static uint32_t sys_getgid(void)   { return 0; }
+static uint32_t sys_geteuid(void)  { return 0; }
+static uint32_t sys_getegid(void)  { return 0; }
+
+static void sys_exit_group(int32_t status) {
+    sys_exit(status);
+    for (;;) {
+    }
 }
 
 static uint32_t sys_write(int32_t fd, char* str, uint32_t count) {
@@ -290,6 +361,61 @@ uint32_t syscall_handler(struct Registers* r) {
         break;
     case SYS_CLONE:
         ret = (uint32_t)sys_clone(r);
+        break;
+    case SYS_FSTAT:
+        ret = (uint32_t)sys_fstat((int32_t)r->ebx, (void*)r->ecx);
+        break;
+    case SYS_DUP:
+        ret = (uint32_t)sys_dup((int32_t)r->ebx);
+        break;
+    case SYS_DUP2:
+        ret = (uint32_t)sys_dup2((int32_t)r->ebx, (int32_t)r->ecx);
+        break;
+    case SYS_FCNTL:
+        ret = (uint32_t)sys_fcntl((int32_t)r->ebx, (int32_t)r->ecx, (uint32_t)r->edx);
+        break;
+    case SYS_GETDENTS:
+        ret = (uint32_t)sys_getdents((int32_t)r->ebx, (void*)r->ecx, (uint32_t)r->edx);
+        break;
+    case SYS_READLINK:
+        ret = (uint32_t)sys_readlink((const char*)r->ebx, (char*)r->ecx, (uint32_t)r->edx);
+        break;
+    case SYS_ACCESS:
+        ret = (uint32_t)sys_access((const char*)r->ebx, (int32_t)r->ecx);
+        break;
+    case SYS_RENAME:
+        ret = (uint32_t)sys_rename((const char*)r->ebx, (const char*)r->ecx);
+        break;
+    case SYS_TRUNCATE:
+        ret = (uint32_t)sys_truncate((const char*)r->ebx, (int32_t)r->ecx);
+        break;
+    case SYS_CHMOD:
+        ret = (uint32_t)sys_chmod((const char*)r->ebx, (uint32_t)r->ecx);
+        break;
+    case SYS_CLOCK_GETTIME:
+        ret = (uint32_t)sys_clock_gettime((int32_t)r->ebx, (struct timespec*)r->ecx);
+        break;
+    case SYS_GETTIMEOFDAY:
+        ret = (uint32_t)sys_gettimeofday((struct timeval*)r->ebx, (void*)r->ecx);
+        break;
+    case SYS_NANOSLEEP:
+        ret = (uint32_t)sys_nanosleep((const struct timespec*)r->ebx, (struct timespec*)r->ecx);
+        break;
+    case SYS_GETUID:
+        ret = sys_getuid();
+        break;
+    case SYS_GETGID:
+        ret = sys_getgid();
+        break;
+    case SYS_GETEUID:
+        ret = sys_geteuid();
+        break;
+    case SYS_GETEGID:
+        ret = sys_getegid();
+        break;
+    case SYS_EXIT_GROUP:
+        sys_exit_group((int32_t)r->ebx);
+        ret = 0;
         break;
     default:
         ret = (uint32_t)-1;

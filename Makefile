@@ -139,6 +139,9 @@ $(BUILD_DIR)/mmap.o: $(SRC_DIR)/kernel/syscall/mmap.c $(KERNEL_HDRS) | $(BUILD_D
 $(BUILD_DIR)/futex.o: $(SRC_DIR)/kernel/syscall/futex.c $(KERNEL_HDRS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/file_syscall.o: $(SRC_DIR)/kernel/syscall/file_syscall.c $(KERNEL_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 $(BUILD_DIR)/signal.o: $(SRC_DIR)/kernel/syscall/signal.c $(KERNEL_HDRS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -336,6 +339,22 @@ $(BUILD_DIR)/futex_demo.elf: $(BUILD_DIR)/up_start.o \
 $(BUILD_DIR)/futex_demo_data.o: $(BUILD_DIR)/futex_demo.elf | $(BUILD_DIR)
 	cd $(BUILD_DIR) && $(OBJCOPY) -I binary -O elf32-i386 -B i386 futex_demo.elf futex_demo_data.o
 
+$(BUILD_DIR)/fsyscall_demo.elf: $(BUILD_DIR)/up_start.o \
+                            $(SRC_DIR)/command/fsyscall_demo.c \
+                            $(SRC_DIR)/command/start.asm \
+                            $(SRC_DIR)/kernel/lib/user/stdio.c \
+                            $(SRC_DIR)/kernel/lib/user/syscall.c \
+                            $(SRC_DIR)/kernel/lib/str/str.c | $(BUILD_DIR)
+	$(CC) $(UP_CFLAGS) -c $(SRC_DIR)/command/fsyscall_demo.c -o $(BUILD_DIR)/up_fsyscall_demo.o
+	$(CC) $(UP_CFLAGS) -c $(SRC_DIR)/kernel/lib/user/stdio.c -o $(BUILD_DIR)/up_stdio.o
+	$(CC) $(UP_CFLAGS) -c $(SRC_DIR)/kernel/lib/user/syscall.c -o $(BUILD_DIR)/up_syscall.o
+	$(CC) $(UP_CFLAGS) -c $(SRC_DIR)/kernel/lib/str/str.c -o $(BUILD_DIR)/up_str.o
+	$(LD) -s -m elf_i386 -Ttext 0x8048000 -e _start -o $@ \
+	      $(BUILD_DIR)/up_start.o $(BUILD_DIR)/up_fsyscall_demo.o $(BUILD_DIR)/up_stdio.o $(BUILD_DIR)/up_syscall.o $(BUILD_DIR)/up_str.o
+
+$(BUILD_DIR)/fsyscall_demo_data.o: $(BUILD_DIR)/fsyscall_demo.elf | $(BUILD_DIR)
+	cd $(BUILD_DIR) && $(OBJCOPY) -I binary -O elf32-i386 -B i386 fsyscall_demo.elf fsyscall_demo_data.o
+
 $(BUILD_DIR)/clone_demo.elf: $(BUILD_DIR)/up_start.o \
                             $(SRC_DIR)/command/clone_demo.c \
                             $(SRC_DIR)/kernel/lib/user/stdlib.c \
@@ -437,6 +456,7 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/entry.o \
 						 $(BUILD_DIR)/futex.o \
 						 $(BUILD_DIR)/linux_compat.o \
 						 $(BUILD_DIR)/signal.o \
+						 $(BUILD_DIR)/file_syscall.o \
 						 $(BUILD_DIR)/usyscall.o \
 						 $(BUILD_DIR)/ustdio.o \
 						 $(BUILD_DIR)/prog_no_arg_data.o \
@@ -451,6 +471,7 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/entry.o \
 						 $(BUILD_DIR)/mmap_demo_data.o \
 						 $(BUILD_DIR)/futex_demo_data.o \
 						 $(BUILD_DIR)/lc_demo_data.o \
+						 $(BUILD_DIR)/fsyscall_demo_data.o \
 						 $(BUILD_DIR)/clone_demo_data.o \
 						 $(BUILD_DIR)/wait_exit.o \
 						 $(BUILD_DIR)/fork.o \
@@ -502,6 +523,7 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/entry.o \
 		  $(BUILD_DIR)/futex.o \
 	      $(BUILD_DIR)/linux_compat.o \
 	      $(BUILD_DIR)/signal.o \
+	      $(BUILD_DIR)/file_syscall.o \
 	      $(BUILD_DIR)/usyscall.o \
 	      $(BUILD_DIR)/ustdio.o \
 	      $(BUILD_DIR)/prog_no_arg_data.o \
@@ -516,7 +538,8 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/entry.o \
 	      $(BUILD_DIR)/mmap_demo_data.o \
 	      $(BUILD_DIR)/futex_demo_data.o \
 	      $(BUILD_DIR)/lc_demo_data.o \
-		  $(BUILD_DIR)/clone_demo_data.o \
+	      $(BUILD_DIR)/fsyscall_demo_data.o \
+	      $(BUILD_DIR)/clone_demo_data.o \
 		  $(BUILD_DIR)/wait_exit.o \
 		  $(BUILD_DIR)/fork.o \
 		  $(BUILD_DIR)/clone.o \

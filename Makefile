@@ -16,6 +16,11 @@ CFLAGS = -target x86-freestanding -ffreestanding -fno-builtin -fno-sanitize=all
 UP_CFLAGS = $(CFLAGS) -I $(SRC_DIR)/kernel/lib/user -I $(SRC_DIR)/kernel/lib/str -I $(SRC_DIR)/kernel/lib
 UP_LDFLAGS = -s -m elf_i386 -Ttext 0x8048000 -e main
 
+MUSL_SRC = $(SRC_DIR)/app/musl
+MUSL_CFLAGS = $(CFLAGS) -I $(MUSL_SRC)/arch/i386 -I $(MUSL_SRC)/arch/generic \
+              -I $(MUSL_SRC)/src/internal -I $(MUSL_SRC)/include -I $(MUSL_SRC)/nitian \
+              -include $(MUSL_SRC)/nitian/nt_libc_macros.h
+
 KERNEL_HDRS := $(wildcard $(SRC_DIR)/kernel/include/*.h \
                          $(SRC_DIR)/kernel/include/asm/*.h \
                          $(SRC_DIR)/kernel/lib/*/*.h \
@@ -411,6 +416,274 @@ $(BUILD_DIR)/lc_demo.elf: $(BUILD_DIR)/lc_start.o \
 $(BUILD_DIR)/lc_demo_data.o: $(BUILD_DIR)/lc_demo.elf | $(BUILD_DIR)
 	cd $(BUILD_DIR) && $(OBJCOPY) -I binary -O elf32-i386 -B i386 lc_demo.elf lc_demo_data.o
 
+# --- musl 引导核心子集 (Bootstrap) ---
+$(BUILD_DIR)/musl_start.o: $(MUSL_SRC)/nitian/musl_crt0.asm | $(BUILD_DIR)
+	$(ASM) -f elf32 $< -o $@
+
+$(BUILD_DIR)/musl_syscall.o: $(MUSL_SRC)/nitian/musl_syscall.asm | $(BUILD_DIR)
+	$(ASM) -f elf32 $< -o $@
+
+$(BUILD_DIR)/nt_errno.o: $(MUSL_SRC)/nitian/nt_errno.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_ret.o: $(MUSL_SRC)/src/internal/syscall_ret.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_getpid.o: $(MUSL_SRC)/src/unistd/getpid.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_write.o: $(MUSL_SRC)/src/unistd/write.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_exit.o: $(MUSL_SRC)/src/unistd/_exit.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_exit_cap.o: $(MUSL_SRC)/src/exit/_Exit.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_strlen.o: $(MUSL_SRC)/src/string/strlen.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_strcpy.o: $(MUSL_SRC)/src/string/strcpy.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_strcmp.o: $(MUSL_SRC)/src/string/strcmp.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_strchr.o: $(MUSL_SRC)/src/string/strchr.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_stpcpy.o: $(MUSL_SRC)/src/string/stpcpy.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_strchrnul.o: $(MUSL_SRC)/src/string/strchrnul.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_demo.o: $(SRC_DIR)/command/musl_demo.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_demo.elf: $(BUILD_DIR)/musl_start.o \
+                            $(BUILD_DIR)/musl_demo.o \
+                            $(BUILD_DIR)/musl_getpid.o \
+                            $(BUILD_DIR)/musl_write.o \
+                            $(BUILD_DIR)/musl_exit.o \
+                            $(BUILD_DIR)/musl_exit_cap.o \
+                            $(BUILD_DIR)/musl_strlen.o \
+                            $(BUILD_DIR)/musl_strcpy.o \
+                            $(BUILD_DIR)/musl_strcmp.o \
+                            $(BUILD_DIR)/musl_strchr.o \
+                            $(BUILD_DIR)/musl_stpcpy.o \
+                            $(BUILD_DIR)/musl_strchrnul.o \
+                            $(BUILD_DIR)/musl_ret.o \
+                            $(BUILD_DIR)/nt_errno.o \
+                            $(BUILD_DIR)/musl_syscall.o | $(BUILD_DIR)
+	$(LD) -s -m elf_i386 -Ttext 0x8048000 -e _musl_start -o $@ \
+	      $(BUILD_DIR)/musl_start.o $(BUILD_DIR)/musl_demo.o \
+	      $(BUILD_DIR)/musl_getpid.o $(BUILD_DIR)/musl_write.o \
+	      $(BUILD_DIR)/musl_exit.o $(BUILD_DIR)/musl_exit_cap.o \
+	      $(BUILD_DIR)/musl_strlen.o $(BUILD_DIR)/musl_strcpy.o \
+	      $(BUILD_DIR)/musl_strcmp.o $(BUILD_DIR)/musl_strchr.o \
+	      $(BUILD_DIR)/musl_stpcpy.o $(BUILD_DIR)/musl_strchrnul.o \
+	      $(BUILD_DIR)/musl_ret.o $(BUILD_DIR)/nt_errno.o $(BUILD_DIR)/musl_syscall.o
+
+$(BUILD_DIR)/musl_demo_data.o: $(BUILD_DIR)/musl_demo.elf | $(BUILD_DIR)
+	cd $(BUILD_DIR) && $(OBJCOPY) -I binary -O elf32-i386 -B i386 musl_demo.elf musl_demo_data.o
+
+# --- musl libc-testsuite 程序 (纯算法测试子集) ---
+$(BUILD_DIR)/libc_tests_main.o: $(SRC_DIR)/command/libc_tests_main.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/test_string.o: $(SRC_DIR)/app/libc-testsuite/string.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/test_qsort.o: $(SRC_DIR)/app/libc-testsuite/qsort.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/test_strtol.o: $(SRC_DIR)/app/libc-testsuite/strtol.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/test_strtod.o: $(SRC_DIR)/app/libc-testsuite/strtod.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/test_basename.o: $(SRC_DIR)/app/libc-testsuite/basename.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/test_dirname.o: $(SRC_DIR)/app/libc-testsuite/dirname.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/test_fnmatch.o: $(SRC_DIR)/app/libc-testsuite/fnmatch.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_vfprintf.o: $(MUSL_SRC)/src/stdio/vfprintf.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_vsnprintf.o: $(MUSL_SRC)/src/stdio/vsnprintf.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_snprintf.o: $(MUSL_SRC)/src/stdio/snprintf.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_sprintf.o: $(MUSL_SRC)/src/stdio/sprintf.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_printf.o: $(MUSL_SRC)/src/stdio/printf.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_fprintf.o: $(MUSL_SRC)/src/stdio/fprintf.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_stdout.o: $(MUSL_SRC)/src/stdio/stdout.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_towrite.o: $(MUSL_SRC)/src/stdio/__towrite.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_stdiowrite.o: $(MUSL_SRC)/src/stdio/__stdio_write.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_fwrite.o: $(MUSL_SRC)/src/stdio/fwrite.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_overflow.o: $(MUSL_SRC)/src/stdio/__overflow.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_uflow.o: $(MUSL_SRC)/src/stdio/__uflow.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_toread.o: $(MUSL_SRC)/src/stdio/__toread.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_stdioclose.o: $(MUSL_SRC)/src/stdio/__stdio_close.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_strncpy.o: $(MUSL_SRC)/src/string/strncpy.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_strncmp.o: $(MUSL_SRC)/src/string/strncmp.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_strncat.o: $(MUSL_SRC)/src/string/strncat.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_strrchr.o: $(MUSL_SRC)/src/string/strrchr.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_strspn.o: $(MUSL_SRC)/src/string/strspn.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_strcspn.o: $(MUSL_SRC)/src/string/strcspn.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_strpbrk.o: $(MUSL_SRC)/src/string/strpbrk.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_strtok.o: $(MUSL_SRC)/src/string/strtok.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_strlcpy.o: $(MUSL_SRC)/src/string/strlcpy.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_strlcat.o: $(MUSL_SRC)/src/string/strlcat.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_strdup.o: $(MUSL_SRC)/src/string/strdup.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_strnlen.o: $(MUSL_SRC)/src/string/strnlen.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_memcpy.o: $(MUSL_SRC)/src/string/memcpy.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_memset.o: $(MUSL_SRC)/src/string/memset.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_memcmp.o: $(MUSL_SRC)/src/string/memcmp.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_qsort.o: $(MUSL_SRC)/src/stdlib/qsort.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_qsortnr.o: $(MUSL_SRC)/src/stdlib/qsort_nr.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_atol.o: $(MUSL_SRC)/src/stdlib/atol.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_atoi.o: $(MUSL_SRC)/src/stdlib/atoi.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_strtol.o: $(MUSL_SRC)/src/stdlib/strtol.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_intscan.o: $(MUSL_SRC)/src/internal/intscan.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_shgetc.o: $(MUSL_SRC)/src/internal/shgetc.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/musl_basename.o: $(MUSL_SRC)/src/misc/basename.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/musl_dirname.o: $(MUSL_SRC)/src/misc/dirname.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/nt_libc_stubs.o: $(MUSL_SRC)/nitian/nt_libc_stubs.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+$(BUILD_DIR)/nt_fnmatch.o: $(MUSL_SRC)/nitian/nt_fnmatch.c | $(BUILD_DIR)
+	$(CC) $(MUSL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/libc_testsuite.elf: $(BUILD_DIR)/musl_start.o \
+                               $(BUILD_DIR)/musl_syscall.o \
+                               $(BUILD_DIR)/musl_ret.o \
+                               $(BUILD_DIR)/nt_errno.o \
+                               $(BUILD_DIR)/libc_tests_main.o \
+                               $(BUILD_DIR)/test_string.o \
+                               $(BUILD_DIR)/test_qsort.o \
+                               $(BUILD_DIR)/test_strtol.o \
+                               $(BUILD_DIR)/test_strtod.o \
+                               $(BUILD_DIR)/test_basename.o \
+                               $(BUILD_DIR)/test_dirname.o \
+                               $(BUILD_DIR)/test_fnmatch.o \
+                               $(BUILD_DIR)/musl_vfprintf.o \
+                               $(BUILD_DIR)/musl_vsnprintf.o \
+                               $(BUILD_DIR)/musl_snprintf.o \
+                               $(BUILD_DIR)/musl_sprintf.o \
+                               $(BUILD_DIR)/musl_printf.o \
+                               $(BUILD_DIR)/musl_fprintf.o \
+                               $(BUILD_DIR)/musl_stdout.o \
+                               $(BUILD_DIR)/musl_towrite.o \
+                               $(BUILD_DIR)/musl_stdiowrite.o \
+                               $(BUILD_DIR)/musl_fwrite.o \
+                               $(BUILD_DIR)/musl_overflow.o \
+                               $(BUILD_DIR)/musl_uflow.o \
+                               $(BUILD_DIR)/musl_toread.o \
+                               $(BUILD_DIR)/musl_stdioclose.o \
+                               $(BUILD_DIR)/musl_strlen.o \
+                               $(BUILD_DIR)/musl_strcpy.o \
+                               $(BUILD_DIR)/musl_strcmp.o \
+                               $(BUILD_DIR)/musl_strchr.o \
+                               $(BUILD_DIR)/musl_strncpy.o \
+                               $(BUILD_DIR)/musl_strncmp.o \
+                               $(BUILD_DIR)/musl_strncat.o \
+                               $(BUILD_DIR)/musl_strrchr.o \
+                               $(BUILD_DIR)/musl_strspn.o \
+                               $(BUILD_DIR)/musl_strcspn.o \
+                               $(BUILD_DIR)/musl_strpbrk.o \
+                               $(BUILD_DIR)/musl_strtok.o \
+                               $(BUILD_DIR)/musl_strlcpy.o \
+                               $(BUILD_DIR)/musl_strlcat.o \
+                               $(BUILD_DIR)/musl_strdup.o \
+                               $(BUILD_DIR)/musl_strnlen.o \
+                               $(BUILD_DIR)/musl_memcpy.o \
+                               $(BUILD_DIR)/musl_memset.o \
+                               $(BUILD_DIR)/musl_memcmp.o \
+                               $(BUILD_DIR)/musl_qsort.o \
+                               $(BUILD_DIR)/musl_qsortnr.o \
+                               $(BUILD_DIR)/musl_atol.o \
+                               $(BUILD_DIR)/musl_atoi.o \
+                               $(BUILD_DIR)/musl_strtol.o \
+                               $(BUILD_DIR)/musl_intscan.o \
+                               $(BUILD_DIR)/musl_shgetc.o \
+                               $(BUILD_DIR)/musl_basename.o \
+                               $(BUILD_DIR)/musl_dirname.o \
+                               $(BUILD_DIR)/nt_libc_stubs.o \
+                               $(BUILD_DIR)/nt_fnmatch.o | $(BUILD_DIR)
+	$(LD) -s -m elf_i386 -Ttext 0x8048000 -e _musl_start -o $@ \
+	      $(BUILD_DIR)/musl_start.o $(BUILD_DIR)/musl_syscall.o \
+	      $(BUILD_DIR)/musl_ret.o $(BUILD_DIR)/nt_errno.o \
+	      $(BUILD_DIR)/libc_tests_main.o \
+	      $(BUILD_DIR)/test_string.o $(BUILD_DIR)/test_qsort.o \
+	      $(BUILD_DIR)/test_strtol.o $(BUILD_DIR)/test_strtod.o \
+	      $(BUILD_DIR)/test_basename.o $(BUILD_DIR)/test_dirname.o \
+	      $(BUILD_DIR)/test_fnmatch.o \
+	      $(BUILD_DIR)/musl_vfprintf.o $(BUILD_DIR)/musl_vsnprintf.o \
+	      $(BUILD_DIR)/musl_snprintf.o $(BUILD_DIR)/musl_sprintf.o \
+	      $(BUILD_DIR)/musl_printf.o $(BUILD_DIR)/musl_fprintf.o \
+	      $(BUILD_DIR)/musl_stdout.o $(BUILD_DIR)/musl_towrite.o \
+	      $(BUILD_DIR)/musl_stdiowrite.o $(BUILD_DIR)/musl_fwrite.o \
+	      $(BUILD_DIR)/musl_overflow.o $(BUILD_DIR)/musl_uflow.o \
+	      $(BUILD_DIR)/musl_toread.o $(BUILD_DIR)/musl_stdioclose.o \
+	      $(BUILD_DIR)/musl_strlen.o $(BUILD_DIR)/musl_strcpy.o \
+	      $(BUILD_DIR)/musl_strcmp.o $(BUILD_DIR)/musl_strchr.o \
+	      $(BUILD_DIR)/musl_strncpy.o $(BUILD_DIR)/musl_strncmp.o \
+	      $(BUILD_DIR)/musl_strncat.o $(BUILD_DIR)/musl_strrchr.o \
+	      $(BUILD_DIR)/musl_strspn.o $(BUILD_DIR)/musl_strcspn.o \
+	      $(BUILD_DIR)/musl_strpbrk.o $(BUILD_DIR)/musl_strtok.o \
+	      $(BUILD_DIR)/musl_strlcpy.o $(BUILD_DIR)/musl_strlcat.o \
+	      $(BUILD_DIR)/musl_strdup.o $(BUILD_DIR)/musl_strnlen.o \
+	      $(BUILD_DIR)/musl_memcpy.o $(BUILD_DIR)/musl_memset.o \
+	      $(BUILD_DIR)/musl_memcmp.o $(BUILD_DIR)/musl_qsort.o \
+	      $(BUILD_DIR)/musl_qsortnr.o $(BUILD_DIR)/musl_atol.o \
+	      $(BUILD_DIR)/musl_atoi.o $(BUILD_DIR)/musl_strtol.o \
+	      $(BUILD_DIR)/musl_intscan.o $(BUILD_DIR)/musl_shgetc.o \
+	      $(BUILD_DIR)/musl_basename.o $(BUILD_DIR)/musl_dirname.o \
+	      $(BUILD_DIR)/nt_libc_stubs.o $(BUILD_DIR)/nt_fnmatch.o
+
+$(BUILD_DIR)/libc_testsuite_data.o: $(BUILD_DIR)/libc_testsuite.elf | $(BUILD_DIR)
+	cd $(BUILD_DIR) && $(OBJCOPY) -I binary -O elf32-i386 -B i386 libc_testsuite.elf libc_testsuite_data.o
+
 $(BUILD_DIR)/font_subset.ttf: $(SCRIPTS_DIR)/make_font_subset.py \
                                $(SRC_DIR)/kernel/lib/assets/font.ttf | $(BUILD_DIR)
 	$(PYTHON) $(SCRIPTS_DIR)/make_font_subset.py \
@@ -488,6 +761,8 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/entry.o \
 						 $(BUILD_DIR)/mmap2_demo_data.o \
 						 $(BUILD_DIR)/futex_demo_data.o \
 						 $(BUILD_DIR)/lc_demo_data.o \
+						 $(BUILD_DIR)/musl_demo_data.o \
+						 $(BUILD_DIR)/libc_testsuite_data.o \
 						 $(BUILD_DIR)/fsyscall_demo_data.o \
 						 $(BUILD_DIR)/clone_demo_data.o \
 						 $(BUILD_DIR)/wait_exit.o \
@@ -556,6 +831,8 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/entry.o \
 	      $(BUILD_DIR)/mmap2_demo_data.o \
 	      $(BUILD_DIR)/futex_demo_data.o \
 	      $(BUILD_DIR)/lc_demo_data.o \
+	      $(BUILD_DIR)/musl_demo_data.o \
+	      $(BUILD_DIR)/libc_testsuite_data.o \
 	      $(BUILD_DIR)/fsyscall_demo_data.o \
 	      $(BUILD_DIR)/clone_demo_data.o \
 		  $(BUILD_DIR)/wait_exit.o \

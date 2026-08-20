@@ -47,6 +47,10 @@ extern const unsigned char _binary_fsyscall_demo_elf_start[];
 extern const unsigned char _binary_fsyscall_demo_elf_end[];
 extern const unsigned char _binary_lc_demo_elf_start[];
 extern const unsigned char _binary_lc_demo_elf_end[];
+extern const unsigned char _binary_musl_demo_elf_start[];
+extern const unsigned char _binary_musl_demo_elf_end[];
+extern const unsigned char _binary_libc_testsuite_elf_start[];
+extern const unsigned char _binary_libc_testsuite_elf_end[];
 extern const unsigned char _binary_font_subset_ttf_start[];
 extern const unsigned char _binary_font_subset_ttf_end[];
 
@@ -166,6 +170,8 @@ void KMain(void) {
     write_prog("/clone_demo", _binary_clone_demo_elf_start, _binary_clone_demo_elf_end);
     write_prog("/fsyscall_demo", _binary_fsyscall_demo_elf_start, _binary_fsyscall_demo_elf_end);
     write_prog("/lc_demo", _binary_lc_demo_elf_start, _binary_lc_demo_elf_end);
+    write_prog("/musl_demo", _binary_musl_demo_elf_start, _binary_musl_demo_elf_end);
+    write_prog("/libc_testsuite", _binary_libc_testsuite_elf_start, _binary_libc_testsuite_elf_end);
     write_prog("/font.ttf", _binary_font_subset_ttf_start, _binary_font_subset_ttf_end);
     setTextColor(10);
     printf("[OK] user programs installed\n");

@@ -171,7 +171,8 @@ int32_t sys_execv(const char* path, const char* argv[]) {
 
     memcpy(cur->name, path, 15);
     cur->name[15] = 0;
-    cur->user_brk = 0;                        
+    cur->user_brk = 0;
+    signal_reset_user(cur);                    
 
     for (uint32_t sp = USER_STACK3_VADDR - PAGE_SIZE; sp <= USER_STACK3_VADDR; sp += PAGE_SIZE) {
         uint32_t* pde = pde_ptr(sp);

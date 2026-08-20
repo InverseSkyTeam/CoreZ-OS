@@ -79,6 +79,13 @@ pid_t sys_fork(struct Registers* r) {
     }
     child->exit_status = 0;
 
+    
+    child->signal_mask = parent->signal_mask;
+    child->signal_pending = 0;
+    for (int i = 0; i < NSIG; i++) {
+        child->sigactions[i] = parent->sigactions[i];
+    }
+
     create_user_vaddr_bitmap(child);
     child->pgdir = (uint32_t)create_page_dir();
     if (child->pgdir == 0) {

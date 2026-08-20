@@ -1,6 +1,7 @@
 // 参考: 《操作系统真相还原》(于渊) 第12章 系统调用
 
 #include "./syscall.h"
+#include "./signal.h"
 #include "../../include/syscall_nr.h"
 
 static inline uint32_t syscall0(uint32_t nr) {
@@ -104,4 +105,47 @@ void* sbrk(intptr_t inc) {
         return (void*)-1;
     }
     return (void*)ob;
+}
+
+
+__attribute__((naked))
+void __restore(void) {
+    __asm__ volatile(
+        "movl %0, %%eax\n"
+        "int $0x80\n"
+        : : "i"(SYS_SIGRETURN) : "memory");
+}
+
+int sigaction(int sig, const struct sigaction* act, struct sigaction* old) {
+    struct sigaction kact;
+    const struct sigaction* pact = act;
+    if (act) {
+        kact = *act;
+        kact.sa_restorer = __restore;     
+        kact.sa_flags |= SA_RESTORER;
+        pact = &kact;
+    }
+    return (int)syscall3(SYS_SIGACTION, (uint32_t)sig, (uint32_t)pact, (uint32_t)old);
+}
+
+int sigprocmask(int how, const sigset_t* set, sigset_t* oldset) {
+    return (int)syscall3(SYS_SIGPROCMASK, (uint32_t)how, (uint32_t)set, (uint32_t)oldset);
+}
+
+int kill(pid_t pid, int sig) {
+    return (int)syscall2(SYS_KILL, (uint32_t)pid, (uint32_t)sig);
+}
+
+
+void (*signal(int sig, void (*handler)(int)))(int) {
+    struct sigaction act, old;
+    act.sa_handler = handler;
+    act.sa_mask = 0;
+    act.sa_flags = 0;
+    act.sa_restorer = __restore;
+    act.sa_flags |= SA_RESTORER;
+    if (sigaction(sig, &act, &old) < 0) {
+        return SIG_ERR;
+    }
+    return old.sa_handler;
 }

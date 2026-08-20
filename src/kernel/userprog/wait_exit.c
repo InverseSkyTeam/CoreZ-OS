@@ -54,7 +54,7 @@ static void release_prog_resource(struct task_struct* release_thread) {
         }
     }
     for (uint32_t fd_idx = 3; fd_idx < MAX_FILES_OPEN_PER_PROC; fd_idx++) {
-        if (current_task->fd_table[fd_idx] != (uint32_t)-1) {
+        if (release_thread->fd_table[fd_idx] != (uint32_t)-1) {
             close_file((int)fd_idx);
         }
     }
@@ -100,8 +100,7 @@ pid_t sys_wait(int32_t* status) {
     }
 }
 
-void sys_exit(int32_t status) {
-    struct task_struct* cur = current_task;
+void proc_exit(struct task_struct* cur, int status) {
     cur->exit_status = (int8_t)status;
 
     struct list_elem* e = g_thread_all_list.head.next;
@@ -118,4 +117,8 @@ void sys_exit(int32_t status) {
         thread_unblock(parent);
     }
     thread_block_with_status(TASK_HANGING);
+}
+
+void sys_exit(int32_t status) {
+    proc_exit(current_task, status);
 }

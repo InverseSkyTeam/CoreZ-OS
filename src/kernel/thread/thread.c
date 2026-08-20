@@ -8,7 +8,7 @@
 #include "../include/asmFunc.h"
 #include "../include/assert.h"
 
-static struct list g_ready_list;
+struct list g_ready_list;
 static struct task_struct g_task_table[MAX_TASKS];
 static uint32_t g_task_count = 0;
 static uint32_t g_pid_alloc = 0;
@@ -59,6 +59,8 @@ static void init_task_struct_basic(struct task_struct* t, int32_t parent_pid) {
     init_fd_table(t);
     t->parent_pid = parent_pid;
     t->stack_magic = STACK_MAGIC;
+
+    init_signal_state(t);
 
     t->general_tag.prev = t->general_tag.next = NULL;
     t->all_list_tag.prev = t->all_list_tag.next = NULL;

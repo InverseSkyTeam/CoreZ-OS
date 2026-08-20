@@ -30,7 +30,11 @@ enum syscall_nr {
     SYS_PIPE,
     SYS_FD_REDIRECT,
     SYS_BRK,
-    SYS_GUI
+    SYS_GUI,
+    SYS_SIGACTION,
+    SYS_KILL,
+    SYS_SIGRETURN,
+    SYS_SIGPROCMASK
 };
 
 #endif

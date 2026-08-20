@@ -149,68 +149,118 @@ static uint32_t sys_brk(uint32_t addr) {
 
 uint32_t syscall_handler(struct Registers* r) {
     uint32_t nr = r->eax;
+    uint32_t ret = (uint32_t)-1;
     switch (nr) {
     case SYS_GETPID:
-        return sys_getpid();
+        ret = sys_getpid();
+        break;
     case SYS_WRITE:
-        return sys_write((int32_t)r->ebx, (char*)r->ecx, (uint32_t)r->edx);
+        ret = sys_write((int32_t)r->ebx, (char*)r->ecx, (uint32_t)r->edx);
+        break;
     case SYS_PUTCHAR:
-        return sys_putchar((char)r->ebx);
+        ret = sys_putchar((char)r->ebx);
+        break;
     case SYS_CLEAR:
-        return sys_clear();
+        ret = sys_clear();
+        break;
     case SYS_READ:
-        return (uint32_t)sys_read((int32_t)r->ebx, (void*)r->ecx, (uint32_t)r->edx);
+        ret = (uint32_t)sys_read((int32_t)r->ebx, (void*)r->ecx, (uint32_t)r->edx);
+        break;
     case SYS_FORK:
-        return (uint32_t)sys_fork(r);
+        ret = (uint32_t)sys_fork(r);
+        break;
     case SYS_GETCWD:
-        return (uint32_t)sys_getcwd((char*)r->ebx, (uint32_t)r->ecx);
+        ret = (uint32_t)sys_getcwd((char*)r->ebx, (uint32_t)r->ecx);
+        break;
     case SYS_CHDIR:
-        return (uint32_t)sys_chdir((const char*)r->ebx);
+        ret = (uint32_t)sys_chdir((const char*)r->ebx);
+        break;
     case SYS_MKDIR:
-        return (uint32_t)sys_mkdir((const char*)r->ebx);
+        ret = (uint32_t)sys_mkdir((const char*)r->ebx);
+        break;
     case SYS_RMDIR:
-        return (uint32_t)sys_rmdir((const char*)r->ebx);
+        ret = (uint32_t)sys_rmdir((const char*)r->ebx);
+        break;
     case SYS_OPEN:
-        return (uint32_t)open_file((const char*)r->ebx, (uint8_t)r->ecx);
+        ret = (uint32_t)open_file((const char*)r->ebx, (uint8_t)r->ecx);
+        break;
     case SYS_CLOSE:
-        return (uint32_t)close_file((int)r->ebx);
+        ret = (uint32_t)close_file((int)r->ebx);
+        break;
     case SYS_LSEEK:
-        return (uint32_t)sys_lseek((int32_t)r->ebx, (int32_t)r->ecx, (uint8_t)r->edx);
+        ret = (uint32_t)sys_lseek((int32_t)r->ebx, (int32_t)r->ecx, (uint8_t)r->edx);
+        break;
     case SYS_UNLINK:
-        return (uint32_t)sys_unlink((const char*)r->ebx);
+        ret = (uint32_t)sys_unlink((const char*)r->ebx);
+        break;
     case SYS_OPENDIR:
-        return (uint32_t)sys_opendir((const char*)r->ebx);
+        ret = (uint32_t)sys_opendir((const char*)r->ebx);
+        break;
     case SYS_CLOSEDIR:
-        return (uint32_t)sys_closedir((struct dir*)r->ebx);
+        ret = (uint32_t)sys_closedir((struct dir*)r->ebx);
+        break;
     case SYS_READDIR:
-        return (uint32_t)sys_readdir((struct dir*)r->ebx);
+        ret = (uint32_t)sys_readdir((struct dir*)r->ebx);
+        break;
     case SYS_REWINDDIR:
         sys_rewinddir((struct dir*)r->ebx);
-        return 0;
+        ret = 0;
+        break;
     case SYS_STAT:
-        return (uint32_t)sys_stat((const char*)r->ebx, (struct stat*)r->ecx);
+        ret = (uint32_t)sys_stat((const char*)r->ebx, (struct stat*)r->ecx);
+        break;
     case SYS_PS:
         sys_ps();
-        return 0;
+        ret = 0;
+        break;
     case SYS_EXECV:
-        return (uint32_t)sys_execv((const char*)r->ebx, (const char**)r->ecx);
+        ret = (uint32_t)sys_execv((const char*)r->ebx, (const char**)r->ecx);
+        break;
     case SYS_EXIT:
-        sys_exit((int32_t)r->ebx);
-        return 0;
+        sys_exit((int32_t)r->ebx);   
+        ret = 0;
+        break;
     case SYS_WAIT:
-        return (uint32_t)sys_wait((int32_t*)r->ebx);
+        ret = (uint32_t)sys_wait((int32_t*)r->ebx);
+        break;
     case SYS_PIPE:
-        return (uint32_t)sys_pipe((int32_t*)r->ebx);
+        ret = (uint32_t)sys_pipe((int32_t*)r->ebx);
+        break;
     case SYS_FD_REDIRECT:
         sys_fd_redirect((uint32_t)r->ebx, (uint32_t)r->ecx);
-        return 0;
+        ret = 0;
+        break;
     case SYS_GUI:
-        return (uint32_t)gui_session_run();
+        ret = (uint32_t)gui_session_run();
+        break;
     case SYS_BRK:
-        return (uint32_t)sys_brk((uint32_t)r->ebx);
+        ret = (uint32_t)sys_brk((uint32_t)r->ebx);
+        break;
+    case SYS_SIGACTION:
+        ret = (uint32_t)sys_sigaction((int)r->ebx,
+                                      (const struct sigaction*)r->ecx,
+                                      (struct sigaction*)r->edx);
+        break;
+    case SYS_KILL:
+        ret = (uint32_t)sys_kill((int)r->ebx, (int)r->ecx);
+        break;
+    case SYS_SIGRETURN:
+        sys_sigreturn(r);
+        ret = 0;
+        break;
+    case SYS_SIGPROCMASK:
+        ret = (uint32_t)sys_sigprocmask((int)r->ebx,
+                                        (const sigset_t*)r->ecx,
+                                        (sigset_t*)r->edx);
+        break;
     default:
-        return (uint32_t)-1;
+        ret = (uint32_t)-1;
+        break;
     }
+
+    
+    check_pending_signals(r);
+    return ret;
 }
 
 void syscall_init(void) {

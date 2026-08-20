@@ -51,6 +51,23 @@ static const char* g_exc_names[32] = {
 void isr_handler(struct Registers* r) {
     uint32_t n = r->int_no;
 
+    
+    if ((r->cs & 3) == 3) {
+        int sig = exception_to_signal((int)n);
+        if (sig > 0) {
+            current_task->signal_pending |= (1u << sig);
+            check_pending_signals(r);
+            return;
+        }
+        
+        setTextColor(12);
+        kprintf("\n*** UNHANDLED USER EXCEPTION ***\n");
+        if (n < 32) {
+            kprintf("  %s (vector %d)  eip = 0x%x\n", g_exc_names[n], (int)n, r->eip);
+        }
+        signal_terminate(current_task, SIGSEGV);
+    }
+
     setTextColor(12);
     kprintf("\n*** EXCEPTION ***\n");
 
@@ -96,6 +113,8 @@ void irq_handler(struct Registers* r) {
             setTextColor(10);
         }
         if (current_task != 0) {
+            
+            check_pending_signals(r);
             schedule();
         }
     }

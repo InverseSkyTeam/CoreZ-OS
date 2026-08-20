@@ -1,9 +1,4 @@
 // 参考: Bryant & O'Hallaron, "Computer Systems: A Programmer's Perspective"
-//       隐式空闲链表 + 边界标记 (implicit free list with boundary tags).
-//       仅依赖 brk/sbrk (syscall) 与 memcpy/memset (lib/str/str.c)。
-//
-// 这是 M1 用户态堆的核心：libc 的 malloc/free 直接操纵 brk 推进的 program break，
-// 内核侧由 SYS_BRK 系统调用负责按页映射/回收物理页。
 
 #include <stddef.h>
 #include <stdint.h>

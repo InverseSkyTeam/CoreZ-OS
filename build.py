@@ -452,6 +452,7 @@ def make_plan(tools: Tools) -> BuildPlan:
         ("buildin_cmd.o",KERNEL_DIR / "shell" / "buildin_cmd.c"),
         ("pipe.o",       KERNEL_DIR / "shell" / "pipe.c"),
         ("ksyscall.o",   KERNEL_DIR / "syscall" / "syscall.c"),
+        ("signal.o",     KERNEL_DIR / "syscall" / "signal.c"),
         ("usyscall.o",   KERNEL_DIR / "lib" / "user" / "syscall.c"),
         ("ustdio.o",     KERNEL_DIR / "lib" / "user" / "stdio.c"),
         ("wait_exit.o",  KERNEL_DIR / "userprog" / "wait_exit.c"),
@@ -476,6 +477,7 @@ def make_plan(tools: Tools) -> BuildPlan:
         ("prog_pipe",   "prog_pipe.c",   "_start", []),
         ("font_demo",   "font_demo.c",   "_start", ["-Os"]),
         ("heap_demo",   "heap_demo.c",   "_start", []),
+        ("signal_demo", "signal_demo.c", "_start", []),
     ]
 
     USER_LIB_SOURCES = [
@@ -500,7 +502,7 @@ def make_plan(tools: Tools) -> BuildPlan:
         nick_map = {"prog_no_arg": "up_no_arg", "prog_arg": "up_arg",
                     "cat": "up_cat", "fork_demo": "up_fork",
                     "prog_pipe": "up_pipe", "font_demo": "up_font",
-                    "heap_demo": "up_heap"}
+                    "heap_demo": "up_heap", "signal_demo": "up_signal"}
         nick = nick_map.get(prog_name, f"up_{prog_name}")
         prog_obj = BUILD_DIR / f"{nick}.o"
         tasks.append(task_cc(nick, CMD_DIR / src_c, prog_obj, tools,
@@ -544,7 +546,7 @@ def make_plan(tools: Tools) -> BuildPlan:
         "switch.o", "thread.o", "sync.o", "ioqueue.o", "keyboard.o",
         "ide.o", "fs.o", "inode.o", "dir.o", "file.o",
         "gdt.o", "tss.o", "process.o", "exec.o", "shell.o",
-        "buildin_cmd.o", "ksyscall.o", "usyscall.o", "ustdio.o",
+        "buildin_cmd.o", "ksyscall.o", "signal.o", "usyscall.o", "ustdio.o",
         "wait_exit.o", "fork.o", "pipe.o",
         "mouse.o", "gfx.o", "shm.o", "guiserver.o", "layout.o",
         "wm.o", "guiclients.o", "gui.o",
@@ -552,7 +554,7 @@ def make_plan(tools: Tools) -> BuildPlan:
     USER_DATA_OBJS = [
         "prog_no_arg_data.o", "prog_arg_data.o", "cat_data.o",
         "fork_demo_data.o", "prog_pipe_data.o", "font_demo_data.o",
-        "heap_demo_data.o",
+        "heap_demo_data.o", "signal_demo_data.o",
     ]
     KERNEL_LINK_OBJS = (
         [BUILD_DIR / n for n in KERNEL_OBJS]

@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include "../lib/list/list.h"
 #include "../memory/pool/pool.h"
+#include "../include/signal.h"
 
 #define THREAD_STACK_SIZE 0x2000
 #define MAX_TASKS 64
@@ -19,7 +20,8 @@ enum task_status {
     TASK_BLOCKED,
     TASK_WAITING,
     TASK_HANGING,
-    TASK_DIED
+    TASK_DIED,
+    TASK_STOPPED   
 };
 
 typedef void (*thread_func)(void*);
@@ -51,7 +53,10 @@ struct task_struct {
     uint32_t kernel_stack_top;
     uint32_t pgdir;
     struct virtual_addr userprog_v_addr;
-    uint32_t user_brk;                  
+    uint32_t user_brk;
+    uint32_t signal_pending;                          
+    uint32_t signal_mask;                             
+    struct sigaction sigactions[NSIG];                
     uint32_t cwd_inode_nr;
     uint32_t fd_table[MAX_FILES_OPEN_PER_PROC];
     uint32_t stack_magic;
@@ -60,6 +65,7 @@ struct task_struct {
 extern struct task_struct* current_task;
 extern struct task_struct* idle_thread;
 extern struct list g_thread_all_list;
+extern struct list g_ready_list;
 
 extern uint32_t g_foreground_pid;
 

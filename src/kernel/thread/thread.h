@@ -59,6 +59,10 @@ struct task_struct {
     struct sigaction sigactions[NSIG];                
     uint32_t cwd_inode_nr;
     uint32_t fd_table[MAX_FILES_OPEN_PER_PROC];
+    uint32_t tls_base;
+    uint32_t tls_selector;
+    int32_t  errno;
+    uint32_t compat;
     uint32_t stack_magic;
 };
 

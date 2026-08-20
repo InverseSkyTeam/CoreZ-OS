@@ -34,7 +34,8 @@ enum syscall_nr {
     SYS_SIGACTION,
     SYS_KILL,
     SYS_SIGRETURN,
-    SYS_SIGPROCMASK
+    SYS_SIGPROCMASK,
+    SYS_SET_THREAD_AREA
 };
 
 #endif

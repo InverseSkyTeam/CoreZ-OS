@@ -34,6 +34,8 @@ extern const unsigned char _binary_heap_demo_elf_start[];
 extern const unsigned char _binary_heap_demo_elf_end[];
 extern const unsigned char _binary_signal_demo_elf_start[];
 extern const unsigned char _binary_signal_demo_elf_end[];
+extern const unsigned char _binary_lc_demo_elf_start[];
+extern const unsigned char _binary_lc_demo_elf_end[];
 extern const unsigned char _binary_font_subset_ttf_start[];
 extern const unsigned char _binary_font_subset_ttf_end[];
 
@@ -146,6 +148,7 @@ void KMain(void) {
     write_prog("/font_demo", _binary_font_demo_elf_start, _binary_font_demo_elf_end);
     write_prog("/heap_demo", _binary_heap_demo_elf_start, _binary_heap_demo_elf_end);
     write_prog("/signal_demo", _binary_signal_demo_elf_start, _binary_signal_demo_elf_end);
+    write_prog("/lc_demo", _binary_lc_demo_elf_start, _binary_lc_demo_elf_end);
     write_prog("/font.ttf", _binary_font_subset_ttf_start, _binary_font_subset_ttf_end);
     setTextColor(10);
     printf("[OK] user programs installed\n");

@@ -2,7 +2,7 @@
 #include "gdt.h"
 #include "../../include/asmFunc.h"
 
-struct gdt_desc gdt[6];
+struct gdt_desc gdt[7];
 
 struct gdtr {
     uint16_t limit;
@@ -23,12 +23,17 @@ void set_tss_desc(uint32_t tss_base, uint32_t tss_limit) {
     desc_init(&gdt[3], tss_base, tss_limit, 0x89, 0x00);
 }
 
+void tls_desc_set_base(uint32_t base) {
+    desc_init(&gdt[GDT_TLS_INDEX], base, 0xFFFFF, 0xF2, 0x40);
+}
+
 void gdt_init(void) {
     desc_init(&gdt[0], 0, 0, 0, 0);
     desc_init(&gdt[1], 0, 0xFFFFF, 0x92, 0xCF);
     desc_init(&gdt[2], 0, 0xFFFFF, 0x9A, 0xCF);
     desc_init(&gdt[4], 0, 0xFFFFF, 0xFA, 0xCF);
     desc_init(&gdt[5], 0, 0xFFFFF, 0xF2, 0xCF);
+    tls_desc_set_base(0);
 
     gdtr0.limit = (uint16_t)(sizeof(gdt) - 1);
     gdtr0.base = (uint32_t)gdt;

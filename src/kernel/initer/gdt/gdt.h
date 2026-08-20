@@ -9,6 +9,9 @@
 #define SELECTOR_TSS         0x18
 #define SELECTOR_U_CODE      0x23
 #define SELECTOR_U_DATA      0x2B
+#define SELECTOR_TLS         0x33
+
+#define GDT_TLS_INDEX 6
 
 struct gdt_desc {
     uint16_t limit_low;
@@ -21,5 +24,6 @@ struct gdt_desc {
 
 void gdt_init(void);
 void set_tss_desc(uint32_t tss_base, uint32_t tss_limit);
+void tls_desc_set_base(uint32_t base);
 
 #endif

@@ -16,6 +16,8 @@
 #include "../userprog/wait_exit.h"
 #include "../shell/pipe.h"
 #include "../gui/gui.h"
+#include "../initer/gdt/gdt.h"
+#include "./linux_compat.h"
 
 static uint32_t sys_getpid(void) {
     return current_task->pid;
@@ -111,7 +113,7 @@ static uint32_t sys_ps(void) {
     return 0;
 }
 
-static uint32_t sys_brk(uint32_t addr) {
+uint32_t sys_brk(uint32_t addr) {
     struct task_struct* cur = current_task;
     if (cur->user_brk == 0) {
         cur->user_brk = USER_HEAP_BASE;
@@ -147,9 +149,24 @@ static uint32_t sys_brk(uint32_t addr) {
     return new_brk;
 }
 
+static uint32_t sys_set_thread_area(struct Registers* r, uint32_t base) {
+    if (base == 0) return (uint32_t)-1;
+    current_task->tls_base = base;
+    current_task->tls_selector = SELECTOR_TLS;
+    tls_desc_set_base(base);
+    r->gs = SELECTOR_TLS;
+    current_task->errno = 0;
+    *(volatile int32_t*)base = 0;
+    return 0;
+}
+
 uint32_t syscall_handler(struct Registers* r) {
     uint32_t nr = r->eax;
     uint32_t ret = (uint32_t)-1;
+    if (current_task->compat || nr >= COMPAT_SYSCALL_BASE) {
+        check_pending_signals(r);
+        return linux_compat_handler(r);
+    }
     switch (nr) {
     case SYS_GETPID:
         ret = sys_getpid();
@@ -252,6 +269,9 @@ uint32_t syscall_handler(struct Registers* r) {
         ret = (uint32_t)sys_sigprocmask((int)r->ebx,
                                         (const sigset_t*)r->ecx,
                                         (sigset_t*)r->edx);
+        break;
+    case SYS_SET_THREAD_AREA:
+        ret = sys_set_thread_area(r, (uint32_t)r->ebx);
         break;
     default:
         ret = (uint32_t)-1;

@@ -9,6 +9,7 @@
 #include "../lib/str/str.h"
 #include "../fs/fs.h"
 #include "../include/assert.h"
+#include "../include/auxv.h"
 
 #define DIV_ROUND_UP(X, STEP) ((X + STEP - 1) / STEP)
 #define EFLAGS_MBS (1 << 1)
@@ -185,50 +186,97 @@ int32_t sys_execv(const char* path, const char* argv[]) {
         }
     }
 
-    ustack_ptr = USER_STACK3_VADDR + PAGE_SIZE;             
+    cur->tls_base = 0;
+    cur->tls_selector = 0;
+    cur->errno = 0;
+    cur->compat = 0;
+
+    ustack_ptr = USER_STACK3_VADDR + PAGE_SIZE;
 
     for (i = 0; i < MAX_ARG_NR; ++i) {
         argv_user_addrs[i] = 0;
     }
 
     if (argc > 0) {
-
         for (i = (int32_t)argc - 1; i >= 0; --i) {
-            slen = strlen(argv[i]) + 1;                   
+            slen = strlen(argv[i]) + 1;
             ustack_ptr -= slen;
-
             ustack_ptr &= 0xfffffffc;
-
             if (ustack_ptr < USER_STACK3_VADDR) {
                 kprintf("[exec] argv too large for user stack\n");
                 return -1;
             }
-
             memcpy((void*)ustack_ptr, argv[i], slen);
-
             argv_user_addrs[i] = ustack_ptr;
         }
     }
 
-    ustack_ptr &= 0xfffffffc;
+    {
+        static const char* env_defaults[] = { "PATH=/", "HOME=/", 0 };
+        const char* exefn = path;
+        uint32_t envp_addrs[8];
+        int envc = 0;
+        uint32_t exefn_addr = 0;
+        int e;
+#define PSTACK(sp, v) do { (sp) -= 4; *((uint32_t*)(sp)) = (uint32_t)(v); } while (0)
 
-    ustack_ptr -= sizeof(uint32_t);
-    *((uint32_t*)ustack_ptr) = 0;
+        exefn_addr = 0;
+        slen = strlen(exefn) + 1;
+        ustack_ptr -= slen;
+        ustack_ptr &= 0xfffffffc;
+        memcpy((void*)ustack_ptr, exefn, slen);
+        exefn_addr = ustack_ptr;
 
-    for (i = (int32_t)argc - 1; i >= 0; --i) {
-        ustack_ptr -= sizeof(uint32_t);
-        *((uint32_t*)ustack_ptr) = argv_user_addrs[i];
+        while (env_defaults[envc] != 0 && envc < 8) {
+            envc++;
+        }
+        for (e = envc - 1; e >= 0; --e) {
+            slen = strlen(env_defaults[e]) + 1;
+            ustack_ptr -= slen;
+            ustack_ptr &= 0xfffffffc;
+            if (ustack_ptr < USER_STACK3_VADDR) {
+                return -1;
+            }
+            memcpy((void*)ustack_ptr, env_defaults[e], slen);
+            envp_addrs[e] = ustack_ptr;
+        }
+
+        ustack_ptr &= 0xfffffffc;
+
+        {
+            uint32_t auxwords[32];
+            int naw = 0;
+#define A(t, v) do { auxwords[naw++] = (uint32_t)(t); auxwords[naw++] = (uint32_t)(v); } while (0)
+            A(AT_EXECFN, exefn_addr);
+            A(AT_PAGESZ, PAGE_SIZE);
+            A(AT_CLKTCK, 100);
+            A(AT_ENTRY, (uint32_t)entry_point);
+            A(AT_PHDR, 0);
+            A(AT_PHENT, 0);
+            A(AT_PHNUM, 0);
+            A(AT_FLAGS, 0);
+            A(AT_HWCAP, 0);
+            A(AT_NULL, 0);
+            ustack_ptr -= naw * 4;
+            memcpy((void*)ustack_ptr, auxwords, naw * 4);
+        }
+
+        PSTACK(ustack_ptr, 0);
+        for (e = envc - 1; e >= 0; --e) PSTACK(ustack_ptr, envp_addrs[e]);
+        PSTACK(ustack_ptr, 0);
+        for (i = (int32_t)argc - 1; i >= 0; --i) PSTACK(ustack_ptr, argv_user_addrs[i]);
+        PSTACK(ustack_ptr, argc);
     }
 
-    argv_user_base = ustack_ptr;
+    argv_user_base = (uint32_t)((char*)ustack_ptr + 4);
 
     ps = (struct Registers*)(cur->kernel_stack_top - THREAD_STACK_SIZE + 0x100);
     ps->edi = 0;
     ps->esi = 0;
     ps->ebp = 0;
     ps->esp = 0;
-    ps->ebx = argv_user_base;                              
-    ps->ecx = argc;                             
+    ps->ebx = argv_user_base;
+    ps->ecx = argc;
     ps->edx = 0;
     ps->eax = 0;
     ps->gs = SELECTOR_U_DATA;
@@ -240,7 +288,7 @@ int32_t sys_execv(const char* path, const char* argv[]) {
     ps->eip = (uint32_t)entry_point;
     ps->cs = SELECTOR_U_CODE;
     ps->eflags = EFLAGS_IOPL_0 | EFLAGS_MBS | EFLAGS_IF_1;
-    ps->user_esp = ustack_ptr;               
+    ps->user_esp = ustack_ptr;
     ps->ss = SELECTOR_U_DATA;
     __asm__ volatile("movl %0, %%esp; jmp intr_exit" : : "g"(ps) : "memory");
     return 0;

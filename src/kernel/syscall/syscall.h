@@ -6,7 +6,7 @@
 #include "../include/asm/stub.h"
 #include "../include/syscall_nr.h"
 
-#define SYSCALL_NR_MAX 36
+#define SYSCALL_NR_MAX 37
 
 void syscall_init(void);
 

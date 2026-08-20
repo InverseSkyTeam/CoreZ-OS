@@ -60,6 +60,11 @@ static void init_task_struct_basic(struct task_struct* t, int32_t parent_pid) {
     t->parent_pid = parent_pid;
     t->stack_magic = STACK_MAGIC;
 
+    t->tls_base = 0;
+    t->tls_selector = 0;
+    t->errno = 0;
+    t->compat = 0;
+
     init_signal_state(t);
 
     t->general_tag.prev = t->general_tag.next = NULL;
@@ -106,6 +111,10 @@ void thread_init(void) {
     init_fd_table(&g_task_table[0]);
     g_task_table[0].parent_pid = -1;
     g_task_table[0].stack_magic = STACK_MAGIC;
+    g_task_table[0].tls_base = 0;
+    g_task_table[0].tls_selector = 0;
+    g_task_table[0].errno = 0;
+    g_task_table[0].compat = 0;
 
     list_append(&g_thread_all_list, &g_task_table[0].all_list_tag);
     g_task_table[0].general_tag.prev = g_task_table[0].general_tag.next = NULL;

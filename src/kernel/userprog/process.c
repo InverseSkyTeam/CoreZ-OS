@@ -53,6 +53,9 @@ void page_dir_activate(struct task_struct* pthread) {
 void process_activate(struct task_struct* pthread) {
     page_dir_activate(pthread);
     if (pthread->pgdir != 0) {
+        if (pthread->tls_selector != 0) {
+            tls_desc_set_base(pthread->tls_base);
+        }
         update_tss_esp(pthread);
     }
 }

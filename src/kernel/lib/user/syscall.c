@@ -40,6 +40,15 @@ static inline uint32_t syscall3(uint32_t nr, uint32_t arg1, uint32_t arg2, uint3
     return retval;
 }
 
+static inline uint32_t syscall4(uint32_t nr, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    uint32_t retval;
+    __asm__ volatile("int $0x80"
+                     : "=a"(retval)
+                     : "a"(nr), "b"(arg1), "c"(arg2), "d"(arg3), "S"(arg4)
+                     : "memory");
+    return retval;
+}
+
 uint32_t getpid(void)                 { return syscall0(SYS_GETPID); }
 int32_t  write(int32_t fd, const void* buf, uint32_t count) {
     return (int32_t)syscall3(SYS_WRITE, (uint32_t)fd, (uint32_t)buf, count);
@@ -133,6 +142,10 @@ int32_t munmap(void* addr, uint32_t len) {
 
 int32_t mprotect(void* addr, uint32_t len, int prot) {
     return (int32_t)syscall3(SYS_MPROTECT, (uint32_t)addr, len, (uint32_t)prot);
+}
+
+int32_t futex(uint32_t uaddr, int op, uint32_t val, void* timeout) {
+    return (int32_t)syscall4(SYS_FUTEX, uaddr, (uint32_t)op, val, (uint32_t)timeout);
 }
 
 

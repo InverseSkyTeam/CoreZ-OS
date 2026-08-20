@@ -19,6 +19,7 @@
 #include "../initer/gdt/gdt.h"
 #include "./linux_compat.h"
 #include "./mmap.h"
+#include "./futex.h"
 
 static uint32_t sys_getpid(void) {
     return current_task->pid;
@@ -282,6 +283,9 @@ uint32_t syscall_handler(struct Registers* r) {
         break;
     case SYS_MPROTECT:
         ret = (uint32_t)sys_mprotect((uint32_t)r->ebx, (uint32_t)r->ecx, (uint32_t)r->edx);
+        break;
+    case SYS_FUTEX:
+        ret = (uint32_t)sys_futex((uint32_t)r->ebx, (uint32_t)r->ecx, (uint32_t)r->edx, (uint32_t)r->esi);
         break;
     default:
         ret = (uint32_t)-1;

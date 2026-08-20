@@ -48,6 +48,8 @@ struct task_struct {
     uint32_t elapsed_ticks;
     struct list_elem general_tag;
     struct list_elem all_list_tag;
+    struct list_elem futex_tag;
+    uint32_t futex_ready;
     int32_t parent_pid;              
     int8_t exit_status;                                       
     uint32_t kernel_stack_top;

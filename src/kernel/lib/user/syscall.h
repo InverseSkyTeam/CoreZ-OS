@@ -54,5 +54,10 @@ void*    sbrk(intptr_t inc);
 void*    mmap(void* addr, uint32_t len, int prot, int flags, int fd, uint32_t offset);
 int32_t  munmap(void* addr, uint32_t len);
 int32_t  mprotect(void* addr, uint32_t len, int prot);
+int32_t  futex(uint32_t uaddr, int op, uint32_t val, void* timeout);
+
+#define FUTEX_WAIT 0
+#define FUTEX_WAKE 1
+#define FUTEX_PRIVATE_FLAG 128
 
 #endif

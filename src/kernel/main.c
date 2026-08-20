@@ -14,6 +14,7 @@
 #include "./fs/fs.h"
 #include "./userprog/process.h"
 #include "./syscall/syscall.h"
+#include "./syscall/futex.h"
 #include "./shell/shell.h"
 #include "./lib/user/syscall.h"
 #include "./lib/user/stdio.h"
@@ -36,6 +37,8 @@ extern const unsigned char _binary_signal_demo_elf_start[];
 extern const unsigned char _binary_signal_demo_elf_end[];
 extern const unsigned char _binary_mmap_demo_elf_start[];
 extern const unsigned char _binary_mmap_demo_elf_end[];
+extern const unsigned char _binary_futex_demo_elf_start[];
+extern const unsigned char _binary_futex_demo_elf_end[];
 extern const unsigned char _binary_lc_demo_elf_start[];
 extern const unsigned char _binary_lc_demo_elf_end[];
 extern const unsigned char _binary_font_subset_ttf_start[];
@@ -104,6 +107,7 @@ void KMain(void) {
     initIO((uint8_t*)bootInfo->vram, bootInfo->scrnx, bootInfo->scrny, bootInfo->vram_bytes);
     initIDT();
     syscall_init();
+    futex_init();
     mm_init();
     gdt_init();
     tss_init();
@@ -151,6 +155,7 @@ void KMain(void) {
     write_prog("/heap_demo", _binary_heap_demo_elf_start, _binary_heap_demo_elf_end);
     write_prog("/signal_demo", _binary_signal_demo_elf_start, _binary_signal_demo_elf_end);
     write_prog("/mmap_demo", _binary_mmap_demo_elf_start, _binary_mmap_demo_elf_end);
+    write_prog("/futex_demo", _binary_futex_demo_elf_start, _binary_futex_demo_elf_end);
     write_prog("/lc_demo", _binary_lc_demo_elf_start, _binary_lc_demo_elf_end);
     write_prog("/font.ttf", _binary_font_subset_ttf_start, _binary_font_subset_ttf_end);
     setTextColor(10);

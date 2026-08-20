@@ -69,6 +69,8 @@ static void init_task_struct_basic(struct task_struct* t, int32_t parent_pid) {
 
     t->general_tag.prev = t->general_tag.next = NULL;
     t->all_list_tag.prev = t->all_list_tag.next = NULL;
+    t->futex_tag.prev = t->futex_tag.next = NULL;
+    t->futex_ready = 0;
 }
 
 struct task_struct* thread_create(char* name, uint8_t priority, thread_func function, void* arg) {
@@ -118,6 +120,8 @@ void thread_init(void) {
 
     list_append(&g_thread_all_list, &g_task_table[0].all_list_tag);
     g_task_table[0].general_tag.prev = g_task_table[0].general_tag.next = NULL;
+    g_task_table[0].futex_tag.prev = g_task_table[0].futex_tag.next = NULL;
+    g_task_table[0].futex_ready = 0;
     g_task_count = 1;
 
     idle_thread = thread_create("idle", 10, idle, 0);

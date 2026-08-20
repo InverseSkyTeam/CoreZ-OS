@@ -38,7 +38,8 @@ enum syscall_nr {
     SYS_SET_THREAD_AREA,
     SYS_MMAP,
     SYS_MUNMAP,
-    SYS_MPROTECT
+    SYS_MPROTECT,
+    SYS_FUTEX
 };
 
 #endif

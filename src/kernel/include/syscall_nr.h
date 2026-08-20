@@ -39,7 +39,8 @@ enum syscall_nr {
     SYS_MMAP,
     SYS_MUNMAP,
     SYS_MPROTECT,
-    SYS_FUTEX
+    SYS_FUTEX,
+    SYS_CLONE
 };
 
 #endif

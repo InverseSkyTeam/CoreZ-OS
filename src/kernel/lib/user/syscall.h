@@ -55,9 +55,17 @@ void*    mmap(void* addr, uint32_t len, int prot, int flags, int fd, uint32_t of
 int32_t  munmap(void* addr, uint32_t len);
 int32_t  mprotect(void* addr, uint32_t len, int prot);
 int32_t  futex(uint32_t uaddr, int op, uint32_t val, void* timeout);
+int32_t  clone(uint32_t flags, void* child_stack);
 
 #define FUTEX_WAIT 0
 #define FUTEX_WAKE 1
 #define FUTEX_PRIVATE_FLAG 128
+
+#define CLONE_VM       0x00000100
+#define CLONE_FS       0x00000200
+#define CLONE_FILES    0x00000400
+#define CLONE_SIGHAND  0x00000800
+#define CLONE_THREAD   0x00010000
+#define CLONE_SETTLS   0x00080000
 
 #endif

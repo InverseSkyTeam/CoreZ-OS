@@ -160,6 +160,9 @@ $(BUILD_DIR)/wait_exit.o: $(SRC_DIR)/kernel/userprog/wait_exit.c $(KERNEL_HDRS) 
 $(BUILD_DIR)/fork.o: $(SRC_DIR)/kernel/userprog/fork.c $(KERNEL_HDRS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/clone.o: $(SRC_DIR)/kernel/userprog/clone.c $(KERNEL_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 $(BUILD_DIR)/mouse.o: $(SRC_DIR)/kernel/device/mouse.c $(KERNEL_HDRS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -333,6 +336,24 @@ $(BUILD_DIR)/futex_demo.elf: $(BUILD_DIR)/up_start.o \
 $(BUILD_DIR)/futex_demo_data.o: $(BUILD_DIR)/futex_demo.elf | $(BUILD_DIR)
 	cd $(BUILD_DIR) && $(OBJCOPY) -I binary -O elf32-i386 -B i386 futex_demo.elf futex_demo_data.o
 
+$(BUILD_DIR)/clone_demo.elf: $(BUILD_DIR)/up_start.o \
+                            $(SRC_DIR)/command/clone_demo.c \
+                            $(SRC_DIR)/kernel/lib/user/stdlib.c \
+                            $(SRC_DIR)/command/start.asm \
+                            $(SRC_DIR)/kernel/lib/user/stdio.c \
+                            $(SRC_DIR)/kernel/lib/user/syscall.c \
+                            $(SRC_DIR)/kernel/lib/str/str.c | $(BUILD_DIR)
+	$(CC) $(UP_CFLAGS) -c $(SRC_DIR)/command/clone_demo.c -o $(BUILD_DIR)/up_clone_demo.o
+	$(CC) $(UP_CFLAGS) -c $(SRC_DIR)/kernel/lib/user/stdlib.c -o $(BUILD_DIR)/up_stdlib.o
+	$(CC) $(UP_CFLAGS) -c $(SRC_DIR)/kernel/lib/user/stdio.c -o $(BUILD_DIR)/up_stdio.o
+	$(CC) $(UP_CFLAGS) -c $(SRC_DIR)/kernel/lib/user/syscall.c -o $(BUILD_DIR)/up_syscall.o
+	$(CC) $(UP_CFLAGS) -c $(SRC_DIR)/kernel/lib/str/str.c -o $(BUILD_DIR)/up_str.o
+	$(LD) -s -m elf_i386 -Ttext 0x8048000 -e _start -o $@ \
+	      $(BUILD_DIR)/up_start.o $(BUILD_DIR)/up_clone_demo.o $(BUILD_DIR)/up_stdlib.o $(BUILD_DIR)/up_stdio.o $(BUILD_DIR)/up_syscall.o $(BUILD_DIR)/up_str.o
+
+$(BUILD_DIR)/clone_demo_data.o: $(BUILD_DIR)/clone_demo.elf | $(BUILD_DIR)
+	cd $(BUILD_DIR) && $(OBJCOPY) -I binary -O elf32-i386 -B i386 clone_demo.elf clone_demo_data.o
+
 LC_CFLAGS = $(CFLAGS) -I $(SRC_DIR)/kernel/lib/compat
 
 $(BUILD_DIR)/lc_start.o: $(SRC_DIR)/command/lc_crt0.asm | $(BUILD_DIR)
@@ -430,8 +451,10 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/entry.o \
 						 $(BUILD_DIR)/mmap_demo_data.o \
 						 $(BUILD_DIR)/futex_demo_data.o \
 						 $(BUILD_DIR)/lc_demo_data.o \
+						 $(BUILD_DIR)/clone_demo_data.o \
 						 $(BUILD_DIR)/wait_exit.o \
 						 $(BUILD_DIR)/fork.o \
+						 $(BUILD_DIR)/clone.o \
 						 $(BUILD_DIR)/pipe.o \
 						 $(BUILD_DIR)/mouse.o \
 						 $(BUILD_DIR)/gfx.o \
@@ -493,8 +516,10 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/entry.o \
 	      $(BUILD_DIR)/mmap_demo_data.o \
 	      $(BUILD_DIR)/futex_demo_data.o \
 	      $(BUILD_DIR)/lc_demo_data.o \
+		  $(BUILD_DIR)/clone_demo_data.o \
 		  $(BUILD_DIR)/wait_exit.o \
 		  $(BUILD_DIR)/fork.o \
+		  $(BUILD_DIR)/clone.o \
 		  $(BUILD_DIR)/pipe.o \
 		  $(BUILD_DIR)/mouse.o \
 		  $(BUILD_DIR)/gfx.o \

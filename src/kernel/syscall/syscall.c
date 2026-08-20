@@ -13,6 +13,7 @@
 #include "../userprog/process.h"
 #include "../userprog/exec.h"
 #include "../userprog/fork.h"
+#include "../userprog/clone.h"
 #include "../userprog/wait_exit.h"
 #include "../shell/pipe.h"
 #include "../gui/gui.h"
@@ -286,6 +287,9 @@ uint32_t syscall_handler(struct Registers* r) {
         break;
     case SYS_FUTEX:
         ret = (uint32_t)sys_futex((uint32_t)r->ebx, (uint32_t)r->ecx, (uint32_t)r->edx, (uint32_t)r->esi);
+        break;
+    case SYS_CLONE:
+        ret = (uint32_t)sys_clone(r);
         break;
     default:
         ret = (uint32_t)-1;

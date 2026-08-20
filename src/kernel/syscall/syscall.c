@@ -353,6 +353,10 @@ uint32_t syscall_handler(struct Registers* r) {
     case SYS_MUNMAP:
         ret = (uint32_t)sys_munmap((uint32_t)r->ebx, (uint32_t)r->ecx);
         break;
+    case SYS_MMAP2:
+        ret = sys_mmap2((uint32_t)r->ebx, (uint32_t)r->ecx, (uint32_t)r->edx,
+                        (uint32_t)r->esi, (uint32_t)r->edi, (uint32_t)r->ebp);
+        break;
     case SYS_MPROTECT:
         ret = (uint32_t)sys_mprotect((uint32_t)r->ebx, (uint32_t)r->ecx, (uint32_t)r->edx);
         break;

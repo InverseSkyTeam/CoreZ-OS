@@ -1,3 +1,4 @@
+// 参考: 《操作系统真相还原》(于渊) 第12章 系统调用
 #include "./mmap.h"
 #include "../userprog/process.h"
 #include "../memory/pool/pool.h"
@@ -82,6 +83,18 @@ uint32_t sys_mmap(const struct mmap_args* a) {
         }
     }
     return base;
+}
+
+uint32_t sys_mmap2(uint32_t addr, uint32_t len, uint32_t prot,
+                   uint32_t flags, uint32_t fd, uint32_t offset) {
+    struct mmap_args a;
+    a.addr   = addr;
+    a.len    = len;
+    a.prot   = prot;
+    a.flags  = flags;
+    a.fd     = fd;
+    a.offset = offset << 12; 
+    return sys_mmap(&a);
 }
 
 int32_t sys_munmap(uint32_t addr, uint32_t len) {

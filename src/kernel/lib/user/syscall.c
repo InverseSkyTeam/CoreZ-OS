@@ -59,6 +59,22 @@ uint32_t syscall5(uint32_t nr, uint32_t arg1, uint32_t arg2, uint32_t arg3,
     return retval;
 }
 
+__attribute__((naked)) static uint32_t syscall6(uint32_t nr, uint32_t arg1, uint32_t arg2,
+                                                uint32_t arg3, uint32_t arg4, uint32_t arg5,
+                                                uint32_t arg6) {
+    __asm__ volatile(
+        "movl 4(%%esp), %%eax\n\t"
+        "movl 8(%%esp), %%ebx\n\t"
+        "movl 12(%%esp), %%ecx\n\t"
+        "movl 16(%%esp), %%edx\n\t"
+        "movl 20(%%esp), %%esi\n\t"
+        "movl 24(%%esp), %%edi\n\t"
+        "movl 28(%%esp), %%ebp\n\t"
+        "int $0x80\n\t"
+        "ret\n\t"
+        ::: "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "memory");
+}
+
 uint32_t getpid(void)                 { return syscall0(SYS_GETPID); }
 int32_t  write(int32_t fd, const void* buf, uint32_t count) {
     return (int32_t)syscall3(SYS_WRITE, (uint32_t)fd, (uint32_t)buf, count);
@@ -144,6 +160,11 @@ void* mmap(void* addr, uint32_t len, int prot, int flags, int fd, uint32_t offse
     a.fd = (uint32_t)fd;
     a.offset = offset;
     return (void*)syscall1(SYS_MMAP, (uint32_t)&a);
+}
+
+void* mmap2(void* addr, uint32_t len, int prot, int flags, int fd, uint32_t offset) {
+    return (void*)syscall6(SYS_MMAP2, (uint32_t)addr, len, (uint32_t)prot,
+                           (uint32_t)flags, (uint32_t)fd, offset);
 }
 
 int32_t munmap(void* addr, uint32_t len) {

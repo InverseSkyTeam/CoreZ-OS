@@ -7,13 +7,7 @@ from fontTools import subset
 from fontTools.ttLib import TTFont
 
 # 渲染的演示文本涉及的全部字符
-RENDER_TEXT = (
-    "Hello, NiTianOS!"
-    "Pipe: A|B <-> C"
-    "0123456789"
-    "你好，世界！管道通信"
-    "~!@#$%^&*()_+-=[]{};:'\",./<>?"
-)
+RENDER_TEXT = (r""" !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~""")
 
 def main():
     src = sys.argv[1] if len(sys.argv) > 1 else "src/kernel/lib/assets/font.ttf"

@@ -1,3 +1,4 @@
+// 参考: 《操作系统真相还原》(于渊) 第12章 系统调用
 #ifndef NT_MMAP_H
 #define NT_MMAP_H
 
@@ -26,6 +27,8 @@ struct mmap_args {
 };
 
 uint32_t sys_mmap(const struct mmap_args* args);
+uint32_t sys_mmap2(uint32_t addr, uint32_t len, uint32_t prot,
+                   uint32_t flags, uint32_t fd, uint32_t offset);
 int32_t  sys_munmap(uint32_t addr, uint32_t len);
 int32_t  sys_mprotect(uint32_t addr, uint32_t len, uint32_t prot);
 

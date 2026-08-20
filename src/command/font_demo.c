@@ -196,8 +196,8 @@ int main(int argc, char** argv) {
     float scale = stbtt_ScaleForPixelHeight(&fi, (float)pixel_height);
 
     static const char* lines[] = {
-        "世界, 你好!",
-        "你好，世界！",
+        "A",
+        "B",
         "Pipe: A|B <-> C",
         "0123456789 !@#$%^&*()",
         NULL

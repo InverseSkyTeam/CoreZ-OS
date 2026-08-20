@@ -58,7 +58,8 @@ enum syscall_nr {
     SYS_GETGID,
     SYS_GETEUID,
     SYS_GETEGID,
-    SYS_EXIT_GROUP
+    SYS_EXIT_GROUP,
+    SYS_MMAP2
 };
 
 #endif

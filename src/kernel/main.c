@@ -37,6 +37,8 @@ extern const unsigned char _binary_signal_demo_elf_start[];
 extern const unsigned char _binary_signal_demo_elf_end[];
 extern const unsigned char _binary_mmap_demo_elf_start[];
 extern const unsigned char _binary_mmap_demo_elf_end[];
+extern const unsigned char _binary_mmap2_demo_elf_start[];
+extern const unsigned char _binary_mmap2_demo_elf_end[];
 extern const unsigned char _binary_futex_demo_elf_start[];
 extern const unsigned char _binary_futex_demo_elf_end[];
 extern const unsigned char _binary_clone_demo_elf_start[];
@@ -159,6 +161,7 @@ void KMain(void) {
     write_prog("/heap_demo", _binary_heap_demo_elf_start, _binary_heap_demo_elf_end);
     write_prog("/signal_demo", _binary_signal_demo_elf_start, _binary_signal_demo_elf_end);
     write_prog("/mmap_demo", _binary_mmap_demo_elf_start, _binary_mmap_demo_elf_end);
+    write_prog("/mmap2_demo", _binary_mmap2_demo_elf_start, _binary_mmap2_demo_elf_end);
     write_prog("/futex_demo", _binary_futex_demo_elf_start, _binary_futex_demo_elf_end);
     write_prog("/clone_demo", _binary_clone_demo_elf_start, _binary_clone_demo_elf_end);
     write_prog("/fsyscall_demo", _binary_fsyscall_demo_elf_start, _binary_fsyscall_demo_elf_end);

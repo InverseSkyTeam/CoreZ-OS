@@ -18,6 +18,7 @@
 #include "../gui/gui.h"
 #include "../initer/gdt/gdt.h"
 #include "./linux_compat.h"
+#include "./mmap.h"
 
 static uint32_t sys_getpid(void) {
     return current_task->pid;
@@ -272,6 +273,15 @@ uint32_t syscall_handler(struct Registers* r) {
         break;
     case SYS_SET_THREAD_AREA:
         ret = sys_set_thread_area(r, (uint32_t)r->ebx);
+        break;
+    case SYS_MMAP:
+        ret = sys_mmap((const struct mmap_args*)r->ebx);
+        break;
+    case SYS_MUNMAP:
+        ret = (uint32_t)sys_munmap((uint32_t)r->ebx, (uint32_t)r->ecx);
+        break;
+    case SYS_MPROTECT:
+        ret = (uint32_t)sys_mprotect((uint32_t)r->ebx, (uint32_t)r->ecx, (uint32_t)r->edx);
         break;
     default:
         ret = (uint32_t)-1;

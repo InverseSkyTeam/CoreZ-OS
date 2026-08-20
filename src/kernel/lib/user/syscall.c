@@ -107,6 +107,34 @@ void* sbrk(intptr_t inc) {
     return (void*)ob;
 }
 
+struct _mmap_args {
+    uint32_t addr;
+    uint32_t len;
+    uint32_t prot;
+    uint32_t flags;
+    uint32_t fd;
+    uint32_t offset;
+};
+
+void* mmap(void* addr, uint32_t len, int prot, int flags, int fd, uint32_t offset) {
+    struct _mmap_args a;
+    a.addr = (uint32_t)addr;
+    a.len = len;
+    a.prot = (uint32_t)prot;
+    a.flags = (uint32_t)flags;
+    a.fd = (uint32_t)fd;
+    a.offset = offset;
+    return (void*)syscall1(SYS_MMAP, (uint32_t)&a);
+}
+
+int32_t munmap(void* addr, uint32_t len) {
+    return (int32_t)syscall2(SYS_MUNMAP, (uint32_t)addr, len);
+}
+
+int32_t mprotect(void* addr, uint32_t len, int prot) {
+    return (int32_t)syscall3(SYS_MPROTECT, (uint32_t)addr, len, (uint32_t)prot);
+}
+
 
 __attribute__((naked))
 void __restore(void) {

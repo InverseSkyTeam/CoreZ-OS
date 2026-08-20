@@ -10,6 +10,19 @@ struct stat;
 struct dir;
 struct dir_entry;
 
+#define PROT_NONE    0
+#define PROT_READ    1
+#define PROT_WRITE   2
+#define PROT_EXEC    4
+
+#define MAP_SHARED    0x01
+#define MAP_PRIVATE   0x02
+#define MAP_FIXED     0x10
+#define MAP_ANONYMOUS 0x20
+#define MAP_ANON      MAP_ANONYMOUS
+
+#define MAP_FAILED    ((void*)-1)
+
 uint32_t getpid(void);
 int32_t  write(int32_t fd, const void* buf, uint32_t count);
 int32_t  read(int32_t fd, void* buf, uint32_t count);
@@ -38,5 +51,8 @@ void     fd_redirect(uint32_t old_local_fd, uint32_t new_local_fd);
 int32_t  gui_start(void);
 void*    brk(void* addr);
 void*    sbrk(intptr_t inc);
+void*    mmap(void* addr, uint32_t len, int prot, int flags, int fd, uint32_t offset);
+int32_t  munmap(void* addr, uint32_t len);
+int32_t  mprotect(void* addr, uint32_t len, int prot);
 
 #endif

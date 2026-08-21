@@ -13,11 +13,13 @@
 #include "./device/ide.h"
 #include "./fs/fs.h"
 #include "./userprog/process.h"
+#include "./userprog/exec.h"
 #include "./syscall/syscall.h"
 #include "./syscall/futex.h"
 #include "./shell/shell.h"
 #include "./lib/user/syscall.h"
 #include "./lib/user/stdio.h"
+#include "./net/nt_net.h"
 
 struct BootInfo {
     uint8_t  cyls;
@@ -56,6 +58,7 @@ static void init(void) {
             }
         }
     } else if (ret_pid == 0) {
+        /* 参考: exec.c 用户程序加载; 以用户态 nr_micro_shell 作为系统 shell */
         my_shell(NULL);
     } else {
         printf("init: fork failed\n");
@@ -110,6 +113,8 @@ void KMain(void) {
 
     setTextColor(10);
     printf("[OK] user programs on ext2\n");
+
+    net_init();  
 
     process_execute(init, "init");
     for (;;) {

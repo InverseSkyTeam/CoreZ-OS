@@ -1,98 +1,62 @@
-CYLS    equ     31
+; MBR 引导扇区 (LBA 0)
+; 扫描分区表找到活动 FAT 启动分区(P1), 用 int13h 扩展读其引导扇区(VBR)
+; 到 0x0600 后跳转(避开 MBR 自身所在的 0x7C00, 防止覆盖正执行的代码)。
+; 随后 VBR 负责从 FAT 里按文件名读取 LOADER.BIN。
+; 布局(与 make_ext2.py 保持一致):
+;   LBA 0    : MBR (本扇区, 含分区表)
+;   LBA 2048 : P1 FAT16 启动分区 (LOADER.BIN / KERNEL.BIN)
+;   LBA 18432: P2 ext2 根分区
         org     0x7C00
-
-        jmp     entry
-        nop
-        db      "NITIANOS"
-        dw      512
-        db      1
-        dw      1
-        db      2
-        dw      224
-        dw      2880
-        db      0xF0
-        dw      9
-        dw      18
-        dw      2
-        dd      0
-        dd      2880
-        db      0, 0, 0x29
-        dd      0xFFFFFFFF
-        db      "NITIANOS"
-        db      "FAT12   "
-        times   18 db 0
-
-entry:
-        mov     ax, 0
+        cli
+        xor     ax, ax
         mov     ss, ax
         mov     sp, 0x7C00
         mov     ds, ax
-
-        mov     ax, 0x0800
         mov     es, ax
-        mov     ch, 0
-        mov     dh, 0
-        mov     cl, 1
+        mov     [0x0FFE], dl
 
-readloop:
-        mov     si, 0
-
-retry:
-        mov     ah, 0x02
-        mov     al, 1
-        mov     bx, 0
-        mov     dl, 0x00
+        mov     si, 0x7C00 + 0x1BE
+        mov     cx, 4
+.find:
+        cmp     byte [si], 0x80
+        je      .have
+        add     si, 16
+        loop    .find
+        mov     si, 0x7C00 + 0x1BE
+.have:
+        mov     eax, [si + 8]
+        mov     [dap + 8], eax
+        mov     si, dap
+        mov     dl, byte [0x0FFE]
+        mov     ah, 0x42
         int     0x13
-        jnc     next
-        add     si, 1
-        cmp     si, 5
-        jae     error
-        mov     ah, 0x00
-        mov     dl, 0x00
-        int     0x13
-        jmp     retry
+        jc      err
+        jmp     word 0x0000:0x0600
 
-next:
-        mov     ax, es
-        add     ax, 0x0020
-        mov     es, ax
-        add     cl, 1
-        cmp     cl, 18
-        jbe     readloop
-        mov     cl, 1
-        add     dh, 1
-        cmp     dh, 2
-        jb      readloop
-        mov     dh, 0
-        add     ch, 1
-        cmp     ch, CYLS
-        jb      readloop
-
-        mov     [0x0FF0], ch
-        jmp     0xC200
-
-error:
+err:
         mov     si, msg
-
-putloop:
-        mov     al, [si]
-        add     si, 1
-        cmp     al, 0
-        je      fin
+.put:
+        lodsb
+        test    al, al
+        jz      .h
         mov     ah, 0x0E
         mov     bx, 15
         int     0x10
-        jmp     putloop
-
-fin:
+        jmp     .put
+.h:
         hlt
-        jmp     fin
+        jmp     .h
 
-msg:
-        db      0x0A, 0x0A
-        db      "load error"
-        db      0x0A
+msg:    db      0x0A, 0x0A, "load error", 0
+
+        align   8
+dap:    db      0x10
         db      0
+        dw      1
+        dw      0x0000
+        dw      0x0060
+        dd      0, 0
 
-        times   510-($-$$) db 0
+        times   446-($-$$) db 0
+        times   64 db 0
         db      0x55, 0xAA

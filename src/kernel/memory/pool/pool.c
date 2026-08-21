@@ -143,6 +143,53 @@ static void page_table_add_raw(uint32_t vaddr, uint32_t phy_addr) {
     }
 }
 
+static void page_table_add_no_cache(uint32_t vaddr, uint32_t phy_addr) {
+    uint32_t* pde = pde_ptr(vaddr);
+    uint32_t* pte = pte_ptr(vaddr);
+
+    if (*pde & 1) {
+        if (*pde & 0x80) {
+            uint32_t pde_base = vaddr & 0xffc00000;
+            uint32_t pde_phy = palloc_raw(&kernel_pool);
+            if (pde_phy == 0) return;
+            uint32_t* table = (uint32_t*)pde_phy;
+            for (uint32_t i = 0; i < 1024; i++) {
+                table[i] = (pde_base + i * PAGE_SIZE) | 0x17;
+            }
+            *pde = pde_phy | 0x17;
+            *pte = phy_addr | 0x17;
+            return;
+        }
+        ASSERT(!(*pte & 1));
+        *pte = phy_addr | 0x17;
+    } else {
+        uint32_t pde_phy = palloc_raw(&kernel_pool);
+        if (pde_phy == 0) return;
+        *pde = pde_phy | 0x17;
+        memset((void*)((uint32_t)pte & 0xfffff000), 0, PAGE_SIZE);
+        ASSERT(!(*pte & 1));
+        *pte = phy_addr | 0x17;
+    }
+}
+
+void* ioremap(uint32_t phy_addr, uint32_t size) {
+    uint32_t phy = phy_addr & ~0xfff;
+    uint32_t cnt = (phy_addr + size - 1) / PAGE_SIZE - phy / PAGE_SIZE + 1;
+    lock_acquire(&mem_lock);
+    int bit = bitmap_scan(&kernel_vaddr.vaddr_bitmap, cnt);
+    if (bit == -1) {
+        lock_release(&mem_lock);
+        return 0;
+    }
+    uint32_t vaddr = kernel_vaddr.vaddr_start + (uint32_t)bit * PAGE_SIZE;
+    for (uint32_t i = 0; i < cnt; i++) {
+        bitmap_set(&kernel_vaddr.vaddr_bitmap, (uint32_t)bit + i, 1);
+        page_table_add_no_cache(vaddr + i * PAGE_SIZE, phy + i * PAGE_SIZE);
+    }
+    lock_release(&mem_lock);
+    return (void*)(vaddr + (phy_addr & 0xfff));
+}
+
 void* get_a_page(uint32_t vaddr) {
     struct task_struct* cur = current_task;
     uint32_t bit_idx = (vaddr - cur->userprog_v_addr.vaddr_start) / PAGE_SIZE;

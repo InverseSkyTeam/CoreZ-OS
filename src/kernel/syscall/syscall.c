@@ -24,18 +24,8 @@
 #include "./file_syscall.h"
 #include "../initer/pit/pit.h"
 #include "../initer/idt/interrupt.h"
-
-struct timespec {
-    int32_t tv_sec;
-    int32_t tv_nsec;
-};
-struct timeval {
-    int32_t tv_sec;
-    int32_t tv_usec;
-};
-
-#define CLOCK_REALTIME  0
-#define CLOCK_MONOTONIC 1
+#include "../net/nt_net.h"
+#include "../lib/user/syscall.h"  
 
 static uint32_t sys_getpid(void) {
     return current_task->pid;
@@ -104,6 +94,12 @@ static uint32_t sys_write(int32_t fd, char* str, uint32_t count) {
 
     if (is_pipe(fd)) {
         return pipe_write(fd, str, count);
+    }
+    /* 普通文件描述符(含被重定向的 stdout/stdin)写盘 */
+    uint32_t gfd = fd_local2global((uint32_t)fd);
+    if (gfd >= 3 && gfd < MAX_FILE_OPEN && file_table[gfd].fd_inode != NULL &&
+        file_table[gfd].fd_flag != PIPE_FLAG) {
+        return write_file(fd, str, count);
     }
     for (uint32_t i = 0; i < count; i++) {
         console_putc(str[i]);
@@ -420,6 +416,13 @@ uint32_t syscall_handler(struct Registers* r) {
     case SYS_EXIT_GROUP:
         sys_exit_group((int32_t)r->ebx);
         ret = 0;
+        break;
+    case SYS_ICMP_SEND:
+        ret = (uint32_t)nt_icmp_send((uint32_t)r->ebx, (uint16_t)r->ecx,
+                                     (uint16_t)r->edx);
+        break;
+    case SYS_ICMP_RECV:
+        ret = (uint32_t)nt_icmp_recv((struct nt_ping_reply*)r->ebx, (int)r->ecx);
         break;
     default:
         ret = (uint32_t)-1;

@@ -2,9 +2,11 @@ import struct
 import sys
 from pathlib import Path
 
+import make_fat
+
 SECTOR = 512
 TOTAL_SECTORS = 80 * 1024 * 1024 // SECTOR
-MBR_SIG = 0x55AA
+P2_START = 18432
 
 EXT2_SUPER_MAGIC = 0xEF53
 BLOCK = 1024
@@ -14,17 +16,17 @@ INODE_SIZE = 128
 FIRST_DATA_BLOCK = 1
 
 SUPER_BLK = 1
-GDT_BLK = FIRST_DATA_BLOCK + 1     
+GDT_BLK = FIRST_DATA_BLOCK + 1
 BLOCK_BITMAP_BLK = 3
 INODE_BITMAP_BLK = 4
 ITABLE_BLK = 5
 ITABLE_BLOCKS = (INODES_PER_GROUP * INODE_SIZE + BLOCK - 1) // BLOCK
-DATA_START = ITABLE_BLK + ITABLE_BLOCKS                    
+DATA_START = ITABLE_BLK + ITABLE_BLOCKS
 
 FILES = [
     "prog_no_arg.elf", "prog_arg.elf", "cat.elf", "fork_demo.elf",
     "prog_pipe.elf", "font_demo.elf", "heap_demo.elf", "signal_demo.elf",
-    "font_subset.ttf", "libc_testsuite.elf"
+    "font_subset.ttf", "libc_testsuite.elf", "nr_shell.elf", "ping.elf"
 ]
 ALIASES = {"forktest.elf": "fork_demo.elf"}
 
@@ -34,13 +36,20 @@ def part_entry(bootable, fs_type, start_lba, sec_cnt):
                        start_lba & 0xFFFFFFFF, sec_cnt & 0xFFFFFFFF)
 
 
-def mbr_sector(entries):
-    buf = bytearray(SECTOR)
-    for i, e in enumerate(entries[:4]):
-        buf[446 + i * 16:446 + (i + 1) * 16] = e
-    buf[510] = MBR_SIG & 0xFF
-    buf[511] = (MBR_SIG >> 8) & 0xFF
-    return buf
+def make_mbr(boot_bin):
+    p1 = part_entry(0x80, 0x0E, make_fat.PART_START,
+                    make_fat.P1_TOTAL_SECTORS)
+    p2 = part_entry(0x00, 0x83, P2_START,
+                    TOTAL_SECTORS - P2_START)
+    mbr = bytearray(boot_bin)
+    if len(mbr) < SECTOR:
+        mbr += b"\x00" * (SECTOR - len(mbr))
+    mbr = mbr[:SECTOR]
+    mbr[446:446 + 16] = p1
+    mbr[446 + 16:446 + 32] = p2
+    mbr[510] = 0x55
+    mbr[511] = 0xAA
+    return bytes(mbr)
 
 
 def build_dirent_block(entries, block=BLOCK):
@@ -73,6 +82,10 @@ def put_inode(table, ino, payload_len, blocks, is_dir):
 
 def build(build_dir, out):
     bd = Path(build_dir)
+    boot_bin = (bd / "boot.bin").read_bytes()
+    loader_bin = (bd / "loader.bin").read_bytes()
+    kernel_bin = (bd / "kernel.bin").read_bytes()
+
     names = list(FILES)
     names += [a for a in ALIASES if (bd / a).exists()]
 
@@ -132,7 +145,7 @@ def build(build_dir, out):
             used_blocks.add(b)
     for iblk, _ in var_indirect:
         used_blocks.add(iblk)
-    total_blocks = (TOTAL_SECTORS - 2048) // SECT_PER_BLOCK
+    total_blocks = (TOTAL_SECTORS - P2_START) // SECT_PER_BLOCK
     free_blocks = total_blocks - len(used_blocks)
 
     bm_len = (total_blocks + 7) // 8
@@ -157,13 +170,19 @@ def build(build_dir, out):
     struct.pack_into("<IIHHH", sb, 44, 0, 0, 0, 0, 0) 
     struct.pack_into("<H", sb, 56, EXT2_SUPER_MAGIC)
 
-    start_lba = 2048
-    base = start_lba 
+    mbr = make_mbr(boot_bin)
+
+    fat_img = bd / "fat16.img"
+    make_fat.fat16(build_dir, str(fat_img))
+    fat_data = fat_img.read_bytes()
+
+    base = P2_START
     with open(out, "wb") as f:
         f.truncate(TOTAL_SECTORS * SECTOR)
         f.seek(0)
-        f.write(mbr_sector([part_entry(0, 0x83, start_lba,
-                                       TOTAL_SECTORS - start_lba)]))
+        f.write(mbr)
+        f.seek(make_fat.PART_START * SECTOR)
+        f.write(fat_data)
         f.seek(base * SECTOR + SUPER_BLK * BLOCK)
         f.write(bytes(sb))
         f.seek(base * SECTOR + GDT_BLK * BLOCK)
@@ -187,7 +206,9 @@ def build(build_dir, out):
             f.write(payload)
 
     print(f"OK: {out} ({TOTAL_SECTORS * SECTOR // 1024 // 1024}MB)")
-    print(f"  sda1 @{start_lba} ext2: {len(names)} files, {free_blocks} free blocks")
+    print(f"  P1 @{make_fat.PART_START} FAT16({make_fat.P1_TOTAL_SECTORS}sec) "
+          f"[bootable] -> {fat_img}")
+    print(f"  P2 @{P2_START} ext2: {len(names)} files, {free_blocks} free blocks")
 
 
 if __name__ == "__main__":

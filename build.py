@@ -44,6 +44,8 @@ BUILD_DIR  = ROOT / "build"
 LINKER_DIR = ROOT / "linker"
 SCRIPTS    = ROOT / "scripts"
 MUSL_SRC   = SRC_DIR / "app" / "musl"
+SHELL_SRC  = SRC_DIR / "app" / "mr_micro_shell"
+NRSHELL    = CMD_DIR / "nr_shell"
 
 CFLAGS_BASE = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
@@ -360,6 +362,8 @@ def make_plan(tools: Tools):
 
     tasks.append(task_assemble_bin("boot.bin",
                           BOOT_DIR / "boot.asm", BUILD_DIR / "boot.bin", tools))
+    tasks.append(task_assemble_bin("vbr.bin",
+                          BOOT_DIR / "vbr.asm", BUILD_DIR / "vbr.bin", tools))
     tasks.append(task_assemble_bin("loader.bin",
                           BOOT_DIR / "loader.asm", BUILD_DIR / "loader.bin", tools))
 
@@ -440,6 +444,7 @@ def make_plan(tools: Tools):
         ("futex_demo",  "futex_demo.c",  "_start", []),
         ("fsyscall_demo","fsyscall_demo.c","_start", []),
         ("clone_demo",  "clone_demo.c",  "_start", []),
+        ("ping",        "ping.c",        "_start", []),
     ]
 
     user_lib_sources = [
@@ -512,6 +517,7 @@ def make_plan(tools: Tools):
         ("musl_ret.o", MUSL_SRC / "src" / "internal" / "syscall_ret.c"),
         ("musl_getpid.o", MUSL_SRC / "src" / "unistd" / "getpid.c"),
         ("musl_write.o", MUSL_SRC / "src" / "unistd" / "write.c"),
+        ("musl_read.o", MUSL_SRC / "src" / "unistd" / "read.c"),
         ("musl_exit.o", MUSL_SRC / "src" / "unistd" / "_exit.c"),
         ("musl_exit_cap.o", MUSL_SRC / "src" / "exit" / "_Exit.c"),
         ("musl_strlen.o", MUSL_SRC / "src" / "string" / "strlen.c"),
@@ -549,6 +555,7 @@ def make_plan(tools: Tools):
         ("musl_memcpy.o", MUSL_SRC / "src" / "string" / "memcpy.c"),
         ("musl_memset.o", MUSL_SRC / "src" / "string" / "memset.c"),
         ("musl_memcmp.o", MUSL_SRC / "src" / "string" / "memcmp.c"),
+        ("musl_memmove.o", MUSL_SRC / "src" / "string" / "memmove.c"),
         ("musl_qsort.o", MUSL_SRC / "src" / "stdlib" / "qsort.c"),
         ("musl_qsortnr.o", MUSL_SRC / "src" / "stdlib" / "qsort_nr.c"),
         ("musl_atol.o", MUSL_SRC / "src" / "stdlib" / "atol.c"),
@@ -631,6 +638,63 @@ def make_plan(tools: Tools):
     tasks.append(libc_tests_elf)
     user_elves.append(libc_tests_elf)
 
+    shell_cflags = MUSL_CFLAGS + [
+        "-I", str(SHELL_SRC / "inc"),
+        "-I", str(NRSHELL),
+    ]
+    shell_objs = [
+        ("shell_core.o",    SHELL_SRC / "src" / "nr_micro_shell_core.c"),
+        ("shell_cmds.o",    SHELL_SRC / "src" / "nr_micro_shell_cmds.c"),
+        ("nr_shell_main.o", NRSHELL / "nr_shell_main.c"),
+    ]
+    for stem, src in shell_objs:
+        tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, shell_cflags))
+
+    nr_shell_lib_objs = [
+        BUILD_DIR / "musl_ret.o", BUILD_DIR / "nt_errno.o",
+        BUILD_DIR / "musl_vfprintf.o", BUILD_DIR / "musl_vsnprintf.o",
+        BUILD_DIR / "musl_snprintf.o", BUILD_DIR / "musl_sprintf.o",
+        BUILD_DIR / "musl_printf.o", BUILD_DIR / "musl_fprintf.o",
+        BUILD_DIR / "musl_stdout.o", BUILD_DIR / "musl_towrite.o",
+        BUILD_DIR / "musl_stdiowrite.o", BUILD_DIR / "musl_fwrite.o",
+        BUILD_DIR / "musl_overflow.o", BUILD_DIR / "musl_uflow.o",
+        BUILD_DIR / "musl_toread.o", BUILD_DIR / "musl_stdioclose.o",
+        BUILD_DIR / "musl_strlen.o", BUILD_DIR / "musl_strcpy.o",
+        BUILD_DIR / "musl_strcmp.o", BUILD_DIR / "musl_strchr.o",
+        BUILD_DIR / "musl_strncpy.o", BUILD_DIR / "musl_strncmp.o",
+        BUILD_DIR / "musl_strncat.o", BUILD_DIR / "musl_strrchr.o",
+        BUILD_DIR / "musl_strnlen.o", BUILD_DIR / "musl_memcpy.o",
+        BUILD_DIR / "musl_memset.o", BUILD_DIR / "musl_memcmp.o",
+        BUILD_DIR / "musl_memmove.o", BUILD_DIR / "musl_read.o",
+        BUILD_DIR / "musl_write.o", BUILD_DIR / "nt_libc_stubs.o",
+    ]
+
+    nr_shell_elf = task_link("nr_shell.elf", BUILD_DIR / "nr_shell.elf", tools,
+        [BUILD_DIR / "musl_start.o", BUILD_DIR / "musl_syscall.o",
+         BUILD_DIR / "shell_core.o", BUILD_DIR / "shell_cmds.o",
+         BUILD_DIR / "nr_shell_main.o", *nr_shell_lib_objs],
+        flags=["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_musl_start"])
+    tasks.append(nr_shell_elf)
+    user_elves.append(nr_shell_elf)
+
+    mongoose_src = SRC_DIR / "app" / "mongoose"
+    net_dir = KERNEL_DIR / "net"
+    mongoose_cflags = MUSL_CFLAGS + [
+        "-I", str(mongoose_src),
+        "-I", str(net_dir),
+    ]
+    tasks.append(task_cc("mongoose.o", mongoose_src / "mongoose.c",
+                         BUILD_DIR / "mongoose.o", tools, mongoose_cflags))
+
+    net_c_sources = [
+        ("rtl8139.o", net_dir / "rtl8139.c"),
+        ("e1000.o", net_dir / "e1000.c"),
+        ("nt_mongoose_plat.o", net_dir / "nt_mongoose_plat.c"),
+        ("nt_net.o", net_dir / "nt_net.c"),
+    ]
+    for stem, src in net_c_sources:
+        tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, mongoose_cflags))
+
     font_subset = BUILD_DIR / "font_subset.ttf"
     tasks.append(task_python(
         "font_subset.ttf",
@@ -651,6 +715,7 @@ def make_plan(tools: Tools):
         "usyscall.o", "ustdio.o", "wait_exit.o", "fork.o", "clone.o",
         "mouse.o", "gfx.o", "shm.o", "guiserver.o", "layout.o",
         "wm.o", "guiclients.o", "gui.o",
+        "mongoose.o", "rtl8139.o", "e1000.o", "nt_mongoose_plat.o", "nt_net.o",
     ]
     kernel_link_objs = [BUILD_DIR / n for n in kernel_objs_names]
 
@@ -734,7 +799,7 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
     s = 1
 
     console.step_header(s, total_steps, "Assembling boot sectors")
-    for t in plan.tasks[:2]:
+    for t in plan.tasks[:3]:
         run_task(t)
         console.ok(f"{t.description}  {c_dim(fmt_dur(stats.timings[t.name][0]))}")
     s += 1
@@ -859,19 +924,19 @@ def do_run(console: Console, stats: BuildStats) -> None:
         console.warn("qemu-system-i386 not found on PATH; build is up-to-date.")
         return
     hd_img = BUILD_DIR / "test_hd.img"
-    if not hd_img.exists():
-        mkdisk = SCRIPTS / "make_ext2.py"
-        if mkdisk.exists():
-            console.info("generating test_hd.img via make_ext2.py")
-            run([sys.executable, str(mkdisk), str(BUILD_DIR), str(hd_img)])
+    mkdisk = SCRIPTS / "make_ext2.py"
+    if mkdisk.exists():
+        console.info("generating test_hd.img via make_ext2.py")
+        run([sys.executable, str(mkdisk), str(BUILD_DIR), str(hd_img)])
     console.writeln()
     console.writeln(f"  {console._c(Ansi.BR_GRN)}▶ launching qemu...{console._c(Ansi.RESET)}")
     console.writeln()
     subprocess.run([
         qemu, "-accel", "tcg,tb-size=256", "-m", "1G",
-        "-fda", str(BUILD_DIR / "floppy.img"),
         "-hda", str(hd_img),
         "-debugcon", "stdio",
+        "-netdev", "user,id=net0,hostfwd=tcp::8765-:8765",
+        "-device", "e1000,netdev=net0",
     ])
 
 def main(argv: Sequence[str]) -> int:

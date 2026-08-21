@@ -92,7 +92,9 @@ static void putc(char c) {
         outb(DEBUG_CONSOLE_PORT, (uint8_t)c);
         return;
     }
-    if (c == '\n') {
+    if (c == '\r') {
+        g_cursor_x = 0;
+    } else if (c == '\n') {
         g_cursor_y += PRINTF_LINE_GAP;
         g_cursor_x = 0;
         if (g_cursor_y + PRINTF_LINE_GAP > g_scrny) {

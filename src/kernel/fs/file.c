@@ -37,5 +37,7 @@ uint32_t file_read(struct file* file, void* buf, uint32_t count) {
 }
 
 uint32_t file_write(struct file* file, const void* buf, uint32_t count) {
-    return (uint32_t)-1;
+    int r = ext2_write_to_inode(file->fd_inode, file->fd_pos, buf, count);
+    file->fd_pos += (uint32_t)r;
+    return (uint32_t)r;
 }

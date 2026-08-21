@@ -232,6 +232,14 @@ void exit_group(int32_t status) {
     }
 }
 
+int32_t icmp_send(uint32_t dst, uint16_t id, uint16_t seq) {
+    return (int32_t)syscall3(SYS_ICMP_SEND, (uint32_t)dst, (uint32_t)id, (uint32_t)seq);
+}
+
+int32_t icmp_recv(struct nt_ping_reply* buf, int32_t max) {
+    return (int32_t)syscall2(SYS_ICMP_RECV, (uint32_t)buf, (uint32_t)max);
+}
+
 
 __attribute__((naked))
 void __restore(void) {

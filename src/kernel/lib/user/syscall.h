@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include "../../include/syscall_nr.h"
+#include "../../include/nt_ping_reply.h"
 
 struct stat;
 struct dir;
@@ -100,6 +101,9 @@ uint32_t getgid(void);
 uint32_t geteuid(void);
 uint32_t getegid(void);
 void     exit_group(int32_t status);
+
+int32_t  icmp_send(uint32_t dst, uint16_t id, uint16_t seq);
+int32_t  icmp_recv(struct nt_ping_reply* buf, int32_t max);
 
 #define FUTEX_WAIT 0
 #define FUTEX_WAKE 1

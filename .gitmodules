@@ -1,3 +1,9 @@
 [submodule "src/app/musl"]
 	path = src/app/musl
 	url = https://github.com/InverseSkyTeam/nitianos-muslc.git
+[submodule "src/app/mr_micro_shell"]
+	path = src/app/mr_micro_shell
+	url = https://github.com/Nrusher/nr_micro_shell.git
+[submodule "src/app/mongoose"]
+	path = src/app/mongoose
+	url = https://github.com/cesanta/mongoose.git

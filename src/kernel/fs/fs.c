@@ -72,8 +72,98 @@ int search_file(const char* pathname, struct path_search_record* searched_record
     return (int)ino;
 }
 
+static int ext2_create_common(const char* pathname, uint32_t mode, int is_dir);
 int create_file(const char* pathname) {
-    return -1;
+    return ext2_create_common(pathname, 0x8000u /*EXT2_S_IFREG*/, 0);
+}
+
+/* 把路径拆成父目录路径 + 末级文件名 */
+static int split_parent_path(const char* pathname, char* parent, char** base_out, uint32_t buf_len) {
+    uint32_t plen = (uint32_t)strlen(pathname);
+    if (plen >= buf_len) {
+        return -1;
+    }
+    memcpy(parent, pathname, plen + 1);
+    uint32_t i = plen;
+    while (i > 1 && parent[i - 1] == '/') {
+        parent[--i] = 0;
+    }
+    if (i == 0) {
+        return -1;
+    }
+    char* slash = strrchr(parent, '/');
+    if (slash == NULL) {
+        return -1;
+    }
+    *slash = 0;
+    *base_out = slash + 1;
+    if (slash == parent) {
+        parent[0] = '/';
+        parent[1] = 0;
+        *base_out = parent + 1;
+    }
+    if ((*base_out)[0] == 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static uint32_t get_parent_inode(const char* parent) {
+    uint32_t pino = 0;
+    int is_dir = 0;
+    if (ext2_lookup(parent, &pino, &is_dir) || !is_dir) {
+        return 0;
+    }
+    return pino;
+}
+
+static void ext2_free_best_effort(struct inode* ino);
+
+static int ext2_create_common(const char* pathname, uint32_t mode, int is_dir) {
+    char parent[MAX_PATH_LEN];
+    char* base;
+    if (split_parent_path(pathname, parent, &base, MAX_PATH_LEN) || base == NULL) {
+        return -1;
+    }
+    uint32_t pino = get_parent_inode(parent);
+    if (pino == 0) {
+        return -1;
+    }
+    if (strcmp(base, ".") == 0 || strcmp(base, "..") == 0) {
+        return -1;
+    }
+    uint32_t tino = 0;
+    int tdir = 0;
+    if (ext2_lookup(pathname, &tino, &tdir) == 0) {
+        return -1; /* 已存在 */
+    }
+    struct inode par;
+    if (ext2_read_inode(pino, &par)) {
+        return -1;
+    }
+    struct inode newi;
+    uint32_t ino = ext2_new_inode(mode, &newi);
+    if (ino == 0) {
+        return -1;
+    }
+    if (is_dir) {
+        if (ext2_add_entry(&newi, ino, ".", 1) ||
+            ext2_add_entry(&newi, pino, "..", 1)) {
+            ext2_free_best_effort(&newi);
+            return -1;
+        }
+    }
+    if (ext2_add_entry(&par, ino, base, is_dir)) {
+        ext2_free_best_effort(&newi);
+        return -1;
+    }
+    return (int)ino;
+}
+
+static void ext2_free_best_effort(struct inode* ino) {
+    ext2_truncate_inode(ino);
+    ext2_write_inode(ino->i_no, ino);
+    ext2_free_inode(ino->i_no);
 }
 
 int open_file(const char* pathname, uint8_t flags) {
@@ -82,7 +172,18 @@ int open_file(const char* pathname, uint8_t flags) {
     }
     uint32_t ino = 0;
     int is_dir = 0;
-    if (ext2_lookup(pathname, &ino, &is_dir) || is_dir) {
+    if (ext2_lookup(pathname, &ino, &is_dir)) {
+        if ((flags & O_CREAT) != 0) {
+            if (create_file(pathname) != 0) {
+                return -1;
+            }
+            if (ext2_lookup(pathname, &ino, &is_dir) || is_dir) {
+                return -1;
+            }
+        } else {
+            return -1;
+        }
+    } else if (is_dir) {
         return -1;
     }
     uint32_t global_fd_idx = 0;
@@ -147,7 +248,14 @@ uint32_t read_file(int fd, void* buf, uint32_t count) {
 }
 
 uint32_t write_file(int fd, const void* buf, uint32_t count) {
-    return (uint32_t)-1;
+    if (fd < 0 || fd >= MAX_FILES_OPEN_PER_PROC) {
+        return (uint32_t)-1;
+    }
+    uint32_t global_fd_idx = current_task->fd_table[fd];
+    if (global_fd_idx == (uint32_t)-1) {
+        return (uint32_t)-1;
+    }
+    return file_write(&file_table[global_fd_idx], buf, count);
 }
 
 int32_t sys_lseek(int32_t fd, int32_t offset, uint8_t whence) {
@@ -196,11 +304,50 @@ void inode_bitmap_free(struct partition* part, uint32_t inode_no) {
 }
 
 int sys_unlink(const char* pathname) {
-    return -1;
+    char parent[MAX_PATH_LEN];
+    char* base;
+    if (split_parent_path(pathname, parent, &base, MAX_PATH_LEN) || base == NULL) {
+        return -1;
+    }
+    uint32_t pino = get_parent_inode(parent);
+    if (pino == 0) {
+        return -1;
+    }
+    uint32_t ino = 0;
+    int is_dir = 0;
+    if (ext2_lookup(pathname, &ino, &is_dir) || is_dir) {
+        return -1; /* 目录用 rmdir；此处仅删除普通文件 */
+    }
+    struct inode par;
+    struct inode obj;
+    if (ext2_read_inode(pino, &par) || ext2_read_inode(ino, &obj)) {
+        return -1;
+    }
+    if (ext2_remove_entry(&par, base)) {
+        return -1;
+    }
+    ext2_truncate_inode(&obj);
+    ext2_write_inode(obj.i_no, &obj);
+    ext2_free_inode(obj.i_no);
+    return 0;
 }
 
 int32_t sys_mkdir(const char* pathname) {
-    return -1;
+    if (pathname == NULL) {
+        return -1;
+    }
+    return ext2_create_common(pathname, 0x4000u /*EXT2_S_IFDIR*/, 1) ? 0 : -1;
+}
+
+static int ext2_dir_is_empty(struct inode* dino) {
+    uint32_t pos = 0;
+    struct dir_entry de;
+    while (ext2_dir_next(dino, &pos, &de) == 0) {
+        if (strcmp(de.filename, ".") != 0 && strcmp(de.filename, "..") != 0) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 struct dir* sys_opendir(const char* name) {
@@ -236,7 +383,42 @@ void sys_rewinddir(struct dir* dir) {
 }
 
 int32_t sys_rmdir(const char* pathname) {
-    return -1;
+    if (pathname == NULL) {
+        return -1;
+    }
+    if (!strcmp(pathname, "/") || !strcmp(pathname, "/.") || !strcmp(pathname, "/..") ||
+        !strcmp(pathname, ".") || !strcmp(pathname, "..")) {
+        return -1;
+    }
+    char parent[MAX_PATH_LEN];
+    char* base;
+    if (split_parent_path(pathname, parent, &base, MAX_PATH_LEN) || base == NULL) {
+        return -1;
+    }
+    uint32_t pino = get_parent_inode(parent);
+    if (pino == 0) {
+        return -1;
+    }
+    uint32_t ino = 0;
+    int is_dir = 0;
+    if (ext2_lookup(pathname, &ino, &is_dir) || !is_dir) {
+        return -1;
+    }
+    struct inode par;
+    struct inode obj;
+    if (ext2_read_inode(pino, &par) || ext2_read_inode(ino, &obj)) {
+        return -1;
+    }
+    if (!ext2_dir_is_empty(&obj)) {
+        return -1;
+    }
+    if (ext2_remove_entry(&par, base)) {
+        return -1;
+    }
+    ext2_truncate_inode(&obj);
+    ext2_write_inode(obj.i_no, &obj);
+    ext2_free_inode(obj.i_no);
+    return 0;
 }
 
 static uint32_t get_parent_dir_inode_nr(uint32_t child_inode_nr) {

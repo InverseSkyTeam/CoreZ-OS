@@ -19,41 +19,6 @@
 #include "./lib/user/syscall.h"
 #include "./lib/user/stdio.h"
 
-extern const unsigned char _binary_prog_no_arg_elf_start[];
-extern const unsigned char _binary_prog_no_arg_elf_end[];
-extern const unsigned char _binary_prog_arg_elf_start[];
-extern const unsigned char _binary_prog_arg_elf_end[];
-extern const unsigned char _binary_cat_elf_start[];
-extern const unsigned char _binary_cat_elf_end[];
-extern const unsigned char _binary_fork_demo_elf_start[];
-extern const unsigned char _binary_fork_demo_elf_end[];
-extern const unsigned char _binary_prog_pipe_elf_start[];
-extern const unsigned char _binary_prog_pipe_elf_end[];
-extern const unsigned char _binary_font_demo_elf_start[];
-extern const unsigned char _binary_font_demo_elf_end[];
-extern const unsigned char _binary_heap_demo_elf_start[];
-extern const unsigned char _binary_heap_demo_elf_end[];
-extern const unsigned char _binary_signal_demo_elf_start[];
-extern const unsigned char _binary_signal_demo_elf_end[];
-extern const unsigned char _binary_mmap_demo_elf_start[];
-extern const unsigned char _binary_mmap_demo_elf_end[];
-extern const unsigned char _binary_mmap2_demo_elf_start[];
-extern const unsigned char _binary_mmap2_demo_elf_end[];
-extern const unsigned char _binary_futex_demo_elf_start[];
-extern const unsigned char _binary_futex_demo_elf_end[];
-extern const unsigned char _binary_clone_demo_elf_start[];
-extern const unsigned char _binary_clone_demo_elf_end[];
-extern const unsigned char _binary_fsyscall_demo_elf_start[];
-extern const unsigned char _binary_fsyscall_demo_elf_end[];
-extern const unsigned char _binary_lc_demo_elf_start[];
-extern const unsigned char _binary_lc_demo_elf_end[];
-extern const unsigned char _binary_musl_demo_elf_start[];
-extern const unsigned char _binary_musl_demo_elf_end[];
-extern const unsigned char _binary_libc_testsuite_elf_start[];
-extern const unsigned char _binary_libc_testsuite_elf_end[];
-extern const unsigned char _binary_font_subset_ttf_start[];
-extern const unsigned char _binary_font_subset_ttf_end[];
-
 struct BootInfo {
     uint8_t  cyls;
     uint8_t  leds;
@@ -97,18 +62,6 @@ static void init(void) {
         for (;;) {
         }
     }
-}
-
-static void write_prog(const char* name, const unsigned char* start, const unsigned char* end) {
-    sys_unlink(name);
-    int fd = open_file(name, O_CREAT | O_RDWR);
-    if (fd == -1) {
-        setTextColor(12);
-        printf("[FAIL] write %s failed\n", name);
-        return;
-    }
-    write_file(fd, (const void*)start, (uint32_t)(end - start));
-    close_file(fd);
 }
 
 void KMain(void) {
@@ -155,26 +108,8 @@ void KMain(void) {
     ide_init();
     filesys_init();
 
-    write_prog("/prog_no_arg", _binary_prog_no_arg_elf_start, _binary_prog_no_arg_elf_end);
-    write_prog("/prog_arg", _binary_prog_arg_elf_start, _binary_prog_arg_elf_end);
-    write_prog("/cat", _binary_cat_elf_start, _binary_cat_elf_end);
-    write_prog("/fork_demo", _binary_fork_demo_elf_start, _binary_fork_demo_elf_end);
-    write_prog("/forktest", _binary_fork_demo_elf_start, _binary_fork_demo_elf_end);
-    write_prog("/prog_pipe", _binary_prog_pipe_elf_start, _binary_prog_pipe_elf_end);
-    write_prog("/font_demo", _binary_font_demo_elf_start, _binary_font_demo_elf_end);
-    write_prog("/heap_demo", _binary_heap_demo_elf_start, _binary_heap_demo_elf_end);
-    write_prog("/signal_demo", _binary_signal_demo_elf_start, _binary_signal_demo_elf_end);
-    write_prog("/mmap_demo", _binary_mmap_demo_elf_start, _binary_mmap_demo_elf_end);
-    write_prog("/mmap2_demo", _binary_mmap2_demo_elf_start, _binary_mmap2_demo_elf_end);
-    write_prog("/futex_demo", _binary_futex_demo_elf_start, _binary_futex_demo_elf_end);
-    write_prog("/clone_demo", _binary_clone_demo_elf_start, _binary_clone_demo_elf_end);
-    write_prog("/fsyscall_demo", _binary_fsyscall_demo_elf_start, _binary_fsyscall_demo_elf_end);
-    write_prog("/lc_demo", _binary_lc_demo_elf_start, _binary_lc_demo_elf_end);
-    write_prog("/musl_demo", _binary_musl_demo_elf_start, _binary_musl_demo_elf_end);
-    write_prog("/libc_testsuite", _binary_libc_testsuite_elf_start, _binary_libc_testsuite_elf_end);
-    write_prog("/font.ttf", _binary_font_subset_ttf_start, _binary_font_subset_ttf_end);
     setTextColor(10);
-    printf("[OK] user programs installed\n");
+    printf("[OK] user programs on ext2\n");
 
     process_execute(init, "init");
     for (;;) {

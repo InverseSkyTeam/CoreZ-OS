@@ -106,6 +106,9 @@ $(BUILD_DIR)/keyboard.o: $(SRC_DIR)/kernel/device/keyboard.c $(KERNEL_HDRS) | $(
 $(BUILD_DIR)/ide.o: $(SRC_DIR)/kernel/device/ide.c $(KERNEL_HDRS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/ext2.o: $(SRC_DIR)/kernel/fs/ext2.c $(KERNEL_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 $(BUILD_DIR)/fs.o: $(SRC_DIR)/kernel/fs/fs.c $(KERNEL_HDRS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -689,6 +692,11 @@ $(BUILD_DIR)/font_subset.ttf: $(SCRIPTS_DIR)/make_font_subset.py \
 	$(PYTHON) $(SCRIPTS_DIR)/make_font_subset.py \
 	          $(SRC_DIR)/kernel/lib/assets/font.ttf $@
 
+$(BUILD_DIR)/font.ttf: $(SCRIPTS_DIR)/make_font_subset.py \
+                               $(SRC_DIR)/kernel/lib/assets/font.ttf | $(BUILD_DIR)
+	$(PYTHON) $(SCRIPTS_DIR)/make_font_subset.py \
+	          $(SRC_DIR)/kernel/lib/assets/font.ttf $@
+
 $(BUILD_DIR)/font_subset_ttf_data.o: $(BUILD_DIR)/font_subset.ttf | $(BUILD_DIR)
 	cd $(BUILD_DIR) && $(OBJCOPY) -I binary -O elf32-i386 -B i386 font_subset.ttf font_subset_ttf_data.o
 
@@ -730,6 +738,7 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/entry.o \
 						 $(BUILD_DIR)/ioqueue.o \
 						 $(BUILD_DIR)/keyboard.o \
 						 $(BUILD_DIR)/ide.o \
+						 $(BUILD_DIR)/ext2.o \
 						 $(BUILD_DIR)/fs.o \
 						 $(BUILD_DIR)/inode.o \
 						 $(BUILD_DIR)/dir.o \
@@ -800,6 +809,7 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/entry.o \
 		  $(BUILD_DIR)/ioqueue.o \
 		  $(BUILD_DIR)/keyboard.o \
 		  $(BUILD_DIR)/ide.o \
+		  $(BUILD_DIR)/ext2.o \
 		  $(BUILD_DIR)/fs.o \
 		  $(BUILD_DIR)/inode.o \
 		  $(BUILD_DIR)/dir.o \
@@ -863,8 +873,8 @@ $(BUILD_DIR)/floppy.img: $(FLOPPY_DEPS) | $(BUILD_DIR)
 	          $(BUILD_DIR)/kernel.bin \
 	          $@
 
-$(BUILD_DIR)/test_hd.img: $(SCRIPTS_DIR)/make_disk.py | $(BUILD_DIR)
-	$(PYTHON) $(SCRIPTS_DIR)/make_disk.py $@
+$(BUILD_DIR)/test_hd.img: $(SCRIPTS_DIR)/make_ext2.py | $(BUILD_DIR)
+	$(PYTHON) $(SCRIPTS_DIR)/make_ext2.py $(BUILD_DIR) $@
 
 .PHONY: all floppy run clean
 

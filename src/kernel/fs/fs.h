@@ -58,9 +58,6 @@ void inode_bitmap_free(struct partition* part, uint32_t inode_no);
 
 char* path_parse(char* pathname, char* name_store);
 int search_dir_entry(struct partition* part, struct dir* pdir, const char* name, struct dir_entry* dir_e);
-int create_dir_entry(struct partition* part, struct dir* pdir, uint32_t inode_no, const char* filename, enum file_types f_type);
-int sync_dir_entry(struct dir* pdir, struct dir_entry* p_de, struct dir_entry* new_de);
-int delete_dir_entry(struct partition* part, struct dir* pdir, uint32_t inode_no, void* io_buf);
 int search_file(const char* pathname, struct path_search_record* searched_record);
 int create_file(const char* pathname);
 int open_file(const char* pathname, uint8_t flags);

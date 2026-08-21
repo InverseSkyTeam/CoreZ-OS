@@ -31,14 +31,11 @@ def _force_utf8_stdout() -> None:
 _force_utf8_stdout()
 
 ROOT       = Path(__file__).resolve().parent
-
-# Some hosted environments (e.g. sandboxes) make the default TMP/TEMP
-# directory read-only. Pick a project-local one up-front so zig's tmp
-# files land in a writable spot.
 _local_tmp = (ROOT / ".zig-tmp").resolve()
 os.makedirs(_local_tmp, exist_ok=True)
 os.environ["TMP"] = os.environ["TEMP"] = str(_local_tmp)
 os.environ.setdefault("ZIG_GLOBAL_CACHE_DIR", str(ROOT / ".zig-cache"))
+
 SRC_DIR    = ROOT / "src"
 BOOT_DIR   = SRC_DIR / "boot"
 CMD_DIR    = SRC_DIR / "command"
@@ -46,39 +43,31 @@ KERNEL_DIR = SRC_DIR / "kernel"
 BUILD_DIR  = ROOT / "build"
 LINKER_DIR = ROOT / "linker"
 SCRIPTS    = ROOT / "scripts"
+MUSL_SRC   = SRC_DIR / "app" / "musl"
 
-KERNEL_HDR_GLOBS = [
-    "include/*.h", "include/asm/*.h",
-    "lib/*/*.h", "lib/user/*.h",
-    "memory/*/*.h",
-    "thread/*.h",
-    "device/*.h",
-    "fs/*.h",
-    "userprog/*.h",
-    "syscall/*.h",
-    "shell/*.h",
-    "initer/*/*.h",
+CFLAGS_BASE = [
+    "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
+    "-target", "x86-freestanding",
+    "-fmodules-cache-path=" + str(ROOT / ".zig-cache" / "modules"),
 ]
-
-CFLAGS_BASE = ["-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
-               "-target", "x86-freestanding",
-               "-fmodules-cache-path=" + str(ROOT / ".zig-cache" / "modules")]
-UP_CFLAGS_BASE = CFLAGS_BASE + [
+CFLAGS = CFLAGS_BASE
+UP_CFLAGS = CFLAGS_BASE + [
     "-I", str(KERNEL_DIR / "lib" / "user"),
     "-I", str(KERNEL_DIR / "lib" / "str"),
     "-I", str(KERNEL_DIR / "lib"),
 ]
-
-CFLAGS  = CFLAGS_BASE
-UP_CFLAGS = UP_CFLAGS_BASE
-CFLAGS_OS = CFLAGS                     
-CFLAGS_UP = UP_CFLAGS                  
-CFLAGS_FONT = UP_CFLAGS + ["-Os"]      
 UP_LDFLAGS = ["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_start"]
 
-CFLAGS_OS = CFLAGS                     
-CFLAGS_UP = UP_CFLAGS                  
-CFLAGS_FONT = UP_CFLAGS + ["-Os"]      
+MUSL_CFLAGS = CFLAGS_BASE + [
+    "-I", str(MUSL_SRC / "arch" / "i386"),
+    "-I", str(MUSL_SRC / "arch" / "generic"),
+    "-I", str(MUSL_SRC / "src" / "internal"),
+    "-I", str(MUSL_SRC / "include"),
+    "-I", str(MUSL_SRC / "nitian"),
+    "-include", str(MUSL_SRC / "nitian" / "nt_libc_macros.h"),
+]
+
+LC_CFLAGS = CFLAGS_BASE + ["-I", str(KERNEL_DIR / "lib" / "compat")]
 
 class Ansi:
     RESET   = "\x1b[0m"
@@ -101,21 +90,18 @@ class Ansi:
     BR_MAG  = "\x1b[95m"
     BR_CYN  = "\x1b[96m"
     BR_WHT  = "\x1b[97m"
-
     CURSOR_HIDE = "\x1b[?25l"
     CURSOR_SHOW = "\x1b[?25h"
     ERASE_LINE  = "\x1b[2K"
     CR          = "\r"
 
 def _enable_vt_on_windows() -> None:
-    
     if os.name != "nt":
         return
     try:
         import ctypes
         kernel32 = ctypes.windll.kernel32
-        
-        for handle_id in (-11, -12):  
+        for handle_id in (-11, -12):
             handle = kernel32.GetStdHandle(handle_id)
             mode = ctypes.c_uint32()
             if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
@@ -127,14 +113,13 @@ def color_enabled(no_color_flag: bool, stream=sys.stdout) -> bool:
     if no_color_flag:
         return False
     if not hasattr(stream, "isatty") or not stream.isatty():
-        
         return True
     return True
 
 @dataclass
 class Tools:
     nasm:    str
-    cc:      List[str]   
+    cc:      List[str]
     ld:      str
     objcopy: str
     python:  str
@@ -152,8 +137,7 @@ def _find(name: str, candidates: Sequence[str]) -> str:
                     path = exe_path
         return path
     raise FileNotFoundError(
-        f"Could not find any of: {', '.join(candidates)} (needed for `{name}`).\n"
-        f"Install the toolchain or add it to PATH."
+        f"Could not find any of: {', '.join(candidates)} (needed for `{name}`)."
     )
 
 def _resolve_cc() -> List[str]:
@@ -165,14 +149,13 @@ def _resolve_cc() -> List[str]:
         if path:
             return [path]
     raise FileNotFoundError(
-        "Could not find any C compiler (zig/cc/gcc/x86_64-elf-gcc).\n"
-        "Install zig 0.13+ or a freestanding-capable GCC."
+        "Could not find any C compiler (zig/cc/gcc/x86_64-elf-gcc)."
     )
 
 def detect_tools() -> Tools:
     return Tools(
         nasm    = _find("nasm",    ["nasm"]),
-        cc      = _resolve_cc(),                
+        cc      = _resolve_cc(),
         ld      = _find("ld",      ["ld.lld", "lld-link", "x86_64-elf-ld", "ld"]),
         objcopy = _find("objcopy", ["objcopy", "llvm-objcopy", "x86_64-elf-objcopy"]),
         python  = sys.executable,
@@ -184,14 +167,12 @@ class CmdResult:
     stdout: str
     stderr: str
     duration: float
-
     @property
     def ok(self) -> bool:
         return self.returncode == 0
 
 def run(cmd: Sequence[str], cwd: Optional[Path] = None,
         env: Optional[dict] = None, quiet: bool = False) -> CmdResult:
-    
     start = time.perf_counter()
     proc = subprocess.run(
         list(cmd),
@@ -200,6 +181,8 @@ def run(cmd: Sequence[str], cwd: Optional[Path] = None,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     dur = time.perf_counter() - start
     return CmdResult(proc.returncode, proc.stdout, proc.stderr, dur)
@@ -207,17 +190,13 @@ def run(cmd: Sequence[str], cwd: Optional[Path] = None,
 class Console:
     def __init__(self, use_color: bool):
         self.use_color = use_color
-
     def _c(self, code: str) -> str:
         return code if self.use_color else ""
-
     def write(self, s: str) -> None:
         sys.stdout.write(s)
         sys.stdout.flush()
-
     def writeln(self, s: str = "") -> None:
         self.write(s + "\n")
-
     def banner(self, version: str) -> None:
         c = self
         bar = "═" * 70
@@ -228,36 +207,28 @@ class Console:
                   f"{c._c(Ansi.RESET)}{c._c(Ansi.DIM)}·  {version}{c._c(Ansi.RESET)}")
         c.writeln(f"{c._c(Ansi.CYAN)}{c._c(Ansi.BOLD)}{bar}{c._c(Ansi.RESET)}")
         c.writeln()
-
     def step_header(self, idx: int, total: int, title: str, hint: str = "") -> None:
         c = self
         bullet = f"{c._c(Ansi.BR_YEL)}▶{c._c(Ansi.RESET)}"
         idx_str = f"{c._c(Ansi.GRAY)}[{idx}/{total}]{c._c(Ansi.RESET)}"
         title_str = f"{c._c(Ansi.BOLD)}{c._c(Ansi.BR_WHT)}{title}{c._c(Ansi.RESET)}"
-        hint_str = (f"  {c._c(Ansi.DIM)}{c._c(Ansi.GRAY)}{hint}{c._c(Ansi.RESET)}"
-                    if hint else "")
+        hint_str = (f"  {c._c(Ansi.DIM)}{c._c(Ansi.GRAY)}{hint}{c._c(Ansi.RESET)}" if hint else "")
         c.writeln(f"  {bullet} {idx_str}  {title_str}{hint_str}")
         c.writeln(f"  {c._c(Ansi.GRAY)}{'─' * 66}{c._c(Ansi.RESET)}")
-
     def ok(self, msg: str) -> None:
         self.writeln(f"      {self._c(Ansi.GREEN)}✓{self._c(Ansi.RESET)}  {msg}")
-
     def info(self, msg: str) -> None:
         self.writeln(f"      {self._c(Ansi.CYAN)}·{self._c(Ansi.RESET)}  {msg}")
-
     def warn(self, msg: str) -> None:
         self.writeln(f"      {self._c(Ansi.YELLOW)}!{self._c(Ansi.RESET)}  {msg}")
-
     def fail(self, msg: str) -> None:
         self.writeln(f"      {self._c(Ansi.RED)}✗{self._c(Ansi.RESET)}  {msg}")
-    
     @contextmanager
     def progress(self, total: int, label: str, color: str = Ansi.BR_CYN):
         c = self
         width = 38
         started = time.perf_counter()
         state = {"done": 0, "msg": ""}
-
         def render() -> None:
             pct = (state["done"] / total) if total else 1.0
             fill = int(round(width * pct))
@@ -273,12 +244,10 @@ class Console:
                 f"{c._c(Ansi.GRAY)}elap {elapsed:5.1f}s eta {eta:4.1f}s{c._c(Ansi.RESET)}"
             )
             sys.stdout.flush()
-
         def update(done: int, msg: str = "") -> None:
             state["done"] = done
             state["msg"] = msg
             render()
-
         c.write(c._c(Ansi.CURSOR_HIDE))
         try:
             update(0, label)
@@ -288,9 +257,7 @@ class Console:
             sys.stdout.write("\n")
             sys.stdout.flush()
             c.write(c._c(Ansi.CURSOR_SHOW))
-
     def summary(self, rows: Sequence[Tuple[str, str, str]]) -> None:
-        
         c = self
         c.writeln()
         c.writeln(f"  {c._c(Ansi.BOLD)}{c._c(Ansi.BR_WHT)}Summary{c._c(Ansi.RESET)}")
@@ -305,11 +272,10 @@ class Task:
     name: str
     cmd:  List[str]
     cwd:  Optional[Path] = None
-    out:  Optional[Path] = None       
-    deps: List["Task"] = field(default_factory=list)
+    out:  Optional[Path] = None
+    deps: List[Task] = field(default_factory=list)
     description: str = ""
-    group: str = ""                   
-
+    group: str = ""
     def is_stale(self) -> bool:
         if not self.out:
             return True
@@ -323,7 +289,6 @@ class Task:
                 if path.exists() and path.stat().st_mtime > out_mtime:
                     return True
         return False
-
     def dep_paths(self) -> Iterable[Path]:
         for tok in self.cmd:
             if tok.startswith("-"):
@@ -389,28 +354,14 @@ def task_python(name: str, script: Path, args: Sequence[str],
         out=out, deps=[], description=str(script.name), group="python",
     )
 
-@dataclass
-class BuildPlan:
-    
-    tasks: List[Task]
-    user_elves: List[Tuple[Task, Task]]   
-
-    def all(self) -> List[Task]:
-        out = list(self.tasks)
-        for elf, data in self.user_elves:
-            out += [elf, data]
-        return out
-
-def make_plan(tools: Tools) -> BuildPlan:
+def make_plan(tools: Tools):
     tasks: List[Task] = []
-    user_elves: List[Tuple[Task, Task]] = []
+    user_elves: List[Task] = []
 
-    tasks += [
-        task_assemble_bin("boot.bin",
-                          BOOT_DIR / "boot.asm", BUILD_DIR / "boot.bin", tools),
-        task_assemble_bin("loader.bin",
-                          BOOT_DIR / "loader.asm", BUILD_DIR / "loader.bin", tools),
-    ]
+    tasks.append(task_assemble_bin("boot.bin",
+                          BOOT_DIR / "boot.asm", BUILD_DIR / "boot.bin", tools))
+    tasks.append(task_assemble_bin("loader.bin",
+                          BOOT_DIR / "loader.asm", BUILD_DIR / "loader.bin", tools))
 
     for stem in ("func", "io", "stub", "entry", "switch"):
         tasks.append(task_assemble_elf(
@@ -423,7 +374,7 @@ def make_plan(tools: Tools) -> BuildPlan:
         "up_start.o", CMD_DIR / "start.asm", BUILD_DIR / "up_start.o", tools,
     ))
 
-    KERNEL_C_SOURCES = [
+    kernel_c_sources = [
         ("ioc.o",        KERNEL_DIR / "initer" / "io" / "io.c"),
         ("pic.o",        KERNEL_DIR / "initer" / "pic" / "pic.c"),
         ("pit.o",        KERNEL_DIR / "initer" / "pit" / "pit.c"),
@@ -440,6 +391,7 @@ def make_plan(tools: Tools) -> BuildPlan:
         ("ioqueue.o",    KERNEL_DIR / "device" / "ioqueue.c"),
         ("keyboard.o",   KERNEL_DIR / "device" / "keyboard.c"),
         ("ide.o",        KERNEL_DIR / "device" / "ide.c"),
+        ("ext2.o",       KERNEL_DIR / "fs" / "ext2.c"),
         ("fs.o",         KERNEL_DIR / "fs" / "fs.c"),
         ("inode.o",      KERNEL_DIR / "fs" / "inode.c"),
         ("dir.o",        KERNEL_DIR / "fs" / "dir.c"),
@@ -453,10 +405,15 @@ def make_plan(tools: Tools) -> BuildPlan:
         ("pipe.o",       KERNEL_DIR / "shell" / "pipe.c"),
         ("ksyscall.o",   KERNEL_DIR / "syscall" / "syscall.c"),
         ("signal.o",     KERNEL_DIR / "syscall" / "signal.c"),
+        ("file_syscall.o",KERNEL_DIR / "syscall" / "file_syscall.c"),
+        ("mmap.o",       KERNEL_DIR / "syscall" / "mmap.c"),
+        ("futex.o",      KERNEL_DIR / "syscall" / "futex.c"),
+        ("linux_compat.o", KERNEL_DIR / "syscall" / "linux_compat.c"),
         ("usyscall.o",   KERNEL_DIR / "lib" / "user" / "syscall.c"),
         ("ustdio.o",     KERNEL_DIR / "lib" / "user" / "stdio.c"),
         ("wait_exit.o",  KERNEL_DIR / "userprog" / "wait_exit.c"),
         ("fork.o",       KERNEL_DIR / "userprog" / "fork.c"),
+        ("clone.o",      KERNEL_DIR / "userprog" / "clone.c"),
         ("mouse.o",      KERNEL_DIR / "device" / "mouse.c"),
         ("gfx.o",        KERNEL_DIR / "gui" / "gfx.c"),
         ("shm.o",        KERNEL_DIR / "gui" / "shm.c"),
@@ -466,10 +423,10 @@ def make_plan(tools: Tools) -> BuildPlan:
         ("guiclients.o", KERNEL_DIR / "gui" / "clients.c"),
         ("gui.o",        KERNEL_DIR / "gui" / "gui.c"),
     ]
-    for stem, src in KERNEL_C_SOURCES:
-        tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, CFLAGS_OS))
+    for stem, src in kernel_c_sources:
+        tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, CFLAGS))
 
-    USER_PROGRAMS = [
+    user_programs = [
         ("prog_no_arg", "prog_no_arg.c", "main",   []),
         ("prog_arg",    "prog_arg.c",    "_start", []),
         ("cat",         "cat.c",         "_start", []),
@@ -478,9 +435,14 @@ def make_plan(tools: Tools) -> BuildPlan:
         ("font_demo",   "font_demo.c",   "_start", ["-Os"]),
         ("heap_demo",   "heap_demo.c",   "_start", []),
         ("signal_demo", "signal_demo.c", "_start", []),
+        ("mmap_demo",   "mmap_demo.c",   "_start", []),
+        ("mmap2_demo",  "mmap2_demo.c",  "_start", []),
+        ("futex_demo",  "futex_demo.c",  "_start", []),
+        ("fsyscall_demo","fsyscall_demo.c","_start", []),
+        ("clone_demo",  "clone_demo.c",  "_start", []),
     ]
 
-    USER_LIB_SOURCES = [
+    user_lib_sources = [
         (KERNEL_DIR / "lib" / "user", "stdio.c",   "up_stdio.o"),
         (KERNEL_DIR / "lib" / "user", "syscall.c", "up_syscall.o"),
         (KERNEL_DIR / "lib" / "str",  "str.c",     "up_str.o"),
@@ -489,25 +451,27 @@ def make_plan(tools: Tools) -> BuildPlan:
 
     def compile_user_lib(out_dir: Path) -> List[Path]:
         outs = []
-        for _dir, fname, oname in USER_LIB_SOURCES:
+        for _dir, fname, oname in user_lib_sources:
             src = _dir / fname
             obj = out_dir / oname
-            tasks.append(task_cc(oname, src, obj, tools, CFLAGS_UP))
+            tasks.append(task_cc(oname, src, obj, tools, UP_CFLAGS))
             outs.append(obj)
         return outs
 
     lib_objs = compile_user_lib(BUILD_DIR)
 
-    for prog_name, src_c, entry_flag, opt_flags in USER_PROGRAMS:
+    for prog_name, src_c, entry_flag, opt_flags in user_programs:
         nick_map = {"prog_no_arg": "up_no_arg", "prog_arg": "up_arg",
                     "cat": "up_cat", "fork_demo": "up_fork",
                     "prog_pipe": "up_pipe", "font_demo": "up_font",
-                    "heap_demo": "up_heap", "signal_demo": "up_signal"}
+                    "heap_demo": "up_heap_demo", "signal_demo": "up_signal",
+                    "mmap_demo": "up_mmap_demo", "mmap2_demo": "up_mmap2_demo",
+                    "futex_demo": "up_futex_demo", "fsyscall_demo": "up_fsyscall_demo",
+                    "clone_demo": "up_clone_demo"}
         nick = nick_map.get(prog_name, f"up_{prog_name}")
         prog_obj = BUILD_DIR / f"{nick}.o"
         tasks.append(task_cc(nick, CMD_DIR / src_c, prog_obj, tools,
-                             CFLAGS_UP + opt_flags))
-
+                             UP_CFLAGS + opt_flags))
         elf_flags = list(UP_LDFLAGS)
         if entry_flag:
             elf_flags[elf_flags.index("-e") + 1] = entry_flag
@@ -518,13 +482,154 @@ def make_plan(tools: Tools) -> BuildPlan:
             flags=elf_flags,
         )
         tasks.append(elf_task)
+        user_elves.append(elf_task)
 
-        data_o = BUILD_DIR / f"{prog_name}_data.o"
-        data_task = task_objcopy_binary(
-            f"{prog_name}_data.o", elf, data_o, tools, symbol=prog_name,
-        )
-        tasks.append(data_task)
-        user_elves.append((elf_task, data_task))
+    tasks.append(task_assemble_elf(
+        "lc_start.o", CMD_DIR / "lc_crt0.asm", BUILD_DIR / "lc_start.o", tools,
+    ))
+    lc_libc = task_cc("lc_libc.o", KERNEL_DIR / "lib" / "compat" / "lc_libc.c",
+                      BUILD_DIR / "lc_libc.o", tools, LC_CFLAGS)
+    tasks.append(lc_libc)
+    lc_demo_c = task_cc("lc_demo.o", CMD_DIR / "lc_demo.c",
+                        BUILD_DIR / "lc_demo.o", tools, LC_CFLAGS)
+    tasks.append(lc_demo_c)
+    lc_elf = task_link("lc_demo.elf", BUILD_DIR / "lc_demo.elf", tools,
+                       [BUILD_DIR / "lc_start.o", BUILD_DIR / "lc_demo.o",
+                        BUILD_DIR / "lc_libc.o"],
+                       flags=["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_lc_start"])
+    tasks.append(lc_elf)
+    user_elves.append(lc_elf)
+
+    musl_start = task_assemble_elf("musl_start.o", MUSL_SRC / "nitian" / "musl_crt0.asm",
+                                   BUILD_DIR / "musl_start.o", tools)
+    tasks.append(musl_start)
+    musl_syscall = task_assemble_elf("musl_syscall.o", MUSL_SRC / "nitian" / "musl_syscall.asm",
+                                     BUILD_DIR / "musl_syscall.o", tools)
+    tasks.append(musl_syscall)
+
+    musl_c_sources = [
+        ("nt_errno.o", MUSL_SRC / "nitian" / "nt_errno.c"),
+        ("musl_ret.o", MUSL_SRC / "src" / "internal" / "syscall_ret.c"),
+        ("musl_getpid.o", MUSL_SRC / "src" / "unistd" / "getpid.c"),
+        ("musl_write.o", MUSL_SRC / "src" / "unistd" / "write.c"),
+        ("musl_exit.o", MUSL_SRC / "src" / "unistd" / "_exit.c"),
+        ("musl_exit_cap.o", MUSL_SRC / "src" / "exit" / "_Exit.c"),
+        ("musl_strlen.o", MUSL_SRC / "src" / "string" / "strlen.c"),
+        ("musl_strcpy.o", MUSL_SRC / "src" / "string" / "strcpy.c"),
+        ("musl_strcmp.o", MUSL_SRC / "src" / "string" / "strcmp.c"),
+        ("musl_strchr.o", MUSL_SRC / "src" / "string" / "strchr.c"),
+        ("musl_stpcpy.o", MUSL_SRC / "src" / "string" / "stpcpy.c"),
+        ("musl_strchrnul.o", MUSL_SRC / "src" / "string" / "strchrnul.c"),
+        ("musl_vfprintf.o", MUSL_SRC / "src" / "stdio" / "vfprintf.c"),
+        ("musl_vsnprintf.o", MUSL_SRC / "src" / "stdio" / "vsnprintf.c"),
+        ("musl_snprintf.o", MUSL_SRC / "src" / "stdio" / "snprintf.c"),
+        ("musl_sprintf.o", MUSL_SRC / "src" / "stdio" / "sprintf.c"),
+        ("musl_printf.o", MUSL_SRC / "src" / "stdio" / "printf.c"),
+        ("musl_fprintf.o", MUSL_SRC / "src" / "stdio" / "fprintf.c"),
+        ("musl_stdout.o", MUSL_SRC / "src" / "stdio" / "stdout.c"),
+        ("musl_towrite.o", MUSL_SRC / "src" / "stdio" / "__towrite.c"),
+        ("musl_stdiowrite.o", MUSL_SRC / "src" / "stdio" / "__stdio_write.c"),
+        ("musl_fwrite.o", MUSL_SRC / "src" / "stdio" / "fwrite.c"),
+        ("musl_overflow.o", MUSL_SRC / "src" / "stdio" / "__overflow.c"),
+        ("musl_uflow.o", MUSL_SRC / "src" / "stdio" / "__uflow.c"),
+        ("musl_toread.o", MUSL_SRC / "src" / "stdio" / "__toread.c"),
+        ("musl_stdioclose.o", MUSL_SRC / "src" / "stdio" / "__stdio_close.c"),
+        ("musl_strncpy.o", MUSL_SRC / "src" / "string" / "strncpy.c"),
+        ("musl_strncmp.o", MUSL_SRC / "src" / "string" / "strncmp.c"),
+        ("musl_strncat.o", MUSL_SRC / "src" / "string" / "strncat.c"),
+        ("musl_strrchr.o", MUSL_SRC / "src" / "string" / "strrchr.c"),
+        ("musl_strspn.o", MUSL_SRC / "src" / "string" / "strspn.c"),
+        ("musl_strcspn.o", MUSL_SRC / "src" / "string" / "strcspn.c"),
+        ("musl_strpbrk.o", MUSL_SRC / "src" / "string" / "strpbrk.c"),
+        ("musl_strtok.o", MUSL_SRC / "src" / "string" / "strtok.c"),
+        ("musl_strlcpy.o", MUSL_SRC / "src" / "string" / "strlcpy.c"),
+        ("musl_strlcat.o", MUSL_SRC / "src" / "string" / "strlcat.c"),
+        ("musl_strdup.o", MUSL_SRC / "src" / "string" / "strdup.c"),
+        ("musl_strnlen.o", MUSL_SRC / "src" / "string" / "strnlen.c"),
+        ("musl_memcpy.o", MUSL_SRC / "src" / "string" / "memcpy.c"),
+        ("musl_memset.o", MUSL_SRC / "src" / "string" / "memset.c"),
+        ("musl_memcmp.o", MUSL_SRC / "src" / "string" / "memcmp.c"),
+        ("musl_qsort.o", MUSL_SRC / "src" / "stdlib" / "qsort.c"),
+        ("musl_qsortnr.o", MUSL_SRC / "src" / "stdlib" / "qsort_nr.c"),
+        ("musl_atol.o", MUSL_SRC / "src" / "stdlib" / "atol.c"),
+        ("musl_atoi.o", MUSL_SRC / "src" / "stdlib" / "atoi.c"),
+        ("musl_strtol.o", MUSL_SRC / "src" / "stdlib" / "strtol.c"),
+        ("musl_intscan.o", MUSL_SRC / "src" / "internal" / "intscan.c"),
+        ("musl_shgetc.o", MUSL_SRC / "src" / "internal" / "shgetc.c"),
+        ("musl_basename.o", MUSL_SRC / "src" / "misc" / "basename.c"),
+        ("musl_dirname.o", MUSL_SRC / "src" / "misc" / "dirname.c"),
+        ("nt_libc_stubs.o", MUSL_SRC / "nitian" / "nt_libc_stubs.c"),
+        ("nt_fnmatch.o", MUSL_SRC / "nitian" / "nt_fnmatch.c"),
+    ]
+    for stem, src in musl_c_sources:
+        tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, MUSL_CFLAGS))
+
+    musl_demo_c = task_cc("musl_demo.o", CMD_DIR / "musl_demo.c",
+                          BUILD_DIR / "musl_demo.o", tools, MUSL_CFLAGS)
+    tasks.append(musl_demo_c)
+
+    musl_demo_elf = task_link("musl_demo.elf", BUILD_DIR / "musl_demo.elf", tools,
+        [BUILD_DIR / "musl_start.o", BUILD_DIR / "musl_demo.o",
+         BUILD_DIR / "musl_getpid.o", BUILD_DIR / "musl_write.o",
+         BUILD_DIR / "musl_exit.o", BUILD_DIR / "musl_exit_cap.o",
+         BUILD_DIR / "musl_strlen.o", BUILD_DIR / "musl_strcpy.o",
+         BUILD_DIR / "musl_strcmp.o", BUILD_DIR / "musl_strchr.o",
+         BUILD_DIR / "musl_stpcpy.o", BUILD_DIR / "musl_strchrnul.o",
+         BUILD_DIR / "musl_ret.o", BUILD_DIR / "nt_errno.o",
+         BUILD_DIR / "musl_syscall.o"],
+        flags=["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_musl_start"])
+    tasks.append(musl_demo_elf)
+    user_elves.append(musl_demo_elf)
+
+    libc_tests_main = task_cc("libc_tests_main.o", CMD_DIR / "libc_tests_main.c",
+                              BUILD_DIR / "libc_tests_main.o", tools, MUSL_CFLAGS)
+    tasks.append(libc_tests_main)
+
+    tests_sources = [
+        ("test_string.o", SRC_DIR / "app" / "libc-testsuite" / "string.c"),
+        ("test_qsort.o", SRC_DIR / "app" / "libc-testsuite" / "qsort.c"),
+        ("test_strtol.o", SRC_DIR / "app" / "libc-testsuite" / "strtol.c"),
+        ("test_strtod.o", SRC_DIR / "app" / "libc-testsuite" / "strtod.c"),
+        ("test_basename.o", SRC_DIR / "app" / "libc-testsuite" / "basename.c"),
+        ("test_dirname.o", SRC_DIR / "app" / "libc-testsuite" / "dirname.c"),
+        ("test_fnmatch.o", SRC_DIR / "app" / "libc-testsuite" / "fnmatch.c"),
+    ]
+    for stem, src in tests_sources:
+        tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, MUSL_CFLAGS))
+
+    libc_tests_elf = task_link("libc_testsuite.elf", BUILD_DIR / "libc_testsuite.elf", tools,
+        [BUILD_DIR / "musl_start.o", BUILD_DIR / "musl_syscall.o",
+         BUILD_DIR / "musl_ret.o", BUILD_DIR / "nt_errno.o",
+         BUILD_DIR / "libc_tests_main.o",
+         BUILD_DIR / "test_string.o", BUILD_DIR / "test_qsort.o",
+         BUILD_DIR / "test_strtol.o", BUILD_DIR / "test_strtod.o",
+         BUILD_DIR / "test_basename.o", BUILD_DIR / "test_dirname.o",
+         BUILD_DIR / "test_fnmatch.o",
+         BUILD_DIR / "musl_vfprintf.o", BUILD_DIR / "musl_vsnprintf.o",
+         BUILD_DIR / "musl_snprintf.o", BUILD_DIR / "musl_sprintf.o",
+         BUILD_DIR / "musl_printf.o", BUILD_DIR / "musl_fprintf.o",
+         BUILD_DIR / "musl_stdout.o", BUILD_DIR / "musl_towrite.o",
+         BUILD_DIR / "musl_stdiowrite.o", BUILD_DIR / "musl_fwrite.o",
+         BUILD_DIR / "musl_overflow.o", BUILD_DIR / "musl_uflow.o",
+         BUILD_DIR / "musl_toread.o", BUILD_DIR / "musl_stdioclose.o",
+         BUILD_DIR / "musl_strlen.o", BUILD_DIR / "musl_strcpy.o",
+         BUILD_DIR / "musl_strcmp.o", BUILD_DIR / "musl_strchr.o",
+         BUILD_DIR / "musl_strncpy.o", BUILD_DIR / "musl_strncmp.o",
+         BUILD_DIR / "musl_strncat.o", BUILD_DIR / "musl_strrchr.o",
+         BUILD_DIR / "musl_strspn.o", BUILD_DIR / "musl_strcspn.o",
+         BUILD_DIR / "musl_strpbrk.o", BUILD_DIR / "musl_strtok.o",
+         BUILD_DIR / "musl_strlcpy.o", BUILD_DIR / "musl_strlcat.o",
+         BUILD_DIR / "musl_strdup.o", BUILD_DIR / "musl_strnlen.o",
+         BUILD_DIR / "musl_memcpy.o", BUILD_DIR / "musl_memset.o",
+         BUILD_DIR / "musl_memcmp.o", BUILD_DIR / "musl_qsort.o",
+         BUILD_DIR / "musl_qsortnr.o", BUILD_DIR / "musl_atol.o",
+         BUILD_DIR / "musl_atoi.o", BUILD_DIR / "musl_strtol.o",
+         BUILD_DIR / "musl_intscan.o", BUILD_DIR / "musl_shgetc.o",
+         BUILD_DIR / "musl_basename.o", BUILD_DIR / "musl_dirname.o",
+         BUILD_DIR / "nt_libc_stubs.o", BUILD_DIR / "nt_fnmatch.o"],
+        flags=["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_musl_start"])
+    tasks.append(libc_tests_elf)
+    user_elves.append(libc_tests_elf)
 
     font_subset = BUILD_DIR / "font_subset.ttf"
     tasks.append(task_python(
@@ -533,38 +638,25 @@ def make_plan(tools: Tools) -> BuildPlan:
         [str(KERNEL_DIR / "lib" / "assets" / "font.ttf"), str(font_subset)],
         out=font_subset,
     ))
-    font_data_o = BUILD_DIR / "font_subset_ttf_data.o"
-    tasks.append(task_objcopy_binary(
-        "font_subset_ttf_data.o", font_subset, font_data_o, tools,
-        symbol="font_subset_ttf",
-    ))
 
-    KERNEL_OBJS = [
+    kernel_objs_names = [
         "entry.o", "kernel.o", "func.o", "ioc.o", "io.o",
         "pic.o", "pit.o", "stub.o", "idt.o", "interrupt.o",
         "assert.o", "str.o", "bitmap.o", "pool.o", "list.o",
         "switch.o", "thread.o", "sync.o", "ioqueue.o", "keyboard.o",
-        "ide.o", "fs.o", "inode.o", "dir.o", "file.o",
+        "ide.o", "ext2.o", "fs.o", "inode.o", "dir.o", "file.o",
         "gdt.o", "tss.o", "process.o", "exec.o", "shell.o",
-        "buildin_cmd.o", "ksyscall.o", "signal.o", "usyscall.o", "ustdio.o",
-        "wait_exit.o", "fork.o", "pipe.o",
+        "buildin_cmd.o", "pipe.o", "ksyscall.o", "mmap.o", "futex.o",
+        "linux_compat.o", "signal.o", "file_syscall.o",
+        "usyscall.o", "ustdio.o", "wait_exit.o", "fork.o", "clone.o",
         "mouse.o", "gfx.o", "shm.o", "guiserver.o", "layout.o",
         "wm.o", "guiclients.o", "gui.o",
     ]
-    USER_DATA_OBJS = [
-        "prog_no_arg_data.o", "prog_arg_data.o", "cat_data.o",
-        "fork_demo_data.o", "prog_pipe_data.o", "font_demo_data.o",
-        "heap_demo_data.o", "signal_demo_data.o",
-    ]
-    KERNEL_LINK_OBJS = (
-        [BUILD_DIR / n for n in KERNEL_OBJS]
-        + [BUILD_DIR / n for n in USER_DATA_OBJS]
-        + [font_data_o]
-    )
+    kernel_link_objs = [BUILD_DIR / n for n in kernel_objs_names]
 
     kernel_elf = BUILD_DIR / "kernel.elf"
     tasks.append(task_link(
-        "kernel.elf", kernel_elf, tools, KERNEL_LINK_OBJS,
+        "kernel.elf", kernel_elf, tools, kernel_link_objs,
         script=LINKER_DIR / "kernel.ld",
     ))
     kernel_bin = BUILD_DIR / "kernel.bin"
@@ -574,7 +666,7 @@ def make_plan(tools: Tools) -> BuildPlan:
         out=kernel_bin, deps=[], description="strip ELF → flat binary",
         group="objcopy",
     ))
-    
+
     floppy_img = BUILD_DIR / "floppy.img"
     tasks.append(task_python(
         "floppy.img",
@@ -587,6 +679,13 @@ def make_plan(tools: Tools) -> BuildPlan:
     ))
 
     return BuildPlan(tasks=tasks, user_elves=user_elves)
+
+@dataclass
+class BuildPlan:
+    tasks: List[Task]
+    user_elves: List[Task]
+    def all(self) -> List[Task]:
+        return list(self.tasks) + list(self.user_elves)
 
 def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
                  jobs: int = 1) -> BuildStats:
@@ -615,20 +714,29 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
         if not res.ok:
             stats.failed += 1
             console.fail(f"{task.name} (exit {res.returncode})")
-            
             for line in (res.stderr or res.stdout).splitlines()[-30:]:
                 console.writeln(f"          {line}")
             raise SystemExit(res.returncode)
         stats.compiled += 1
         stats.timings[task.name] = (time.perf_counter() - t0, "built")
 
-    total_steps = 8
+    def fmt_dur(seconds: float) -> str:
+        if seconds < 0.05:
+            return "(<0.1s)"
+        if seconds < 10:
+            return f"({seconds:.2f}s)"
+        return f"({seconds/60:.1f}min)"
+
+    def c_dim(s: str) -> str:
+        return f"{console._c(Ansi.DIM)}{console._c(Ansi.GRAY)}{s}{console._c(Ansi.RESET)}"
+
+    total_steps = 9
     s = 1
 
     console.step_header(s, total_steps, "Assembling boot sectors")
     for t in plan.tasks[:2]:
         run_task(t)
-        console.ok(f"{t.description}  {c_dim(console, fmt_dur(stats.timings[t.name][0]))}")
+        console.ok(f"{t.description}  {c_dim(fmt_dur(stats.timings[t.name][0]))}")
     s += 1
 
     console.step_header(s, total_steps, "Compiling kernel assembly")
@@ -636,19 +744,21 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
                 ("func.o", "io.o", "stub.o", "entry.o", "switch.o")]
     for t in asm_kern:
         run_task(t)
-        console.ok(f"{t.description}  {c_dim(console, fmt_dur(stats.timings[t.name][0]))}")
+        console.ok(f"{t.description}  {c_dim(fmt_dur(stats.timings[t.name][0]))}")
     s += 1
 
     console.step_header(s, total_steps, "Compiling kernel C objects")
     cc_kern = [t for t in plan.tasks if t.group == "cc" and t.name.endswith(".o")
-               and not t.name.startswith("up_")]
+               and not t.name.startswith("up_") and not t.name.startswith("lc_")
+               and not t.name.startswith("musl_") and not t.name.startswith("test_")
+               and not t.name.startswith("libc_tests_main")]
     with console.progress(len(cc_kern), "kernel C", Ansi.BR_CYN) as update:
         for i, t in enumerate(cc_kern, 1):
             run_task(t)
             update(i, t.description)
     s += 1
 
-    console.step_header(s, total_steps, "Compiling user-program objects")
+    console.step_header(s, total_steps, "Compiling user & lib objects")
     user_lib = [t for t in plan.tasks if t.group == "cc" and t.name.startswith("up_")]
     prog_obj = [t for t in plan.tasks if t.group == "cc" and t.name.startswith("up_")
                 and t.name not in ("up_start.o",)]
@@ -663,21 +773,40 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
                 update(i, t.description)
     s += 1
 
-    console.step_header(s, total_steps, "Linking & packing user ELFs")
-    with console.progress(len(plan.user_elves) * 2 + 1, "user ELFs", Ansi.BR_GRN) as update:
-        i = 0
-        for elf_task, data_task in plan.user_elves:
-            i += 1; run_task(elf_task);  update(i, elf_task.description)
-            i += 1; run_task(data_task); update(i, data_task.description)
+    console.step_header(s, total_steps, "Building lc_demo")
+    lc_tasks = [t for t in plan.tasks if t.group in ("asm","cc","link","objcopy") and "lc_" in t.name]
+    with console.progress(len(lc_tasks), "lc_demo", Ansi.BR_MAG) as update:
+        for i, t in enumerate(lc_tasks, 1):
+            run_task(t)
+            update(i, t.description)
+    s += 1
+
+    console.step_header(s, total_steps, "Building musl demos & libc testsuite")
+    musl_tasks = [t for t in plan.tasks if t.group in ("asm","cc","link","objcopy") and
+                  ("musl_" in t.name or "test_" in t.name or "nt_" in t.name or
+                   "libc_tests" in t.name)]
+    with console.progress(len(musl_tasks), "musl", Ansi.BR_BLU) as update:
+        for i, t in enumerate(musl_tasks, 1):
+            run_task(t)
+            update(i, t.description)
     s += 1
 
     console.step_header(s, total_steps, "Generating font subset")
     font_py = [t for t in plan.tasks if t.group == "python" and "font" in t.name]
-    font_obj = [t for t in plan.tasks if t.group == "objcopy" and "font" in t.name]
-    with console.progress(len(font_py) + len(font_obj), "font", Ansi.BR_MAG) as update:
+    with console.progress(len(font_py), "font", Ansi.BR_MAG) as update:
         i = 0
-        for t in font_py + font_obj:
-            i += 1; run_task(t); update(i, t.description)
+        for t in font_py:
+            i += 1
+            run_task(t)
+            update(i, t.description)
+    s += 1
+
+    console.step_header(s, total_steps, "Linking user ELFs (remaining)")
+    user_elf_tasks = list(plan.user_elves)
+    with console.progress(len(user_elf_tasks), "user ELFs", Ansi.BR_GRN) as update:
+        for i, t in enumerate(user_elf_tasks, 1):
+            run_task(t)
+            update(i, t.description)
     s += 1
 
     console.step_header(s, total_steps, "Linking kernel image")
@@ -699,21 +828,11 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
             console.writeln(f"          {line}")
         raise SystemExit(res.returncode)
     dur = time.perf_counter() - t0
-    console.ok(f"build/floppy.img  {c_dim(console, fmt_dur(dur))}")
+    console.ok(f"build/floppy.img  {c_dim(fmt_dur(dur))}")
     s += 1
 
     stats.timings["__total__"] = (time.perf_counter() - overall_t0, "overall")
     return stats
-
-def fmt_dur(seconds: float) -> str:
-    if seconds < 0.05:
-        return f"(<0.1s)"
-    if seconds < 10:
-        return f"({seconds:.2f}s)"
-    return f"({seconds/60:.1f}min)"
-
-def c_dim(console: Console, s: str) -> str:
-    return f"{console._c(Ansi.DIM)}{console._c(Ansi.GRAY)}{s}{console._c(Ansi.RESET)}"
 
 def show_failure_hint(console: Console, missing: List[str]) -> None:
     console.writeln()
@@ -741,11 +860,10 @@ def do_run(console: Console, stats: BuildStats) -> None:
         return
     hd_img = BUILD_DIR / "test_hd.img"
     if not hd_img.exists():
-        
-        mkdisk = SCRIPTS / "make_disk.py"
+        mkdisk = SCRIPTS / "make_ext2.py"
         if mkdisk.exists():
-            console.info("generating test_hd.img via make_disk.py")
-            run([sys.executable, str(mkdisk), str(hd_img)])
+            console.info("generating test_hd.img via make_ext2.py")
+            run([sys.executable, str(mkdisk), str(BUILD_DIR), str(hd_img)])
     console.writeln()
     console.writeln(f"  {console._c(Ansi.BR_GRN)}▶ launching qemu...{console._c(Ansi.RESET)}")
     console.writeln()
@@ -773,7 +891,6 @@ def main(argv: Sequence[str]) -> int:
 
     _enable_vt_on_windows()
     console = Console(use_color=color_enabled(args.no_color))
-
     console.banner("v1.0  ·  Windows / Linux / macOS")
 
     if args.target == "clean":
@@ -815,6 +932,13 @@ def main(argv: Sequence[str]) -> int:
         return f"{n:.1f} GB"
 
     total_dur = stats.timings.get("__total__", (0.0, ""))[0]
+    def fmt_dur(seconds: float) -> str:
+        if seconds < 0.05:
+            return "(<0.1s)"
+        if seconds < 10:
+            return f"({seconds:.2f}s)"
+        return f"({seconds/60:.1f}min)"
+
     console.summary([
         ("artefacts",   f"floppy.img · kernel.bin · kernel.elf", Ansi.BR_WHT),
         ("floppy size", human_size(floppy),                       Ansi.BR_CYN),

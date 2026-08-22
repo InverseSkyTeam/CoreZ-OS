@@ -1,7 +1,7 @@
+#include "signal.h"
 #include "stdio.h"
 #include "stdlib.h"
 #include "syscall.h"
-#include "signal.h"
 
 #define ITER 50000
 
@@ -12,9 +12,9 @@ static void handler(int sig) {
     g_caught = sig;
 }
 
-static void spin_until_caught(const char* label) {
+static void spin_until_caught(const char *label) {
     for (int i = 0; i < ITER && g_caught < 0; i++) {
-        getpid();   
+        getpid();
     }
     if (g_caught < 0) {
         printf("[signal] FAIL: %s not delivered\n", label);
@@ -27,7 +27,7 @@ int main(void) {
     struct sigaction act;
     act.sa_handler = handler;
     act.sa_mask = 0;
-    act.sa_flags = 0;        
+    act.sa_flags = 0;
     act.sa_restorer = 0;
 
     printf("signal_demo: start\n");
@@ -35,20 +35,18 @@ int main(void) {
     sigaction(SIGUSR1, &act, 0);
     sigaction(SIGUSR2, &act, 0);
 
-    int parent_pid = getpid();   
+    int parent_pid = getpid();
     pid_t pid = fork();
     if (pid == 0) {
-        
+
         kill(parent_pid, SIGUSR1);
         exit(0);
     }
 
-    
     g_caught = -1;
     spin_until_caught("SIGUSR1 (from child)");
     int from_child = g_caught;
 
-    
     g_caught = -1;
     kill(getpid(), SIGUSR2);
     spin_until_caught("SIGUSR2 (self)");

@@ -1,17 +1,18 @@
 // 参考: 《操作系统真相还原》(于渊) 第15章 系统交互
 #include "./buildin_cmd.h"
-#include "./shell.h"
-#include "../lib/user/syscall.h"
-#include "../lib/user/stdio.h"
-#include "../lib/str/str.h"
-#include "../fs/fs.h"
-#include "../fs/dir.h"
-#include "../include/assert.h"
 
-static void wash_path(char* old_abs_path, char* new_abs_path) {
+#include "../fs/dir.h"
+#include "../fs/fs.h"
+#include "../include/assert.h"
+#include "../lib/str/str.h"
+#include "../lib/user/stdio.h"
+#include "../lib/user/syscall.h"
+#include "./shell.h"
+
+static void wash_path(char *old_abs_path, char *new_abs_path) {
     ASSERT(old_abs_path[0] == '/');
     char name[MAX_FILE_NAME_LEN] = {0};
-    char* sub_path = old_abs_path;
+    char *sub_path = old_abs_path;
     sub_path = path_parse(sub_path, name);
     if (name[0] == 0) {
         new_abs_path[0] = '/';
@@ -22,7 +23,7 @@ static void wash_path(char* old_abs_path, char* new_abs_path) {
     strcat(new_abs_path, "/");
     while (name[0]) {
         if (!strcmp("..", name)) {
-            char* slash_ptr = strrchr(new_abs_path, '/');
+            char *slash_ptr = strrchr(new_abs_path, '/');
             if (slash_ptr != new_abs_path) {
                 *slash_ptr = 0;
             } else {
@@ -41,7 +42,7 @@ static void wash_path(char* old_abs_path, char* new_abs_path) {
     }
 }
 
-void make_clear_abs_path(char* path, char* final_path) {
+void make_clear_abs_path(char *path, char *final_path) {
     char abs_path[MAX_PATH_LEN] = {0};
     if (path[0] != '/') {
         if (getcwd(abs_path, MAX_PATH_LEN) != NULL) {
@@ -54,7 +55,7 @@ void make_clear_abs_path(char* path, char* final_path) {
     wash_path(abs_path, final_path);
 }
 
-void buildin_pwd(int32_t argc, char** argv) {
+void buildin_pwd(int32_t argc, char **argv) {
     (void)argv;
     if (argc != 1) {
         printf("pwd: no argument support!\n");
@@ -67,7 +68,7 @@ void buildin_pwd(int32_t argc, char** argv) {
     }
 }
 
-char* buildin_cd(int32_t argc, char** argv) {
+char *buildin_cd(int32_t argc, char **argv) {
     if (argc > 2) {
         printf("cd: only support 1 argument!\n");
         return NULL;
@@ -85,8 +86,8 @@ char* buildin_cd(int32_t argc, char** argv) {
     return final_path;
 }
 
-void buildin_ls(int32_t argc, char** argv) {
-    char* pathname = NULL;
+void buildin_ls(int32_t argc, char **argv) {
+    char *pathname = NULL;
     struct stat file_stat;
     int long_info = 0;
     int arg_path_nr = 0;
@@ -96,10 +97,13 @@ void buildin_ls(int32_t argc, char** argv) {
             if (!strcmp("-l", argv[arg_idx])) {
                 long_info = 1;
             } else if (!strcmp("-h", argv[arg_idx])) {
-                printf("usage: -l list all infomation about the file.\n-h for help\n");
+                printf("usage: -l list all infomation about the file.\n-h for "
+                       "help\n");
                 return;
             } else {
-                printf("ls: invalid option %s\nTry 'ls -h' for more infomation.\n", argv[arg_idx]);
+                printf(
+                    "ls: invalid option %s\nTry 'ls -h' for more infomation.\n",
+                    argv[arg_idx]);
                 return;
             }
         } else {
@@ -131,12 +135,12 @@ void buildin_ls(int32_t argc, char** argv) {
         return;
     }
     if (file_stat.st_filetype == FT_DIRECTORY) {
-        struct dir* dir = opendir(pathname);
+        struct dir *dir = opendir(pathname);
         if (dir == NULL) {
             printf("ls: cannot open directory %s\n", pathname);
             return;
         }
-        struct dir_entry* dir_e = NULL;
+        struct dir_entry *dir_e = NULL;
         char sub_pathname[MAX_PATH_LEN] = {0};
         uint32_t pathname_len = strlen(pathname);
         uint32_t last_char_idx = pathname_len - 1;
@@ -154,11 +158,13 @@ void buildin_ls(int32_t argc, char** argv) {
                 strcat(sub_pathname, dir_e->filename);
                 memset(&file_stat, 0, sizeof(file_stat));
                 if (stat(sub_pathname, &file_stat) == -1) {
-                    printf("ls: cannot access %s: No such file or directory\n", dir_e->filename);
+                    printf("ls: cannot access %s: No such file or directory\n",
+                           dir_e->filename);
                     closedir(dir);
                     return;
                 }
-                printf("%c  %d  %d  %s\n", ftype, dir_e->i_no, file_stat.st_size, dir_e->filename);
+                printf("%c  %d  %d  %s\n", ftype, dir_e->i_no,
+                       file_stat.st_size, dir_e->filename);
             }
         } else {
             while ((dir_e = readdir(dir))) {
@@ -169,14 +175,15 @@ void buildin_ls(int32_t argc, char** argv) {
         closedir(dir);
     } else {
         if (long_info) {
-            printf("-  %d  %d  %s\n", file_stat.st_ino, file_stat.st_size, pathname);
+            printf("-  %d  %d  %s\n", file_stat.st_ino, file_stat.st_size,
+                   pathname);
         } else {
             printf("%s\n", pathname);
         }
     }
 }
 
-void buildin_ps(int32_t argc, char** argv) {
+void buildin_ps(int32_t argc, char **argv) {
     (void)argv;
     if (argc != 1) {
         printf("ps: no argument support!\n");
@@ -185,7 +192,7 @@ void buildin_ps(int32_t argc, char** argv) {
     ps();
 }
 
-void buildin_clear(int32_t argc, char** argv) {
+void buildin_clear(int32_t argc, char **argv) {
     (void)argv;
     if (argc != 1) {
         printf("clear: no argument support!\n");
@@ -194,7 +201,7 @@ void buildin_clear(int32_t argc, char** argv) {
     clear();
 }
 
-int32_t buildin_mkdir(int32_t argc, char** argv) {
+int32_t buildin_mkdir(int32_t argc, char **argv) {
     int32_t ret = -1;
     if (argc != 2) {
         printf("mkdir: only support 1 argument!\n");
@@ -211,7 +218,7 @@ int32_t buildin_mkdir(int32_t argc, char** argv) {
     return ret;
 }
 
-int32_t buildin_rmdir(int32_t argc, char** argv) {
+int32_t buildin_rmdir(int32_t argc, char **argv) {
     int32_t ret = -1;
     if (argc != 2) {
         printf("rmdir: only support 1 argument!\n");
@@ -228,7 +235,7 @@ int32_t buildin_rmdir(int32_t argc, char** argv) {
     return ret;
 }
 
-int32_t buildin_rm(int32_t argc, char** argv) {
+int32_t buildin_rm(int32_t argc, char **argv) {
     int32_t ret = -1;
     if (argc != 2) {
         printf("rm: only support 1 argument!\n");

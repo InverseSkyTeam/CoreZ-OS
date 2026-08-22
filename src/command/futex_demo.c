@@ -3,12 +3,17 @@
 
 static int g_fail = 0;
 
-#define CHECK(cond, msg) do { \
-    if (!(cond)) { g_fail = 1; printf("  [FAIL] %s\n", msg); } \
-} while (0)
+#define CHECK(cond, msg)                                                       \
+    do {                                                                       \
+        if (!(cond)) {                                                         \
+            g_fail = 1;                                                        \
+            printf("  [FAIL] %s\n", msg);                                      \
+        }                                                                      \
+    } while (0)
 
-int main(int argc, char** argv) {
-    (void)argc; (void)argv;
+int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
     printf("futex_demo: start\n");
 
     volatile int fut = 10;

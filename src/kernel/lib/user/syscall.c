@@ -1,15 +1,13 @@
 // 参考: 《操作系统真相还原》(于渊) 第12章 系统调用
 
 #include "./syscall.h"
-#include "./signal.h"
+
 #include "../../include/syscall_nr.h"
+#include "./signal.h"
 
 static inline uint32_t syscall0(uint32_t nr) {
     uint32_t retval;
-    __asm__ volatile("int $0x80"
-                     : "=a"(retval)
-                     : "a"(nr)
-                     : "memory");
+    __asm__ volatile("int $0x80" : "=a"(retval) : "a"(nr) : "memory");
     return retval;
 }
 
@@ -31,7 +29,8 @@ static inline uint32_t syscall2(uint32_t nr, uint32_t arg1, uint32_t arg2) {
     return retval;
 }
 
-static inline uint32_t syscall3(uint32_t nr, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
+static inline uint32_t syscall3(uint32_t nr, uint32_t arg1, uint32_t arg2,
+                                uint32_t arg3) {
     uint32_t retval;
     __asm__ volatile("int $0x80"
                      : "=a"(retval)
@@ -40,7 +39,8 @@ static inline uint32_t syscall3(uint32_t nr, uint32_t arg1, uint32_t arg2, uint3
     return retval;
 }
 
-static inline uint32_t syscall4(uint32_t nr, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+static inline uint32_t syscall4(uint32_t nr, uint32_t arg1, uint32_t arg2,
+                                uint32_t arg3, uint32_t arg4) {
     uint32_t retval;
     __asm__ volatile("int $0x80"
                      : "=a"(retval)
@@ -54,68 +54,85 @@ uint32_t syscall5(uint32_t nr, uint32_t arg1, uint32_t arg2, uint32_t arg3,
     uint32_t retval;
     __asm__ volatile("int $0x80"
                      : "=a"(retval)
-                     : "a"(nr), "b"(arg1), "c"(arg2), "d"(arg3), "S"(arg4), "D"(arg5)
+                     : "a"(nr), "b"(arg1), "c"(arg2), "d"(arg3), "S"(arg4),
+                       "D"(arg5)
                      : "memory");
     return retval;
 }
 
-__attribute__((naked)) static uint32_t syscall6(uint32_t nr, uint32_t arg1, uint32_t arg2,
-                                                uint32_t arg3, uint32_t arg4, uint32_t arg5,
+__attribute__((naked)) static uint32_t syscall6(uint32_t nr, uint32_t arg1,
+                                                uint32_t arg2, uint32_t arg3,
+                                                uint32_t arg4, uint32_t arg5,
                                                 uint32_t arg6) {
-    __asm__ volatile(
-        "movl 4(%%esp), %%eax\n\t"
-        "movl 8(%%esp), %%ebx\n\t"
-        "movl 12(%%esp), %%ecx\n\t"
-        "movl 16(%%esp), %%edx\n\t"
-        "movl 20(%%esp), %%esi\n\t"
-        "movl 24(%%esp), %%edi\n\t"
-        "movl 28(%%esp), %%ebp\n\t"
-        "int $0x80\n\t"
-        "ret\n\t"
-        ::: "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "memory");
+    __asm__ volatile("movl 4(%%esp), %%eax\n\t"
+                     "movl 8(%%esp), %%ebx\n\t"
+                     "movl 12(%%esp), %%ecx\n\t"
+                     "movl 16(%%esp), %%edx\n\t"
+                     "movl 20(%%esp), %%esi\n\t"
+                     "movl 24(%%esp), %%edi\n\t"
+                     "movl 28(%%esp), %%ebp\n\t"
+                     "int $0x80\n\t"
+                     "ret\n\t" ::
+                         : "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp",
+                           "memory");
 }
 
-uint32_t getpid(void)                 { return syscall0(SYS_GETPID); }
-int32_t  write(int32_t fd, const void* buf, uint32_t count) {
+uint32_t getpid(void) { return syscall0(SYS_GETPID); }
+int32_t write(int32_t fd, const void *buf, uint32_t count) {
     return (int32_t)syscall3(SYS_WRITE, (uint32_t)fd, (uint32_t)buf, count);
 }
-int32_t  read(int32_t fd, void* buf, uint32_t count) {
+int32_t read(int32_t fd, void *buf, uint32_t count) {
     return (int32_t)syscall3(SYS_READ, (uint32_t)fd, (uint32_t)buf, count);
 }
-void     putchar(char c)              { write(1, &c, 1); }
-void     clear(void)                  { syscall0(SYS_CLEAR); }
-int32_t  fork(void)                   { return (int32_t)syscall0(SYS_FORK); }
-int32_t  open(const char* pathname, uint8_t flag) {
+void putchar(char c) { write(1, &c, 1); }
+void clear(void) { syscall0(SYS_CLEAR); }
+int32_t fork(void) { return (int32_t)syscall0(SYS_FORK); }
+int32_t open(const char *pathname, uint8_t flag) {
     return (int32_t)syscall2(SYS_OPEN, (uint32_t)pathname, (uint32_t)flag);
 }
-int32_t  close(int32_t fd)            { return (int32_t)syscall1(SYS_CLOSE, (uint32_t)fd); }
-int32_t  lseek(int32_t fd, int32_t offset, uint8_t whence) {
-    return (int32_t)syscall3(SYS_LSEEK, (uint32_t)fd, (uint32_t)offset, (uint32_t)whence);
+int32_t close(int32_t fd) { return (int32_t)syscall1(SYS_CLOSE, (uint32_t)fd); }
+int32_t lseek(int32_t fd, int32_t offset, uint8_t whence) {
+    return (int32_t)syscall3(SYS_LSEEK, (uint32_t)fd, (uint32_t)offset,
+                             (uint32_t)whence);
 }
-int32_t  unlink(const char* pathname) { return (int32_t)syscall1(SYS_UNLINK, (uint32_t)pathname); }
-int32_t  mkdir(const char* pathname)  { return (int32_t)syscall1(SYS_MKDIR, (uint32_t)pathname); }
-int32_t  rmdir(const char* pathname)  { return (int32_t)syscall1(SYS_RMDIR, (uint32_t)pathname); }
-int32_t  chdir(const char* path)      { return (int32_t)syscall1(SYS_CHDIR, (uint32_t)path); }
-char*    getcwd(char* buf, uint32_t size) { return (char*)syscall2(SYS_GETCWD, (uint32_t)buf, size); }
-int32_t  stat(const char* path, struct stat* buf) {
+int32_t unlink(const char *pathname) {
+    return (int32_t)syscall1(SYS_UNLINK, (uint32_t)pathname);
+}
+int32_t mkdir(const char *pathname) {
+    return (int32_t)syscall1(SYS_MKDIR, (uint32_t)pathname);
+}
+int32_t rmdir(const char *pathname) {
+    return (int32_t)syscall1(SYS_RMDIR, (uint32_t)pathname);
+}
+int32_t chdir(const char *path) {
+    return (int32_t)syscall1(SYS_CHDIR, (uint32_t)path);
+}
+char *getcwd(char *buf, uint32_t size) {
+    return (char *)syscall2(SYS_GETCWD, (uint32_t)buf, size);
+}
+int32_t stat(const char *path, struct stat *buf) {
     return (int32_t)syscall2(SYS_STAT, (uint32_t)path, (uint32_t)buf);
 }
-struct dir* opendir(const char* name) { return (struct dir*)syscall1(SYS_OPENDIR, (uint32_t)name); }
-int32_t  closedir(struct dir* dir)    { return (int32_t)syscall1(SYS_CLOSEDIR, (uint32_t)dir); }
-struct dir_entry* readdir(struct dir* dir) {
-    return (struct dir_entry*)syscall1(SYS_READDIR, (uint32_t)dir);
+struct dir *opendir(const char *name) {
+    return (struct dir *)syscall1(SYS_OPENDIR, (uint32_t)name);
 }
-void     rewinddir(struct dir* dir)   { syscall1(SYS_REWINDDIR, (uint32_t)dir); }
-void     ps(void)                     { syscall0(SYS_PS); }
-int32_t  execv(const char* path, const char* argv[]) {
+int32_t closedir(struct dir *dir) {
+    return (int32_t)syscall1(SYS_CLOSEDIR, (uint32_t)dir);
+}
+struct dir_entry *readdir(struct dir *dir) {
+    return (struct dir_entry *)syscall1(SYS_READDIR, (uint32_t)dir);
+}
+void rewinddir(struct dir *dir) { syscall1(SYS_REWINDDIR, (uint32_t)dir); }
+void ps(void) { syscall0(SYS_PS); }
+int32_t execv(const char *path, const char *argv[]) {
     return (int32_t)syscall2(SYS_EXECV, (uint32_t)path, (uint32_t)argv);
 }
 void exit(int32_t status) {
     syscall1(SYS_EXIT, (uint32_t)status);
-    for (;;) {                                                 
+    for (;;) {
     }
 }
-int32_t wait(int32_t* status) {
+int32_t wait(int32_t *status) {
     return (int32_t)syscall1(SYS_WAIT, (uint32_t)status);
 }
 int32_t pipe(int32_t pipefd[2]) {
@@ -124,22 +141,18 @@ int32_t pipe(int32_t pipefd[2]) {
 void fd_redirect(uint32_t old_local_fd, uint32_t new_local_fd) {
     syscall2(SYS_FD_REDIRECT, (uint32_t)old_local_fd, (uint32_t)new_local_fd);
 }
-int32_t gui_start(void) {
-    return (int32_t)syscall0(SYS_GUI);
-}
-void* brk(void* addr) {
-    return (void*)syscall1(SYS_BRK, (uint32_t)addr);
-}
-void* sbrk(intptr_t inc) {
+int32_t gui_start(void) { return (int32_t)syscall0(SYS_GUI); }
+void *brk(void *addr) { return (void *)syscall1(SYS_BRK, (uint32_t)addr); }
+void *sbrk(intptr_t inc) {
     uint32_t ob = (uint32_t)syscall1(SYS_BRK, 0);
     if (inc == 0) {
-        return (void*)ob;
+        return (void *)ob;
     }
     uint32_t nb = (uint32_t)syscall1(SYS_BRK, ob + (uint32_t)inc);
     if (nb == ob && inc > 0) {
-        return (void*)-1;
+        return (void *)-1;
     }
-    return (void*)ob;
+    return (void *)ob;
 }
 
 struct _mmap_args {
@@ -151,7 +164,8 @@ struct _mmap_args {
     uint32_t offset;
 };
 
-void* mmap(void* addr, uint32_t len, int prot, int flags, int fd, uint32_t offset) {
+void *mmap(void *addr, uint32_t len, int prot, int flags, int fd,
+           uint32_t offset) {
     struct _mmap_args a;
     a.addr = (uint32_t)addr;
     a.len = len;
@@ -159,31 +173,33 @@ void* mmap(void* addr, uint32_t len, int prot, int flags, int fd, uint32_t offse
     a.flags = (uint32_t)flags;
     a.fd = (uint32_t)fd;
     a.offset = offset;
-    return (void*)syscall1(SYS_MMAP, (uint32_t)&a);
+    return (void *)syscall1(SYS_MMAP, (uint32_t)&a);
 }
 
-void* mmap2(void* addr, uint32_t len, int prot, int flags, int fd, uint32_t offset) {
-    return (void*)syscall6(SYS_MMAP2, (uint32_t)addr, len, (uint32_t)prot,
-                           (uint32_t)flags, (uint32_t)fd, offset);
+void *mmap2(void *addr, uint32_t len, int prot, int flags, int fd,
+            uint32_t offset) {
+    return (void *)syscall6(SYS_MMAP2, (uint32_t)addr, len, (uint32_t)prot,
+                            (uint32_t)flags, (uint32_t)fd, offset);
 }
 
-int32_t munmap(void* addr, uint32_t len) {
+int32_t munmap(void *addr, uint32_t len) {
     return (int32_t)syscall2(SYS_MUNMAP, (uint32_t)addr, len);
 }
 
-int32_t mprotect(void* addr, uint32_t len, int prot) {
+int32_t mprotect(void *addr, uint32_t len, int prot) {
     return (int32_t)syscall3(SYS_MPROTECT, (uint32_t)addr, len, (uint32_t)prot);
 }
 
-int32_t futex(uint32_t uaddr, int op, uint32_t val, void* timeout) {
-    return (int32_t)syscall4(SYS_FUTEX, uaddr, (uint32_t)op, val, (uint32_t)timeout);
+int32_t futex(uint32_t uaddr, int op, uint32_t val, void *timeout) {
+    return (int32_t)syscall4(SYS_FUTEX, uaddr, (uint32_t)op, val,
+                             (uint32_t)timeout);
 }
 
-int32_t clone(uint32_t flags, void* child_stack) {
+int32_t clone(uint32_t flags, void *child_stack) {
     return (int32_t)syscall2(SYS_CLONE, flags, (uint32_t)child_stack);
 }
 
-int32_t fstat(int32_t fd, struct stat* buf) {
+int32_t fstat(int32_t fd, struct stat *buf) {
     return (int32_t)syscall2(SYS_FSTAT, (uint32_t)fd, (uint32_t)buf);
 }
 int32_t dup(int32_t oldfd) {
@@ -195,35 +211,36 @@ int32_t dup2(int32_t oldfd, int32_t newfd) {
 int32_t fcntl(int32_t fd, int32_t cmd, uint32_t arg) {
     return (int32_t)syscall3(SYS_FCNTL, (uint32_t)fd, (uint32_t)cmd, arg);
 }
-int32_t getdents(int32_t fd, struct linux_dirent* dirp, uint32_t count) {
+int32_t getdents(int32_t fd, struct linux_dirent *dirp, uint32_t count) {
     return (int32_t)syscall3(SYS_GETDENTS, (uint32_t)fd, (uint32_t)dirp, count);
 }
-int32_t readlink(const char* path, char* buf, uint32_t bufsiz) {
-    return (int32_t)syscall3(SYS_READLINK, (uint32_t)path, (uint32_t)buf, bufsiz);
+int32_t readlink(const char *path, char *buf, uint32_t bufsiz) {
+    return (int32_t)syscall3(SYS_READLINK, (uint32_t)path, (uint32_t)buf,
+                             bufsiz);
 }
-int32_t access(const char* path, int32_t mode) {
+int32_t access(const char *path, int32_t mode) {
     return (int32_t)syscall2(SYS_ACCESS, (uint32_t)path, (uint32_t)mode);
 }
-int32_t rename(const char* oldpath, const char* newpath) {
+int32_t rename(const char *oldpath, const char *newpath) {
     return (int32_t)syscall2(SYS_RENAME, (uint32_t)oldpath, (uint32_t)newpath);
 }
-int32_t truncate(const char* path, int32_t length) {
+int32_t truncate(const char *path, int32_t length) {
     return (int32_t)syscall2(SYS_TRUNCATE, (uint32_t)path, (uint32_t)length);
 }
-int32_t chmod(const char* path, uint32_t mode) {
+int32_t chmod(const char *path, uint32_t mode) {
     return (int32_t)syscall2(SYS_CHMOD, (uint32_t)path, mode);
 }
-int32_t clock_gettime(int32_t clk_id, struct timespec* tp) {
+int32_t clock_gettime(int32_t clk_id, struct timespec *tp) {
     return (int32_t)syscall2(SYS_CLOCK_GETTIME, (uint32_t)clk_id, (uint32_t)tp);
 }
-int32_t gettimeofday(struct timeval* tv, void* tz) {
+int32_t gettimeofday(struct timeval *tv, void *tz) {
     return (int32_t)syscall2(SYS_GETTIMEOFDAY, (uint32_t)tv, (uint32_t)tz);
 }
-int32_t nanosleep(const struct timespec* req, struct timespec* rem) {
+int32_t nanosleep(const struct timespec *req, struct timespec *rem) {
     return (int32_t)syscall2(SYS_NANOSLEEP, (uint32_t)req, (uint32_t)rem);
 }
-uint32_t getuid(void)  { return syscall0(SYS_GETUID); }
-uint32_t getgid(void)  { return syscall0(SYS_GETGID); }
+uint32_t getuid(void) { return syscall0(SYS_GETUID); }
+uint32_t getgid(void) { return syscall0(SYS_GETGID); }
 uint32_t geteuid(void) { return syscall0(SYS_GETEUID); }
 uint32_t getegid(void) { return syscall0(SYS_GETEGID); }
 void exit_group(int32_t status) {
@@ -233,42 +250,43 @@ void exit_group(int32_t status) {
 }
 
 int32_t icmp_send(uint32_t dst, uint16_t id, uint16_t seq) {
-    return (int32_t)syscall3(SYS_ICMP_SEND, (uint32_t)dst, (uint32_t)id, (uint32_t)seq);
+    return (int32_t)syscall3(SYS_ICMP_SEND, (uint32_t)dst, (uint32_t)id,
+                             (uint32_t)seq);
 }
 
-int32_t icmp_recv(struct nt_ping_reply* buf, int32_t max) {
+int32_t icmp_recv(struct nt_ping_reply *buf, int32_t max) {
     return (int32_t)syscall2(SYS_ICMP_RECV, (uint32_t)buf, (uint32_t)max);
 }
 
-
-__attribute__((naked))
-void __restore(void) {
-    __asm__ volatile(
-        "movl %0, %%eax\n"
-        "int $0x80\n"
-        : : "i"(SYS_SIGRETURN) : "memory");
+__attribute__((naked)) void __restore(void) {
+    __asm__ volatile("movl %0, %%eax\n"
+                     "int $0x80\n"
+                     :
+                     : "i"(SYS_SIGRETURN)
+                     : "memory");
 }
 
-int sigaction(int sig, const struct sigaction* act, struct sigaction* old) {
+int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
     struct sigaction kact;
-    const struct sigaction* pact = act;
+    const struct sigaction *pact = act;
     if (act) {
         kact = *act;
-        kact.sa_restorer = __restore;     
+        kact.sa_restorer = __restore;
         kact.sa_flags |= SA_RESTORER;
         pact = &kact;
     }
-    return (int)syscall3(SYS_SIGACTION, (uint32_t)sig, (uint32_t)pact, (uint32_t)old);
+    return (int)syscall3(SYS_SIGACTION, (uint32_t)sig, (uint32_t)pact,
+                         (uint32_t)old);
 }
 
-int sigprocmask(int how, const sigset_t* set, sigset_t* oldset) {
-    return (int)syscall3(SYS_SIGPROCMASK, (uint32_t)how, (uint32_t)set, (uint32_t)oldset);
+int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
+    return (int)syscall3(SYS_SIGPROCMASK, (uint32_t)how, (uint32_t)set,
+                         (uint32_t)oldset);
 }
 
 int kill(pid_t pid, int sig) {
     return (int)syscall2(SYS_KILL, (uint32_t)pid, (uint32_t)sig);
 }
-
 
 void (*signal(int sig, void (*handler)(int)))(int) {
     struct sigaction act, old;

@@ -1,49 +1,55 @@
-#include "./server.h"
-#include "./wm.h"
-#include "./shm.h"
-#include "./gfx.h"
 #include "./clients.h"
+
+#include "../device/keyboard.h"
+#include "../initer/idt/interrupt.h"
 #include "../lib/str/str.h"
 #include "../thread/thread.h"
-#include "../initer/idt/interrupt.h"
-#include "../device/keyboard.h"
+#include "./gfx.h"
+#include "./server.h"
+#include "./shm.h"
+#include "./wm.h"
 
 struct demo_client {
-    struct wl_client* conn;
-    struct wl_surface* surf;
-    struct shm_pool* pool;
+    struct wl_client *conn;
+    struct wl_surface *surf;
+    struct shm_pool *pool;
     int w, h;
     uint32_t frame_interval;
     uint32_t last_frame;
-    void (*render)(struct demo_client* dc);
-    void (*on_key)(struct demo_client* dc, int scancode, int mods);
+    void (*render)(struct demo_client *dc);
+    void (*on_key)(struct demo_client *dc, int scancode, int mods);
 };
 
-extern void (*g_log_hook)(const char* s);
+extern void (*g_log_hook)(const char *s);
 
-static int buffer_resize(struct demo_client* dc, int w, int h) {
-    if (w <= 0 || h <= 0) return -1;
-    if (dc->pool && dc->w == w && dc->h == h) return 0;
+static int buffer_resize(struct demo_client *dc, int w, int h) {
+    if (w <= 0 || h <= 0)
+        return -1;
+    if (dc->pool && dc->w == w && dc->h == h)
+        return 0;
     if (dc->pool) {
         comp_destroy_surface_pool(dc->surf, &dc->pool);
     }
     dc->pool = shm_pool_create((uint32_t)(w * h));
-    if (!dc->pool) return -1;
+    if (!dc->pool)
+        return -1;
     dc->w = w;
     dc->h = h;
     return 0;
 }
 
-static void attach_commit(struct demo_client* dc) {
-    if (!dc->pool) return;
+static void attach_commit(struct demo_client *dc) {
+    if (!dc->pool)
+        return;
     wl_surface_attach(dc->surf, dc->pool, dc->w, dc->h);
     wl_surface_commit(dc->surf);
 }
 
-static void client_main(struct demo_client* dc) {
+static void client_main(struct demo_client *dc) {
     for (;;) {
         struct wl_event ev;
-        if (wl_display_dispatch(dc->conn, &ev) != 0) break;
+        if (wl_display_dispatch(dc->conn, &ev) != 0)
+            break;
         switch (ev.type) {
         case WL_EV_CONFIGURE:
             if (buffer_resize(dc, (int)ev.a, (int)ev.b) == 0) {
@@ -59,7 +65,8 @@ static void client_main(struct demo_client* dc) {
             }
             break;
         case WL_EV_KEY:
-            if (dc->on_key && ev.b) dc->on_key(dc, (int)ev.a, (int)ev.c);
+            if (dc->on_key && ev.b)
+                dc->on_key(dc, (int)ev.a, (int)ev.c);
             break;
         case WL_EV_CLOSE:
             goto out;
@@ -70,14 +77,15 @@ static void client_main(struct demo_client* dc) {
 out:
     wm_unmanage(dc->surf);
     wl_surface_destroy(dc->surf);
-    if (dc->pool) comp_destroy_surface_pool(dc->surf, &dc->pool);
+    if (dc->pool)
+        comp_destroy_surface_pool(dc->surf, &dc->pool);
     wl_display_disconnect(dc->conn);
     dc->conn = 0;
     thread_exit_current();
 }
 
 #define TERM_LINES 40
-#define TERM_COLS  96
+#define TERM_COLS 96
 static char g_term_buf[TERM_LINES][TERM_COLS];
 static int g_term_head = 0;
 static int g_term_count = 0;
@@ -85,41 +93,51 @@ static int g_term_col = 0;
 
 static void term_newline(void) {
     g_term_head = (g_term_head + 1) % TERM_LINES;
-    if (g_term_count < TERM_LINES) g_term_count++;
+    if (g_term_count < TERM_LINES)
+        g_term_count++;
     memset(g_term_buf[g_term_head], 0, TERM_COLS);
     g_term_col = 0;
 }
 
 static void term_putc(char ch) {
-    if (ch == '\n') { term_newline(); return; }
-    if (g_term_col >= TERM_COLS - 1) term_newline();
+    if (ch == '\n') {
+        term_newline();
+        return;
+    }
+    if (g_term_col >= TERM_COLS - 1)
+        term_newline();
     g_term_buf[g_term_head][g_term_col++] = ch;
 }
 
-static void term_puts(const char* s) {
-    while (*s) term_putc(*s++);
+static void term_puts(const char *s) {
+    while (*s)
+        term_putc(*s++);
 }
 
-static void term_log_hook(const char* s) {
+static void term_log_hook(const char *s) {
     term_puts("[log] ");
     term_puts(s);
     term_putc('\n');
 }
 
-static void term_render(struct demo_client* dc) {
+static void term_render(struct demo_client *dc) {
     struct gfx_canvas cv = {dc->pool->data, dc->w, dc->w, dc->h};
     gfx_fill(&cv, 0, 0, dc->w, dc->h, gfx_gray(1));
     gfx_fill(&cv, 0, 0, dc->w, 2, gfx_rgb(0, 3, 0));
 
     int rows = dc->h / 16;
     int cols = dc->w / 8;
-    if (rows > TERM_LINES) rows = TERM_LINES;
-    if (cols > TERM_COLS - 1) cols = TERM_COLS - 1;
+    if (rows > TERM_LINES)
+        rows = TERM_LINES;
+    if (cols > TERM_COLS - 1)
+        cols = TERM_COLS - 1;
 
     int start = g_term_head - g_term_count + 1;
-    if (start < 0) start += TERM_LINES;
+    if (start < 0)
+        start += TERM_LINES;
     int first = g_term_count - rows;
-    if (first < 0) first = 0;
+    if (first < 0)
+        first = 0;
     for (int r = first; r < g_term_count; r++) {
         int li = (start + r) % TERM_LINES;
         char line[TERM_COLS];
@@ -137,12 +155,14 @@ static void term_render(struct demo_client* dc) {
     }
 }
 
-static void term_on_key(struct demo_client* dc, int scancode, int mods) {
+static void term_on_key(struct demo_client *dc, int scancode, int mods) {
     (void)mods;
     char ch = keyboard_translate((uint8_t)scancode, mods & MOD_SHIFT);
-    if (!ch) return;
+    if (!ch)
+        return;
     if (ch == '\b') {
-        if (g_term_col > 0) g_term_buf[g_term_head][--g_term_col] = 0;
+        if (g_term_col > 0)
+            g_term_buf[g_term_head][--g_term_col] = 0;
     } else {
         term_putc(ch);
     }
@@ -150,14 +170,22 @@ static void term_on_key(struct demo_client* dc, int scancode, int mods) {
     wl_surface_commit(dc->surf);
 }
 
-static void term_thread(void* arg) {
+static void term_thread(void *arg) {
     (void)arg;
     struct demo_client dc;
     memset(&dc, 0, sizeof(dc));
     dc.conn = wl_display_connect("term");
-    if (!dc.conn) { thread_exit_current(); return; }
-    dc.surf = wl_compositor_create_surface(dc.conn, "term - wayland-ish client");
-    if (!dc.surf) { wl_display_disconnect(dc.conn); thread_exit_current(); return; }
+    if (!dc.conn) {
+        thread_exit_current();
+        return;
+    }
+    dc.surf =
+        wl_compositor_create_surface(dc.conn, "term - wayland-ish client");
+    if (!dc.surf) {
+        wl_display_disconnect(dc.conn);
+        thread_exit_current();
+        return;
+    }
     dc.render = term_render;
     dc.on_key = term_on_key;
     dc.frame_interval = 25;
@@ -167,18 +195,24 @@ static void term_thread(void* arg) {
     g_log_hook = 0;
 }
 
-static void u32_to_str(uint32_t v, char* buf) {
+static void u32_to_str(uint32_t v, char *buf) {
     int n = 0;
-    if (v == 0) { buf[n++] = '0'; }
-    else {
-        char tmp[12]; int m = 0;
-        while (v) { tmp[m++] = (char)('0' + v % 10); v /= 10; }
-        while (m--) buf[n++] = tmp[m];
+    if (v == 0) {
+        buf[n++] = '0';
+    } else {
+        char tmp[12];
+        int m = 0;
+        while (v) {
+            tmp[m++] = (char)('0' + v % 10);
+            v /= 10;
+        }
+        while (m--)
+            buf[n++] = tmp[m];
     }
     buf[n] = 0;
 }
 
-static void clock_render(struct demo_client* dc) {
+static void clock_render(struct demo_client *dc) {
     struct gfx_canvas cv = {dc->pool->data, dc->w, dc->w, dc->h};
     gfx_fill(&cv, 0, 0, dc->w, dc->h, gfx_rgb(0, 0, 1));
 
@@ -187,16 +221,21 @@ static void clock_render(struct demo_client* dc) {
     uint32_t mm = (secs / 60) % 60;
     uint32_t ss = secs % 60;
     char tbuf[12];
-    tbuf[0] = (char)('0' + hh / 10); tbuf[1] = (char)('0' + hh % 10);
+    tbuf[0] = (char)('0' + hh / 10);
+    tbuf[1] = (char)('0' + hh % 10);
     tbuf[2] = ':';
-    tbuf[3] = (char)('0' + mm / 10); tbuf[4] = (char)('0' + mm % 10);
+    tbuf[3] = (char)('0' + mm / 10);
+    tbuf[4] = (char)('0' + mm % 10);
     tbuf[5] = ':';
-    tbuf[6] = (char)('0' + ss / 10); tbuf[7] = (char)('0' + ss % 10);
+    tbuf[6] = (char)('0' + ss / 10);
+    tbuf[7] = (char)('0' + ss % 10);
     tbuf[8] = 0;
 
     int scale = dc->w / 340;
-    if (scale < 2) scale = 2;
-    if (scale > 6) scale = 6;
+    if (scale < 2)
+        scale = 2;
+    if (scale > 6)
+        scale = 6;
     int tw = 8 * 8 * scale;
     int th = 16 * scale;
     int x = (dc->w - tw) / 2;
@@ -207,21 +246,28 @@ static void clock_render(struct demo_client* dc) {
     gfx_text(&cv, 8, dc->h - 20, "uptime since boot", gfx_gray(10), -1);
 }
 
-static void clock_thread(void* arg) {
+static void clock_thread(void *arg) {
     (void)arg;
     struct demo_client dc;
     memset(&dc, 0, sizeof(dc));
     dc.conn = wl_display_connect("clock");
-    if (!dc.conn) { thread_exit_current(); return; }
+    if (!dc.conn) {
+        thread_exit_current();
+        return;
+    }
     dc.surf = wl_compositor_create_surface(dc.conn, "clock");
-    if (!dc.surf) { wl_display_disconnect(dc.conn); thread_exit_current(); return; }
+    if (!dc.surf) {
+        wl_display_disconnect(dc.conn);
+        thread_exit_current();
+        return;
+    }
     dc.render = clock_render;
     dc.frame_interval = 20;
     wm_manage(dc.surf);
     client_main(&dc);
 }
 
-static void sysmon_render(struct demo_client* dc) {
+static void sysmon_render(struct demo_client *dc) {
     struct gfx_canvas cv = {dc->pool->data, dc->w, dc->w, dc->h};
     gfx_fill(&cv, 0, 0, dc->w, dc->h, gfx_gray(2));
 
@@ -264,67 +310,83 @@ static void sysmon_render(struct demo_client* dc) {
     }
 }
 
-static void sysmon_thread(void* arg) {
+static void sysmon_thread(void *arg) {
     (void)arg;
     struct demo_client dc;
     memset(&dc, 0, sizeof(dc));
     dc.conn = wl_display_connect("sysmon");
-    if (!dc.conn) { thread_exit_current(); return; }
+    if (!dc.conn) {
+        thread_exit_current();
+        return;
+    }
     dc.surf = wl_compositor_create_surface(dc.conn, "sysmon");
-    if (!dc.surf) { wl_display_disconnect(dc.conn); thread_exit_current(); return; }
+    if (!dc.surf) {
+        wl_display_disconnect(dc.conn);
+        thread_exit_current();
+        return;
+    }
     dc.render = sysmon_render;
     dc.frame_interval = 15;
     wm_manage(dc.surf);
     client_main(&dc);
 }
 
-static void plasma_render(struct demo_client* dc) {
+static void plasma_render(struct demo_client *dc) {
     struct gfx_canvas cv = {dc->pool->data, dc->w, dc->w, dc->h};
     int phase = (int)(g_tick / 3);
     for (int y = 0; y < dc->h; y += 2) {
-        uint8_t* row = dc->pool->data + y * dc->w;
+        uint8_t *row = dc->pool->data + y * dc->w;
         for (int x = 0; x < dc->w; x += 2) {
             int r = ((x + phase) / 48) % 6;
             int g = ((y + phase) / 40) % 6;
             int b = ((x + y + phase) / 64) % 6;
             uint8_t col = gfx_rgb(r, g, b);
             row[x] = col;
-            if (x + 1 < dc->w) row[x + 1] = col;
+            if (x + 1 < dc->w)
+                row[x + 1] = col;
         }
         if (y + 1 < dc->h) {
-            uint8_t* dst = dc->pool->data + (y + 1) * dc->w;
-            for (int i = 0; i < dc->w; i++) dst[i] = row[i];
+            uint8_t *dst = dc->pool->data + (y + 1) * dc->w;
+            for (int i = 0; i < dc->w; i++)
+                dst[i] = row[i];
         }
     }
     gfx_text(&cv, 8, 8, "plasma - shm client rendering", 15, -1);
 }
 
-static void plasma_thread(void* arg) {
+static void plasma_thread(void *arg) {
     (void)arg;
     struct demo_client dc;
     memset(&dc, 0, sizeof(dc));
     dc.conn = wl_display_connect("plasma");
-    if (!dc.conn) { thread_exit_current(); return; }
+    if (!dc.conn) {
+        thread_exit_current();
+        return;
+    }
     dc.surf = wl_compositor_create_surface(dc.conn, "plasma");
-    if (!dc.surf) { wl_display_disconnect(dc.conn); thread_exit_current(); return; }
+    if (!dc.surf) {
+        wl_display_disconnect(dc.conn);
+        thread_exit_current();
+        return;
+    }
     dc.render = plasma_render;
     dc.frame_interval = 8;
     wm_manage(dc.surf);
     client_main(&dc);
 }
 
-typedef void (*client_thread_fn)(void*);
+typedef void (*client_thread_fn)(void *);
 
-static client_thread_fn g_types[] = {
-    term_thread, clock_thread, sysmon_thread, plasma_thread
-};
-static const char* g_type_names[] = {"gc_term", "gc_clock", "gc_sysmon", "gc_plasma"};
+static client_thread_fn g_types[] = {term_thread, clock_thread, sysmon_thread,
+                                     plasma_thread};
+static const char *g_type_names[] = {"gc_term", "gc_clock", "gc_sysmon",
+                                     "gc_plasma"};
 static int g_next_type = 0;
 
 void clients_spawn_next(void) {
     int t = g_next_type % 4;
     g_next_type++;
-    kernel_thread((char*)g_type_names[t], 6, g_types[t], 0);
+    kernel_thread((char *)g_type_names[t], 6, g_types[t], 0);
 }
 
 void clients_spawn_initial(void) {
@@ -336,6 +398,7 @@ void clients_spawn_initial(void) {
 
 void clients_broadcast_close(void) {
     int n = 0;
-    struct wl_surface** list = comp_surfaces(&n);
-    for (int i = 0; i < n; i++) comp_send_close(list[i]);
+    struct wl_surface **list = comp_surfaces(&n);
+    for (int i = 0; i < n; i++)
+        comp_send_close(list[i]);
 }

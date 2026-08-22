@@ -1,22 +1,23 @@
 #include "inode.h"
-#include "fs.h"
-#include "ext2.h"
-#include "../device/ide.h"
-#include "../memory/pool/pool.h"
-#include "../lib/str/str.h"
-#include "../include/asmFunc.h"
 
-struct inode* inode_open(struct partition* part, uint32_t inode_no) {
-    struct list_elem* elem = part->open_inodes.head.next;
+#include "../device/ide.h"
+#include "../include/asmFunc.h"
+#include "../lib/str/str.h"
+#include "../memory/pool/pool.h"
+#include "ext2.h"
+#include "fs.h"
+
+struct inode *inode_open(struct partition *part, uint32_t inode_no) {
+    struct list_elem *elem = part->open_inodes.head.next;
     while (elem != &part->open_inodes.tail) {
-        struct inode* inode = list_entry(elem, struct inode, inode_tag);
+        struct inode *inode = list_entry(elem, struct inode, inode_tag);
         if (inode->i_no == inode_no) {
             inode->i_open_cnt++;
             return inode;
         }
         elem = elem->next;
     }
-    struct inode* inode = (struct inode*)get_kernel_pages(1);
+    struct inode *inode = (struct inode *)get_kernel_pages(1);
     if (inode == NULL) {
         return NULL;
     }
@@ -31,7 +32,7 @@ struct inode* inode_open(struct partition* part, uint32_t inode_no) {
     return inode;
 }
 
-void inode_close(struct inode* inode) {
+void inode_close(struct inode *inode) {
     if (inode == NULL || inode->i_open_cnt == 0) {
         return;
     }

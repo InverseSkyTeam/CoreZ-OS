@@ -1,9 +1,10 @@
 // 参考: https://wiki.osdev.org/Assertions
 #include "./include/assert.h"
-#include "./initer/io/io.h"
-#include "./include/asmFunc.h"
 
-void assert_fail(const char* expr, const char* file, int line) {
+#include "./include/asmFunc.h"
+#include "./initer/io/io.h"
+
+void assert_fail(const char *expr, const char *file, int line) {
     setTextColor(12);
     kprintf("\n*** ASSERT FAILED ***\n");
     kprintf("  expr: %s\n", expr);

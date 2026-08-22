@@ -1,10 +1,11 @@
 // 参考: 《操作系统真相还原》(于渊) 第11章 输入输出系统
 #include "./ioqueue.h"
-#include "../thread/sync.h"
+
 #include "../include/asmFunc.h"
 #include "../include/assert.h"
+#include "../thread/sync.h"
 
-void ioq_init(struct ioqueue* ioq) {
+void ioq_init(struct ioqueue *ioq) {
     lock_init(&ioq->lock);
     ioq->producer = 0;
     ioq->consumer = 0;
@@ -12,19 +13,13 @@ void ioq_init(struct ioqueue* ioq) {
     ioq->tail = 0;
 }
 
-static int32_t next_pos(int32_t pos) {
-    return (pos + 1) % BUFSIZE;
-}
+static int32_t next_pos(int32_t pos) { return (pos + 1) % BUFSIZE; }
 
-int ioq_full(struct ioqueue* ioq) {
-    return next_pos(ioq->head) == ioq->tail;
-}
+int ioq_full(struct ioqueue *ioq) { return next_pos(ioq->head) == ioq->tail; }
 
-int ioq_empty(struct ioqueue* ioq) {
-    return ioq->head == ioq->tail;
-}
+int ioq_empty(struct ioqueue *ioq) { return ioq->head == ioq->tail; }
 
-uint32_t ioq_length(struct ioqueue* ioq) {
+uint32_t ioq_length(struct ioqueue *ioq) {
     uint32_t len = 0;
     if (ioq->head >= ioq->tail) {
         len = (uint32_t)(ioq->head - ioq->tail);
@@ -34,20 +29,20 @@ uint32_t ioq_length(struct ioqueue* ioq) {
     return len;
 }
 
-static void ioq_wait(struct task_struct** waiter) {
+static void ioq_wait(struct task_struct **waiter) {
     *waiter = current_task;
     thread_block();
 }
 
-static void wakeup(struct task_struct** waiter) {
-    struct task_struct* w = *waiter;
+static void wakeup(struct task_struct **waiter) {
+    struct task_struct *w = *waiter;
     *waiter = 0;
     if (w) {
         thread_unblock(w);
     }
 }
 
-void ioq_putchar(struct ioqueue* ioq, char byte) {
+void ioq_putchar(struct ioqueue *ioq, char byte) {
     ASSERT((asm_save_eflags() & 0x200) == 0);
 
     while (ioq_full(ioq)) {
@@ -63,7 +58,7 @@ void ioq_putchar(struct ioqueue* ioq, char byte) {
     }
 }
 
-char ioq_getchar(struct ioqueue* ioq) {
+char ioq_getchar(struct ioqueue *ioq) {
     ASSERT((asm_save_eflags() & 0x200) == 0);
 
     while (ioq_empty(ioq)) {

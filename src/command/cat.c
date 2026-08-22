@@ -1,10 +1,10 @@
 #include "stdio.h"
-#include "syscall.h"
 #include "str.h"
+#include "syscall.h"
 
 #define O_RDONLY 0
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     if (argc > 2 || argv[1] == NULL) {
         printf("cat: argument error\neg: cat filename\n");
         exit(-2);

@@ -936,7 +936,7 @@ def do_run(console: Console, stats: BuildStats) -> None:
         "-hda", str(hd_img),
         "-debugcon", "stdio",
         "-netdev", "user,id=net0,hostfwd=tcp::8765-:8765",
-        "-device", "e1000,netdev=net0",
+        "-device", "e1000,netdev=net0"
     ])
 
 def main(argv: Sequence[str]) -> int:

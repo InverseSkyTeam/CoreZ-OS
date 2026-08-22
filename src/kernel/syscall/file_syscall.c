@@ -1,30 +1,31 @@
 // 参考: 《操作系统真相还原》(于渊) 第14章 文件系统
 
 #include "file_syscall.h"
-#include "../thread/thread.h"
-#include "../fs/fs.h"
-#include "../fs/file.h"
-#include "../fs/inode.h"
+
+#include "../device/ide.h"
 #include "../fs/dir.h"
 #include "../fs/ext2.h"
-#include "../device/ide.h"
-#include "../memory/pool/pool.h"
+#include "../fs/file.h"
+#include "../fs/fs.h"
+#include "../fs/inode.h"
 #include "../lib/str/str.h"
+#include "../memory/pool/pool.h"
+#include "../thread/thread.h"
 
 struct linux_dirent {
-    uint32_t d_ino;        
-    uint32_t d_off;         
-    uint16_t d_reclen;     
-    char     d_name[1];    
+    uint32_t d_ino;
+    uint32_t d_off;
+    uint16_t d_reclen;
+    char d_name[1];
 };
 
-#define F_DUPFD  0
-#define F_GETFD  1
-#define F_SETFD  2
-#define F_GETFL  3
-#define F_SETFL  4
+#define F_DUPFD 0
+#define F_GETFD 1
+#define F_SETFD 2
+#define F_GETFL 3
+#define F_SETFL 4
 
-int32_t sys_fstat(int32_t fd, void* buf) {
+int32_t sys_fstat(int32_t fd, void *buf) {
     if (buf == NULL || fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
     }
@@ -32,11 +33,11 @@ int32_t sys_fstat(int32_t fd, void* buf) {
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
         return -1;
     }
-    struct file* pf = &file_table[global_fd];
+    struct file *pf = &file_table[global_fd];
     if (pf->fd_inode == NULL) {
         return -1;
     }
-    struct stat* st = (struct stat*)buf;
+    struct stat *st = (struct stat *)buf;
     memset(st, 0, sizeof(*st));
     st->st_ino = pf->fd_inode->i_no;
     st->st_size = pf->fd_inode->i_size;
@@ -60,8 +61,8 @@ int32_t sys_dup(int32_t oldfd) {
 }
 
 int32_t sys_dup2(int32_t oldfd, int32_t newfd) {
-    if (oldfd < 0 || oldfd >= (int32_t)MAX_FILES_OPEN_PER_PROC ||
-        newfd < 0 || newfd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
+    if (oldfd < 0 || oldfd >= (int32_t)MAX_FILES_OPEN_PER_PROC || newfd < 0 ||
+        newfd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
     }
     if (oldfd == newfd) {
@@ -87,17 +88,17 @@ int32_t sys_fcntl(int32_t fd, int32_t cmd, uint32_t arg) {
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
         return -1;
     }
-    struct file* pf = &file_table[global_fd];
+    struct file *pf = &file_table[global_fd];
     switch (cmd) {
-    case F_DUPFD:   
+    case F_DUPFD:
         (void)arg;
         return sys_dup(fd);
-    case F_GETFD:  
+    case F_GETFD:
         return 0;
-    case F_SETFD:  
+    case F_SETFD:
         (void)arg;
         return 0;
-    case F_GETFL:  
+    case F_GETFL:
         return (int32_t)pf->fd_flag;
     case F_SETFL:
         pf->fd_flag = arg;
@@ -107,7 +108,7 @@ int32_t sys_fcntl(int32_t fd, int32_t cmd, uint32_t arg) {
     }
 }
 
-int32_t sys_getdents(int32_t fd, void* dirp, uint32_t count) {
+int32_t sys_getdents(int32_t fd, void *dirp, uint32_t count) {
     if (dirp == NULL || fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
     }
@@ -115,7 +116,7 @@ int32_t sys_getdents(int32_t fd, void* dirp, uint32_t count) {
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
         return -1;
     }
-    struct file* pf = &file_table[global_fd];
+    struct file *pf = &file_table[global_fd];
     if (pf->fd_inode == NULL) {
         return -1;
     }
@@ -128,7 +129,8 @@ int32_t sys_getdents(int32_t fd, void* dirp, uint32_t count) {
         if (written + reclen > count) {
             break;
         }
-        struct linux_dirent* ld = (struct linux_dirent*)((uint8_t*)dirp + written);
+        struct linux_dirent *ld =
+            (struct linux_dirent *)((uint8_t *)dirp + written);
         ld->d_ino = de.i_no;
         ld->d_off = written + reclen;
         ld->d_reclen = reclen;
@@ -138,17 +140,19 @@ int32_t sys_getdents(int32_t fd, void* dirp, uint32_t count) {
     return (int32_t)written;
 }
 
-int32_t sys_readlink(const char* path, char* buf, uint32_t bufsiz) {
-    (void)path; (void)buf; (void)bufsiz;
+int32_t sys_readlink(const char *path, char *buf, uint32_t bufsiz) {
+    (void)path;
+    (void)buf;
+    (void)bufsiz;
     current_task->errno = 2;
     return -1;
 }
 
-int32_t sys_access(const char* path, int32_t mode) {
+int32_t sys_access(const char *path, int32_t mode) {
     if (path == NULL) {
         return -1;
     }
-    (void)mode;  
+    (void)mode;
     struct path_search_record rec;
     memset(&rec, 0, sizeof(rec));
     int inode_no = search_file(path, &rec);
@@ -160,23 +164,25 @@ int32_t sys_access(const char* path, int32_t mode) {
     return 0;
 }
 
-int32_t sys_rename(const char* oldpath, const char* newpath) {
-    (void)oldpath; (void)newpath;
+int32_t sys_rename(const char *oldpath, const char *newpath) {
+    (void)oldpath;
+    (void)newpath;
     current_task->errno = 30;
     return -1;
 }
 
-int32_t sys_truncate(const char* path, int32_t length) {
-    (void)path; (void)length;
+int32_t sys_truncate(const char *path, int32_t length) {
+    (void)path;
+    (void)length;
     current_task->errno = 30;
     return -1;
 }
 
-int32_t sys_chmod(const char* path, uint32_t mode) {
+int32_t sys_chmod(const char *path, uint32_t mode) {
     if (path == NULL) {
         return -1;
     }
-    (void)mode; 
+    (void)mode;
     struct path_search_record rec;
     memset(&rec, 0, sizeof(rec));
     int inode_no = search_file(path, &rec);

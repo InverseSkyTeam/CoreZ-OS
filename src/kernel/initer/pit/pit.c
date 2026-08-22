@@ -1,8 +1,9 @@
 // 参考: 《操作系统真相还原》(于渊) 第13章 硬盘驱动(休眠函数)
 #include "pit.h"
+
 #include "../../include/asmFunc.h"
-#include "../idt/interrupt.h"
 #include "../../thread/thread.h"
+#include "../idt/interrupt.h"
 
 #define PIT_BASE_FREQ 1193182
 
@@ -24,7 +25,8 @@ static void ticks_to_sleep(uint32_t sleep_ticks) {
 }
 
 void mtime_sleep(uint32_t m_seconds) {
-    uint32_t sleep_ticks = (m_seconds + MIL_SECOND_PER_INTR - 1) / MIL_SECOND_PER_INTR;
+    uint32_t sleep_ticks =
+        (m_seconds + MIL_SECOND_PER_INTR - 1) / MIL_SECOND_PER_INTR;
     if (sleep_ticks == 0) {
         sleep_ticks = 1;
     }

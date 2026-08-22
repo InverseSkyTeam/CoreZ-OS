@@ -1,14 +1,15 @@
 // 参考: 《操作系统真相还原》(于渊) 第15章 系统交互
 #include "./shell.h"
-#include "./buildin_cmd.h"
-#include "../lib/user/syscall.h"
-#include "../lib/user/stdio.h"
-#include "../lib/str/str.h"
+
 #include "../fs/fs.h"
-#include "../thread/thread.h"
-#include "../initer/io/io.h"
-#include "../include/assert.h"
 #include "../gui/gui.h"
+#include "../include/assert.h"
+#include "../initer/io/io.h"
+#include "../lib/str/str.h"
+#include "../lib/user/stdio.h"
+#include "../lib/user/syscall.h"
+#include "../thread/thread.h"
+#include "./buildin_cmd.h"
 
 #define MAX_ARG_NR 16
 
@@ -21,25 +22,24 @@ char final_path[MAX_PATH_LEN] = {0};
 
 static char cwd_cache[64] = {0};
 
-char* argv[MAX_ARG_NR];
+char *argv[MAX_ARG_NR];
 static int32_t argc = -1;
 
-void print_prompt(void) {
-    printf("[nitian@nitian-os %s]$ ", cwd_cache);
-}
+void print_prompt(void) { printf("[nitian@nitian-os %s]$ ", cwd_cache); }
 
 static void shell_erase(void) {
     int x = getCursorX();
     int y = getCursorY();
-    if (x <= 0) return;
+    if (x <= 0)
+        return;
     setCursor(x - 8, y);
     console_putc(' ');
     setCursor(x - 8, y);
 }
 
-static void readline(char* buf, int32_t count) {
+static void readline(char *buf, int32_t count) {
     ASSERT(buf != NULL && count > 0);
-    char* pos = buf;
+    char *pos = buf;
     while (read(0, pos, 1) != -1 && (pos - buf) < count) {
         switch (*pos) {
         case '\n':
@@ -75,26 +75,32 @@ static void readline(char* buf, int32_t count) {
     printf("readline: can't find enter_key, max %d chars\n", count - 1);
 }
 
-static int32_t cmd_parse(char* cmd_str, char** argv, char token) {
+static int32_t cmd_parse(char *cmd_str, char **argv, char token) {
     ASSERT(cmd_str != NULL);
     int32_t arg_idx = 0;
-    while (arg_idx < MAX_ARG_NR) argv[arg_idx++] = NULL;
+    while (arg_idx < MAX_ARG_NR)
+        argv[arg_idx++] = NULL;
 
-    char* next = cmd_str;
+    char *next = cmd_str;
     int32_t argc = 0;
     while (*next) {
-        while (*next == token) ++next;
-        if (*next == 0) break;
-        if (argc >= MAX_ARG_NR) return -1;
+        while (*next == token)
+            ++next;
+        if (*next == 0)
+            break;
+        if (argc >= MAX_ARG_NR)
+            return -1;
         argv[argc] = next;
-        while (*next && *next != token) ++next;
-        if (*next) *next++ = 0;
+        while (*next && *next != token)
+            ++next;
+        if (*next)
+            *next++ = 0;
         ++argc;
     }
     return argc;
 }
 
-static void cmd_execute(int32_t argc, char** argv) {
+static void cmd_execute(int32_t argc, char **argv) {
     if (!strcmp("ls", argv[0])) {
         buildin_ls(argc, argv);
     } else if (!strcmp("cd", argv[0])) {
@@ -115,27 +121,28 @@ static void cmd_execute(int32_t argc, char** argv) {
     } else if (!strcmp("rm", argv[0])) {
         buildin_rm(argc, argv);
     } else if (!strcmp("gui", argv[0])) {
-        
         gui_start();
     } else {
-
         int32_t pid = fork();
         if (pid > 0) {
-            g_foreground_pid = (uint32_t)pid;                            
+            g_foreground_pid = (uint32_t)pid;
             int32_t status = 0;
             int32_t child_pid = wait(&status);
-            g_foreground_pid = (uint32_t)-1;                      
-            printf("\n[prog %d exited, status %d]\n", (int)child_pid, (int)status);
+            g_foreground_pid = (uint32_t)-1;
+            printf("\n[prog %d exited, status %d]\n", (int)child_pid,
+                   (int)status);
         } else if (pid == 0) {
             make_clear_abs_path(argv[0], final_path);
             argv[0] = final_path;
             struct stat file_stat;
             memset(&file_stat, 0, sizeof(struct stat));
             if (stat(argv[0], &file_stat) == -1) {
-                printf("my_shell: cannot access %s: No such file or directory\n", argv[0]);
+                printf(
+                    "my_shell: cannot access %s: No such file or directory\n",
+                    argv[0]);
                 exit(-1);
             }
-            execv(argv[0], (const char**)argv);
+            execv(argv[0], (const char **)argv);
             printf("execv %s failed.\n", argv[0]);
             exit(-1);
         } else {
@@ -144,7 +151,7 @@ static void cmd_execute(int32_t argc, char** argv) {
     }
 }
 
-void my_shell(void* arg) {
+void my_shell(void *arg) {
     (void)arg;
     clear();
     cwd_cache[0] = '/';
@@ -154,18 +161,19 @@ void my_shell(void* arg) {
         memset(final_path, 0, MAX_PATH_LEN);
         memset(cmd_line, 0, MAX_PATH_LEN);
         readline(cmd_line, MAX_PATH_LEN);
-        if (cmd_line[0] == 0) continue;
+        if (cmd_line[0] == 0)
+            continue;
 
-        char* pipe_symbol = strchr(cmd_line, '|');
+        char *pipe_symbol = strchr(cmd_line, '|');
         if (pipe_symbol) {
-            int32_t fd[2] = { -1, -1 };
+            int32_t fd[2] = {-1, -1};
             if (pipe(fd) == -1) {
                 printf("my_shell: pipe create failed.\n");
                 continue;
             }
 
             fd_redirect(1, (uint32_t)fd[1]);
-            char* each_cmd = cmd_line;
+            char *each_cmd = cmd_line;
             pipe_symbol = strchr(each_cmd, '|');
             *pipe_symbol = 0;
             argc = -1;

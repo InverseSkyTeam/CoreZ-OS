@@ -1,8 +1,10 @@
 // 参考: Wine 兼容层演示 (Linux i386 0x80 六参 ABI + errno + TLS + auxv)
 #include "lc.h"
 
-int main(int argc, char** argv, char** envp) {
-    (void)argc; (void)argv; (void)envp;
+int main(int argc, char **argv, char **envp) {
+    (void)argc;
+    (void)argv;
+    (void)envp;
 
     lc_puts("\n[NiTianOS compat shim] started\n");
 
@@ -15,7 +17,7 @@ int main(int argc, char** argv, char** envp) {
 
     lc_puts("  TLS via gs:0  ->  errno slot @ offset 0\n");
     lc_puts("  six-register ABI: lc_mmap(0,4096,3,0x22,7,0x99) = ");
-    long m = lc_mmap((void*)0, 4096, 3, 0x22, 7, 0x99);
+    long m = lc_mmap((void *)0, 4096, 3, 0x22, 7, 0x99);
     lc_puthex((uint32_t)m);
     lc_puts("  (errno = ");
     lc_putuint((uint32_t)errno);
@@ -23,9 +25,12 @@ int main(int argc, char** argv, char** envp) {
 
     lc_puts("  writev([\"con-\",\"cat\",\"-enated\"]) -> ");
     struct lc_iovec iov[3];
-    iov[0].base = (uint32_t)"con-"; iov[0].len = 4;
-    iov[1].base = (uint32_t)"cat";  iov[1].len = 3;
-    iov[2].base = (uint32_t)"-enated"; iov[2].len = 7;
+    iov[0].base = (uint32_t)"con-";
+    iov[0].len = 4;
+    iov[1].base = (uint32_t)"cat";
+    iov[1].len = 3;
+    iov[2].base = (uint32_t)"-enated";
+    iov[2].len = 7;
     long nv = lc_writev(1, iov, 3);
     lc_puts("  (scatter count = ");
     lc_putuint((uint32_t)nv);
@@ -39,9 +44,15 @@ int main(int argc, char** argv, char** envp) {
     lc_puts("  (non-zero: errno round-trip OK)\n");
 
     lc_puts("auxv:\n");
-    lc_puts("  AT_PAGESZ = "); lc_putuint((uint32_t)lc_auxv_get(AT_PAGESZ)); lc_puts("\n");
-    lc_puts("  AT_CLKTCK = "); lc_putuint((uint32_t)lc_auxv_get(AT_CLKTCK)); lc_puts("\n");
-    lc_puts("  AT_ENTRY  = "); lc_puthex((uint32_t)lc_auxv_get(AT_ENTRY)); lc_puts("\n");
+    lc_puts("  AT_PAGESZ = ");
+    lc_putuint((uint32_t)lc_auxv_get(AT_PAGESZ));
+    lc_puts("\n");
+    lc_puts("  AT_CLKTCK = ");
+    lc_putuint((uint32_t)lc_auxv_get(AT_CLKTCK));
+    lc_puts("\n");
+    lc_puts("  AT_ENTRY  = ");
+    lc_puthex((uint32_t)lc_auxv_get(AT_ENTRY));
+    lc_puts("\n");
 
     lc_puts("[compat shim] done\n");
     return 0;

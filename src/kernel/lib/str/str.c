@@ -1,28 +1,29 @@
 // 参考: https://wiki.osdev.org/C_Library
 #include "./str.h"
 
-size_t strlen(const char* s) {
-    const char* p = s;
+size_t strlen(const char *s) {
+    const char *p = s;
     while (*p) {
         p++;
     }
     return (size_t)(p - s);
 }
 
-size_t strnlen(const char* s, size_t maxlen) {
+size_t strnlen(const char *s, size_t maxlen) {
     size_t n = 0;
-    while (n < maxlen && s[n]) n++;
+    while (n < maxlen && s[n])
+        n++;
     return n;
 }
 
-char* strcpy(char* dst, const char* src) {
-    char* d = dst;
+char *strcpy(char *dst, const char *src) {
+    char *d = dst;
     while ((*d++ = *src++) != '\0') {
     }
     return dst;
 }
 
-char* strncpy(char* dst, const char* src, size_t n) {
+char *strncpy(char *dst, const char *src, size_t n) {
     size_t i;
     for (i = 0; i < n && src[i] != '\0'; i++) {
         dst[i] = src[i];
@@ -33,7 +34,7 @@ char* strncpy(char* dst, const char* src, size_t n) {
     return dst;
 }
 
-int strcmp(const char* a, const char* b) {
+int strcmp(const char *a, const char *b) {
     while (*a && (*a == *b)) {
         a++;
         b++;
@@ -41,7 +42,7 @@ int strcmp(const char* a, const char* b) {
     return (int)(unsigned char)*a - (int)(unsigned char)*b;
 }
 
-int strncmp(const char* a, const char* b, size_t n) {
+int strncmp(const char *a, const char *b, size_t n) {
     size_t i;
     for (i = 0; i < n && a[i] && a[i] == b[i]; i++) {
     }
@@ -51,8 +52,8 @@ int strncmp(const char* a, const char* b, size_t n) {
     return (int)(unsigned char)a[i] - (int)(unsigned char)b[i];
 }
 
-char* strcat(char* dst, const char* src) {
-    char* d = dst;
+char *strcat(char *dst, const char *src) {
+    char *d = dst;
     while (*d) {
         d++;
     }
@@ -61,20 +62,20 @@ char* strcat(char* dst, const char* src) {
     return dst;
 }
 
-char* strchr(const char* s, int c) {
+char *strchr(const char *s, int c) {
     char ch = (char)c;
     while (*s) {
         if (*s == ch) {
-            return (char*)s;
+            return (char *)s;
         }
         s++;
     }
-    return (ch == '\0') ? (char*)s : NULL;
+    return (ch == '\0') ? (char *)s : NULL;
 }
 
-char* strrchr(const char* s, int c) {
+char *strrchr(const char *s, int c) {
     char ch = (char)c;
-    const char* last = NULL;
+    const char *last = NULL;
     while (*s) {
         if (*s == ch) {
             last = s;
@@ -82,23 +83,23 @@ char* strrchr(const char* s, int c) {
         s++;
     }
     if (ch == '\0') {
-        return (char*)s;
+        return (char *)s;
     }
-    return (char*)last;
+    return (char *)last;
 }
 
-void* memcpy(void* dst, const void* src, size_t n) {
-    uint8_t* d = (uint8_t*)dst;
-    const uint8_t* s = (const uint8_t*)src;
+void *memcpy(void *dst, const void *src, size_t n) {
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
     while (n--) {
         *d++ = *s++;
     }
     return dst;
 }
 
-void* memmove(void* dst, const void* src, size_t n) {
-    uint8_t* d = (uint8_t*)dst;
-    const uint8_t* s = (const uint8_t*)src;
+void *memmove(void *dst, const void *src, size_t n) {
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
     if (d < s) {
         while (n--) {
             *d++ = *s++;
@@ -113,17 +114,17 @@ void* memmove(void* dst, const void* src, size_t n) {
     return dst;
 }
 
-void* memset(void* s, int c, size_t n) {
-    uint8_t* p = (uint8_t*)s;
+void *memset(void *s, int c, size_t n) {
+    uint8_t *p = (uint8_t *)s;
     while (n--) {
         *p++ = (uint8_t)c;
     }
     return s;
 }
 
-int memcmp(const void* a, const void* b, size_t n) {
-    const uint8_t* x = (const uint8_t*)a;
-    const uint8_t* y = (const uint8_t*)b;
+int memcmp(const void *a, const void *b, size_t n) {
+    const uint8_t *x = (const uint8_t *)a;
+    const uint8_t *y = (const uint8_t *)b;
     while (n--) {
         if (*x != *y) {
             return (int)*x - (int)*y;
@@ -132,4 +133,15 @@ int memcmp(const void* a, const void* b, size_t n) {
         y++;
     }
     return 0;
+}
+
+uint16_t htons(uint16_t host16) {
+    return (uint16_t)((host16 >> 8) | (host16 << 8));
+}
+
+uint32_t htonl(uint32_t host32) {
+    return ((host32 >> 24) & 0x000000FFu) |
+           ((host32 >>  8) & 0x0000FF00u) |
+           ((host32 <<  8) & 0x00FF0000u) |
+           ((host32 << 24) & 0xFF000000u);
 }

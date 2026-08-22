@@ -1,13 +1,14 @@
 // 参考: 《操作系统真相还原》(于渊) 第11章 用户进程
 #include "tss.h"
-#include "../gdt/gdt.h"
-#include "../../thread/thread.h"
-#include "../../memory/pool/pool.h"
+
 #include "../../include/asmFunc.h"
+#include "../../memory/pool/pool.h"
+#include "../../thread/thread.h"
+#include "../gdt/gdt.h"
 
 struct tss tss;
 
-void update_tss_esp(struct task_struct* pthread) {
+void update_tss_esp(struct task_struct *pthread) {
     tss.esp0 = pthread->kernel_stack_top;
 }
 

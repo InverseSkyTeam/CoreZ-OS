@@ -1,44 +1,44 @@
-#include "./include/asmFunc.h"
-#include "./include/assert.h"
-#include "./initer/pic/pic.h"
-#include "./initer/pit/pit.h"
-#include "./initer/io/io.h"
-#include "./initer/idt/idt.h"
-#include "./initer/gdt/gdt.h"
-#include "./initer/tss/tss.h"
-#include "./memory/pool/pool.h"
-#include "./thread/thread.h"
+#include "./device/ide.h"
 #include "./device/keyboard.h"
 #include "./device/mouse.h"
-#include "./device/ide.h"
 #include "./fs/fs.h"
-#include "./userprog/process.h"
-#include "./userprog/exec.h"
-#include "./syscall/syscall.h"
-#include "./syscall/futex.h"
-#include "./shell/shell.h"
-#include "./lib/user/syscall.h"
+#include "./include/asmFunc.h"
+#include "./include/assert.h"
+#include "./initer/gdt/gdt.h"
+#include "./initer/idt/idt.h"
+#include "./initer/io/io.h"
+#include "./initer/pic/pic.h"
+#include "./initer/pit/pit.h"
+#include "./initer/tss/tss.h"
 #include "./lib/user/stdio.h"
+#include "./lib/user/syscall.h"
+#include "./memory/pool/pool.h"
 #include "./net/nt_net.h"
+#include "./shell/shell.h"
+#include "./syscall/futex.h"
+#include "./syscall/syscall.h"
+#include "./thread/thread.h"
+#include "./userprog/exec.h"
+#include "./userprog/process.h"
 
 struct BootInfo {
-    uint8_t  cyls;
-    uint8_t  leds;
-    uint8_t  vmode;
-    uint8_t  _pad;
+    uint8_t cyls;
+    uint8_t leds;
+    uint8_t vmode;
+    uint8_t _pad;
     uint16_t scrnx;
     uint16_t scrny;
     uint32_t vram;
-    uint32_t vram_bytes;   
+    uint32_t vram_bytes;
 };
 
-static void k_thread_a(void* arg) {
+static void k_thread_a(void *arg) {
     for (;;) {
         thread_yield();
     }
 }
 
-static void k_thread_b(void* arg) {
+static void k_thread_b(void *arg) {
     for (;;) {
         thread_yield();
     }
@@ -52,7 +52,8 @@ static void init(void) {
             int32_t status = 0;
             int32_t child_pid = wait(&status);
             if (child_pid != -1) {
-                printf("init: reaped child %d, status %d\n", (int)child_pid, (int)status);
+                printf("init: reaped child %d, status %d\n", (int)child_pid,
+                       (int)status);
             } else {
                 thread_yield();
             }
@@ -68,9 +69,10 @@ static void init(void) {
 }
 
 void KMain(void) {
-    const struct BootInfo *bootInfo = (const struct BootInfo*)0x0FF0;
+    const struct BootInfo *bootInfo = (const struct BootInfo *)0x0FF0;
     initPalette();
-    initIO((uint8_t*)bootInfo->vram, bootInfo->scrnx, bootInfo->scrny, bootInfo->vram_bytes);
+    initIO((uint8_t *)bootInfo->vram, bootInfo->scrnx, bootInfo->scrny,
+           bootInfo->vram_bytes);
     initIDT();
     syscall_init();
     futex_init();
@@ -78,7 +80,8 @@ void KMain(void) {
     gdt_init();
     tss_init();
     setTextColor(10);
-    printf("[OK] TSS loaded, TR=0x%x esp0=0x%x\n", (uint32_t)asm_str(), tss.esp0);
+    printf("[OK] TSS loaded, TR=0x%x esp0=0x%x\n", (uint32_t)asm_str(),
+           tss.esp0);
 
     setCursor(0, 0);
 
@@ -114,7 +117,7 @@ void KMain(void) {
     setTextColor(10);
     printf("[OK] user programs on ext2\n");
 
-    net_init();  
+    net_init();
 
     process_execute(init, "init");
     for (;;) {

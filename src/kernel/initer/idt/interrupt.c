@@ -1,57 +1,55 @@
 #include "interrupt.h"
+
+#include "../../device/ide.h"
+#include "../../device/keyboard.h"
+#include "../../device/mouse.h"
 #include "../../include/asm/stub.h"
 #include "../../include/asmFunc.h"
+#include "../../thread/thread.h"
 #include "../io/io.h"
 #include "../pic/pic.h"
 #include "../pit/pit.h"
-#include "../../device/keyboard.h"
-#include "../../device/mouse.h"
-#include "../../device/ide.h"
-#include "../../thread/thread.h"
 
 volatile uint32_t g_tick = 0;
 
-static const char* g_exc_names[32] = {
-    "Divide Error",
-    "Debug",
-    "Non-Maskable Interrupt",
-    "Breakpoint",
-    "Overflow",
-    "BOUND Range Exceeded",
-    "Invalid Opcode",
-    "Device Not Available",
-    "Double Fault",
-    "Coprocessor Seg Overrun",
-    "Invalid TSS",
-    "Segment Not Present",
-    "Stack-Segment Fault",
-    "General Protection",
-    "Page Fault",
-    "(Reserved)",
-    "x87 FP Error",
-    "Alignment Check",
-    "Machine Check",
-    "SIMD FP Exception",
-    "Virtualization Exception",
-    "Control Protection",
-    "(Reserved)",
-    "(Reserved)",
-    "(Reserved)",
-    "(Reserved)",
-    "(Reserved)",
-    "(Reserved)",
-    "(Reserved)",
-    "(Reserved)",
-    "(Reserved)",
-    "(Reserved)"
-};
+static const char *g_exc_names[32] = {"Divide Error",
+                                      "Debug",
+                                      "Non-Maskable Interrupt",
+                                      "Breakpoint",
+                                      "Overflow",
+                                      "BOUND Range Exceeded",
+                                      "Invalid Opcode",
+                                      "Device Not Available",
+                                      "Double Fault",
+                                      "Coprocessor Seg Overrun",
+                                      "Invalid TSS",
+                                      "Segment Not Present",
+                                      "Stack-Segment Fault",
+                                      "General Protection",
+                                      "Page Fault",
+                                      "(Reserved)",
+                                      "x87 FP Error",
+                                      "Alignment Check",
+                                      "Machine Check",
+                                      "SIMD FP Exception",
+                                      "Virtualization Exception",
+                                      "Control Protection",
+                                      "(Reserved)",
+                                      "(Reserved)",
+                                      "(Reserved)",
+                                      "(Reserved)",
+                                      "(Reserved)",
+                                      "(Reserved)",
+                                      "(Reserved)",
+                                      "(Reserved)",
+                                      "(Reserved)",
+                                      "(Reserved)"};
 
 #define INT_NO_UNREGISTERED 0xFFFFu
 
-void isr_handler(struct Registers* r) {
+void isr_handler(struct Registers *r) {
     uint32_t n = r->int_no;
 
-    
     if ((r->cs & 3) == 3) {
         int sig = exception_to_signal((int)n);
         if (sig > 0) {
@@ -59,11 +57,12 @@ void isr_handler(struct Registers* r) {
             check_pending_signals(r);
             return;
         }
-        
+
         setTextColor(12);
         kprintf("\n*** UNHANDLED USER EXCEPTION ***\n");
         if (n < 32) {
-            kprintf("  %s (vector %d)  eip = 0x%x\n", g_exc_names[n], (int)n, r->eip);
+            kprintf("  %s (vector %d)  eip = 0x%x\n", g_exc_names[n], (int)n,
+                    r->eip);
         }
         signal_terminate(current_task, SIGSEGV);
     }
@@ -78,17 +77,19 @@ void isr_handler(struct Registers* r) {
         kprintf("  Unregistered interrupt (vector %d)\n", (int)n);
     }
 
-    kprintf("  eip = 0x%x  cs = 0x%x  eflags = 0x%x\n", r->eip, r->cs, r->eflags);
-    kprintf("  eax = 0x%x  ebx = 0x%x  ecx = 0x%x  edx = 0x%x\n",
-           r->eax, r->ebx, r->ecx, r->edx);
-    kprintf("  esi = 0x%x  edi = 0x%x  ebp = 0x%x  ds = 0x%x\n",
-           r->esi, r->edi, r->ebp, r->ds);
+    kprintf("  eip = 0x%x  cs = 0x%x  eflags = 0x%x\n", r->eip, r->cs,
+            r->eflags);
+    kprintf("  eax = 0x%x  ebx = 0x%x  ecx = 0x%x  edx = 0x%x\n", r->eax,
+            r->ebx, r->ecx, r->edx);
+    kprintf("  esi = 0x%x  edi = 0x%x  ebp = 0x%x  ds = 0x%x\n", r->esi, r->edi,
+            r->ebp, r->ds);
 
     uint32_t cr2;
     asm volatile("mov %%cr2, %0" : "=r"(cr2));
     kprintf("  cr2 (fault addr) = 0x%x\n", cr2);
     if (cr2 >= 0xC1000000 && cr2 < 0xC1400000) {
-        kprintf("  (note: fault is inside kernel virtual pool 0xC1000000..0xC1400000)\n");
+        kprintf("  (note: fault is inside kernel virtual pool "
+                "0xC1000000..0xC1400000)\n");
     } else if (cr2 >= 0xE0000000) {
         kprintf("  (note: fault is inside VRAM region 0xE0000000+)\n");
     }
@@ -99,7 +100,7 @@ void isr_handler(struct Registers* r) {
     }
 }
 
-void irq_handler(struct Registers* r) {
+void irq_handler(struct Registers *r) {
     uint32_t irq = r->int_no - 32;
 
     if (irq >= 8) {
@@ -113,7 +114,6 @@ void irq_handler(struct Registers* r) {
             setTextColor(10);
         }
         if (current_task != 0) {
-            
             check_pending_signals(r);
             schedule();
         }

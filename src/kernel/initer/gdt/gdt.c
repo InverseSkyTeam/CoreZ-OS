@@ -1,5 +1,6 @@
 // 参考: 《操作系统真相还原》(于渊) 第11章 用户进程
 #include "gdt.h"
+
 #include "../../include/asmFunc.h"
 
 struct gdt_desc gdt[7];
@@ -9,7 +10,7 @@ struct gdtr {
     uint32_t base;
 } __attribute__((packed)) gdtr0;
 
-static void desc_init(struct gdt_desc* d, uint32_t base, uint32_t limit,
+static void desc_init(struct gdt_desc *d, uint32_t base, uint32_t limit,
                       uint8_t attr_low, uint8_t attr_high) {
     d->limit_low = limit & 0xFFFF;
     d->base_low = base & 0xFFFF;

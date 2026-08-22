@@ -1,35 +1,41 @@
-// 参考: 《操作系统真相还原》(于渊) 第15章 fork + Linux clone(CLONE_VM/CLONE_THREAD)
+// 参考: 《操作系统真相还原》(于渊) 第15章 fork + Linux
+// clone(CLONE_VM/CLONE_THREAD)
 #include "./clone.h"
-#include "../thread/thread.h"
-#include "../userprog/process.h"
-#include "../memory/pool/pool.h"
+
 #include "../fs/file.h"
-#include "../shell/pipe.h"
-#include "../lib/str/str.h"
 #include "../include/asmFunc.h"
 #include "../include/assert.h"
+#include "../lib/str/str.h"
+#include "../memory/pool/pool.h"
+#include "../shell/pipe.h"
+#include "../thread/thread.h"
+#include "../userprog/process.h"
 
 extern void intr_exit(void);
 
-static void build_clone_stack(struct task_struct* child, struct Registers* parent_frame,
+static void build_clone_stack(struct task_struct *child,
+                              struct Registers *parent_frame,
                               uint32_t user_stack) {
     uint32_t stack_top = child->kernel_stack_top;
-    struct Registers* child_frame = (struct Registers*)(stack_top - sizeof(struct Registers));
+    struct Registers *child_frame =
+        (struct Registers *)(stack_top - sizeof(struct Registers));
     memcpy(child_frame, parent_frame, sizeof(struct Registers));
     child_frame->eax = 0;
     child_frame->user_esp = user_stack;
-    struct thread_stack* ts = (struct thread_stack*)((uint32_t)child_frame - 24);
+    struct thread_stack *ts =
+        (struct thread_stack *)((uint32_t)child_frame - 24);
     memset(ts, 0, 24);
     ts->eflags = 0x202;
     ts->eip = (void (*)(void))intr_exit;
-    child->self_kstack = (uint32_t*)ts;
+    child->self_kstack = (uint32_t *)ts;
 }
 
-pid_t sys_clone(struct Registers* r) {
+pid_t sys_clone(struct Registers *r) {
     uint32_t flags = r->ebx;
     uint32_t child_user_stack = r->ecx;
-    struct task_struct* parent = current_task;
-    struct task_struct* child = thread_alloc_slot(parent->name, parent->priority);
+    struct task_struct *parent = current_task;
+    struct task_struct *child =
+        thread_alloc_slot(parent->name, parent->priority);
     if (child == NULL) {
         return -1;
     }

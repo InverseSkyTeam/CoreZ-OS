@@ -1,9 +1,10 @@
 // 参考: 《操作系统真相还原》(于渊) 第12章 格式化输出
 
 #include "./stdio.h"
+
 #include "./syscall.h"
 
-static void itoa(uint32_t value, char** buf_ptr_addr, uint8_t base) {
+static void itoa(uint32_t value, char **buf_ptr_addr, uint8_t base) {
     uint32_t m = value % base;
     uint32_t i = value / base;
     if (i) {
@@ -16,9 +17,9 @@ static void itoa(uint32_t value, char** buf_ptr_addr, uint8_t base) {
     }
 }
 
-uint32_t vsprintf(char* str, const char* format, va_list ap) {
-    char* buf_ptr = str;
-    const char* fmt = format;
+uint32_t vsprintf(char *str, const char *format, va_list ap) {
+    char *buf_ptr = str;
+    const char *fmt = format;
     char ch;
 
     while ((ch = *fmt) != 0) {
@@ -32,13 +33,11 @@ uint32_t vsprintf(char* str, const char* format, va_list ap) {
         ch = *fmt;
         switch (ch) {
         case 'x': {
-
             uint32_t v = (uint32_t)va_arg(ap, int);
             itoa(v, &buf_ptr, 16);
             break;
         }
         case 'd': {
-
             int32_t v = va_arg(ap, int);
             if (v < 0) {
                 *buf_ptr++ = '-';
@@ -51,7 +50,7 @@ uint32_t vsprintf(char* str, const char* format, va_list ap) {
             *buf_ptr++ = (char)va_arg(ap, int);
             break;
         case 's': {
-            const char* s = va_arg(ap, const char*);
+            const char *s = va_arg(ap, const char *);
             if (s == 0) {
                 s = "(null)";
             }
@@ -76,7 +75,7 @@ uint32_t vsprintf(char* str, const char* format, va_list ap) {
     return (uint32_t)(buf_ptr - str);
 }
 
-void printf(const char* format, ...) {
+void printf(const char *format, ...) {
     va_list ap;
     va_start(ap, format);
     char buf[1024] = {0};
@@ -85,7 +84,7 @@ void printf(const char* format, ...) {
     write(1, buf, len);
 }
 
-uint32_t sprintf(char* buf, const char* format, ...) {
+uint32_t sprintf(char *buf, const char *format, ...) {
     va_list ap;
     uint32_t retval;
     va_start(ap, format);

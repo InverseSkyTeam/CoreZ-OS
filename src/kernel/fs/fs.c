@@ -1,15 +1,16 @@
 #include "fs.h"
-#include "inode.h"
-#include "dir.h"
-#include "file.h"
-#include "ext2.h"
+
+#include "../initer/io/io.h"
+#include "../lib/str/str.h"
+#include "../memory/pool/pool.h"
 #include "../shell/pipe.h"
 #include "../thread/thread.h"
-#include "../memory/pool/pool.h"
-#include "../lib/str/str.h"
-#include "../initer/io/io.h"
+#include "dir.h"
+#include "ext2.h"
+#include "file.h"
+#include "inode.h"
 
-struct partition* cur_part;
+struct partition *cur_part;
 
 void filesys_init(void) {
     if (ext2_init()) {
@@ -25,10 +26,11 @@ void filesys_init(void) {
     kprintf("filesys init done, root=%s\n", cur_part->name);
 }
 
-char* path_parse(char* pathname, char* name_store) {
+char *path_parse(char *pathname, char *name_store) {
     uint32_t cnt = 0;
     if (pathname[0] == '/') {
-        while (*(++pathname) == '/');
+        while (*(++pathname) == '/')
+            ;
     }
     while (*pathname != '/' && *pathname != 0 && cnt < MAX_FILE_NAME_LEN - 1) {
         *name_store++ = *pathname++;
@@ -40,8 +42,10 @@ char* path_parse(char* pathname, char* name_store) {
     return pathname;
 }
 
-int search_file(const char* pathname, struct path_search_record* searched_record) {
-    if (!strcmp(pathname, "/") || !strcmp(pathname, "/.") || !strcmp(pathname, "/..")) {
+int search_file(const char *pathname,
+                struct path_search_record *searched_record) {
+    if (!strcmp(pathname, "/") || !strcmp(pathname, "/.") ||
+        !strcmp(pathname, "/..")) {
         searched_record->parent_dir = &root_dir;
         searched_record->file_type = FT_DIRECTORY;
         searched_record->searched_path[0] = 0;
@@ -72,13 +76,14 @@ int search_file(const char* pathname, struct path_search_record* searched_record
     return (int)ino;
 }
 
-static int ext2_create_common(const char* pathname, uint32_t mode, int is_dir);
-int create_file(const char* pathname) {
+static int ext2_create_common(const char *pathname, uint32_t mode, int is_dir);
+int create_file(const char *pathname) {
     return ext2_create_common(pathname, 0x8000u /*EXT2_S_IFREG*/, 0);
 }
 
 /* 把路径拆成父目录路径 + 末级文件名 */
-static int split_parent_path(const char* pathname, char* parent, char** base_out, uint32_t buf_len) {
+static int split_parent_path(const char *pathname, char *parent,
+                             char **base_out, uint32_t buf_len) {
     uint32_t plen = (uint32_t)strlen(pathname);
     if (plen >= buf_len) {
         return -1;
@@ -91,7 +96,7 @@ static int split_parent_path(const char* pathname, char* parent, char** base_out
     if (i == 0) {
         return -1;
     }
-    char* slash = strrchr(parent, '/');
+    char *slash = strrchr(parent, '/');
     if (slash == NULL) {
         return -1;
     }
@@ -108,7 +113,7 @@ static int split_parent_path(const char* pathname, char* parent, char** base_out
     return 0;
 }
 
-static uint32_t get_parent_inode(const char* parent) {
+static uint32_t get_parent_inode(const char *parent) {
     uint32_t pino = 0;
     int is_dir = 0;
     if (ext2_lookup(parent, &pino, &is_dir) || !is_dir) {
@@ -117,12 +122,13 @@ static uint32_t get_parent_inode(const char* parent) {
     return pino;
 }
 
-static void ext2_free_best_effort(struct inode* ino);
+static void ext2_free_best_effort(struct inode *ino);
 
-static int ext2_create_common(const char* pathname, uint32_t mode, int is_dir) {
+static int ext2_create_common(const char *pathname, uint32_t mode, int is_dir) {
     char parent[MAX_PATH_LEN];
-    char* base;
-    if (split_parent_path(pathname, parent, &base, MAX_PATH_LEN) || base == NULL) {
+    char *base;
+    if (split_parent_path(pathname, parent, &base, MAX_PATH_LEN) ||
+        base == NULL) {
         return -1;
     }
     uint32_t pino = get_parent_inode(parent);
@@ -160,13 +166,13 @@ static int ext2_create_common(const char* pathname, uint32_t mode, int is_dir) {
     return (int)ino;
 }
 
-static void ext2_free_best_effort(struct inode* ino) {
+static void ext2_free_best_effort(struct inode *ino) {
     ext2_truncate_inode(ino);
     ext2_write_inode(ino->i_no, ino);
     ext2_free_inode(ino->i_no);
 }
 
-int open_file(const char* pathname, uint8_t flags) {
+int open_file(const char *pathname, uint8_t flags) {
     if (pathname[strlen(pathname) - 1] == '/') {
         return -1;
     }
@@ -219,7 +225,7 @@ int close_file(int fd) {
     if (global_fd_idx == (uint32_t)-1) {
         return -1;
     }
-    struct file* file = &file_table[global_fd_idx];
+    struct file *file = &file_table[global_fd_idx];
     if (file->fd_flag == PIPE_FLAG) {
         if (--file->fd_pos == 0) {
             free_kernel_page((uint32_t)file->fd_inode);
@@ -236,7 +242,7 @@ int close_file(int fd) {
     return 0;
 }
 
-uint32_t read_file(int fd, void* buf, uint32_t count) {
+uint32_t read_file(int fd, void *buf, uint32_t count) {
     if (fd < 0 || fd >= MAX_FILES_OPEN_PER_PROC) {
         return (uint32_t)-1;
     }
@@ -247,7 +253,7 @@ uint32_t read_file(int fd, void* buf, uint32_t count) {
     return file_read(&file_table[global_fd_idx], buf, count);
 }
 
-uint32_t write_file(int fd, const void* buf, uint32_t count) {
+uint32_t write_file(int fd, const void *buf, uint32_t count) {
     if (fd < 0 || fd >= MAX_FILES_OPEN_PER_PROC) {
         return (uint32_t)-1;
     }
@@ -266,7 +272,7 @@ int32_t sys_lseek(int32_t fd, int32_t offset, uint8_t whence) {
     if (global_fd_idx == (uint32_t)-1) {
         return -1;
     }
-    struct file* pf = &file_table[global_fd_idx];
+    struct file *pf = &file_table[global_fd_idx];
     int32_t new_pos = 0;
     int32_t file_size = (int32_t)pf->fd_inode->i_size;
     switch (whence) {
@@ -289,24 +295,19 @@ int32_t sys_lseek(int32_t fd, int32_t offset, uint8_t whence) {
     return (int32_t)pf->fd_pos;
 }
 
-int32_t block_bitmap_alloc(struct partition* part) {
-    return -1;
-}
+int32_t block_bitmap_alloc(struct partition *part) { return -1; }
 
-int32_t inode_bitmap_alloc(struct partition* part) {
-    return -1;
-}
+int32_t inode_bitmap_alloc(struct partition *part) { return -1; }
 
-void block_bitmap_free(struct partition* part, uint32_t lba) {
-}
+void block_bitmap_free(struct partition *part, uint32_t lba) {}
 
-void inode_bitmap_free(struct partition* part, uint32_t inode_no) {
-}
+void inode_bitmap_free(struct partition *part, uint32_t inode_no) {}
 
-int sys_unlink(const char* pathname) {
+int sys_unlink(const char *pathname) {
     char parent[MAX_PATH_LEN];
-    char* base;
-    if (split_parent_path(pathname, parent, &base, MAX_PATH_LEN) || base == NULL) {
+    char *base;
+    if (split_parent_path(pathname, parent, &base, MAX_PATH_LEN) ||
+        base == NULL) {
         return -1;
     }
     uint32_t pino = get_parent_inode(parent);
@@ -332,14 +333,14 @@ int sys_unlink(const char* pathname) {
     return 0;
 }
 
-int32_t sys_mkdir(const char* pathname) {
+int32_t sys_mkdir(const char *pathname) {
     if (pathname == NULL) {
         return -1;
     }
     return ext2_create_common(pathname, 0x4000u /*EXT2_S_IFDIR*/, 1) ? 0 : -1;
 }
 
-static int ext2_dir_is_empty(struct inode* dino) {
+static int ext2_dir_is_empty(struct inode *dino) {
     uint32_t pos = 0;
     struct dir_entry de;
     while (ext2_dir_next(dino, &pos, &de) == 0) {
@@ -350,7 +351,7 @@ static int ext2_dir_is_empty(struct inode* dino) {
     return 1;
 }
 
-struct dir* sys_opendir(const char* name) {
+struct dir *sys_opendir(const char *name) {
     uint32_t ino = 0;
     int is_dir = 0;
     if (!strcmp(name, "/") || !strcmp(name, "/.") || !strcmp(name, "/..")) {
@@ -365,7 +366,7 @@ struct dir* sys_opendir(const char* name) {
     return dir_open(cur_part, ino);
 }
 
-int32_t sys_closedir(struct dir* dir) {
+int32_t sys_closedir(struct dir *dir) {
     int32_t ret = -1;
     if (dir != NULL) {
         dir_close(dir);
@@ -374,25 +375,23 @@ int32_t sys_closedir(struct dir* dir) {
     return ret;
 }
 
-struct dir_entry* sys_readdir(struct dir* dir) {
-    return dir_read(dir);
-}
+struct dir_entry *sys_readdir(struct dir *dir) { return dir_read(dir); }
 
-void sys_rewinddir(struct dir* dir) {
-    dir->dir_pos = 0;
-}
+void sys_rewinddir(struct dir *dir) { dir->dir_pos = 0; }
 
-int32_t sys_rmdir(const char* pathname) {
+int32_t sys_rmdir(const char *pathname) {
     if (pathname == NULL) {
         return -1;
     }
-    if (!strcmp(pathname, "/") || !strcmp(pathname, "/.") || !strcmp(pathname, "/..") ||
-        !strcmp(pathname, ".") || !strcmp(pathname, "..")) {
+    if (!strcmp(pathname, "/") || !strcmp(pathname, "/.") ||
+        !strcmp(pathname, "/..") || !strcmp(pathname, ".") ||
+        !strcmp(pathname, "..")) {
         return -1;
     }
     char parent[MAX_PATH_LEN];
-    char* base;
-    if (split_parent_path(pathname, parent, &base, MAX_PATH_LEN) || base == NULL) {
+    char *base;
+    if (split_parent_path(pathname, parent, &base, MAX_PATH_LEN) ||
+        base == NULL) {
         return -1;
     }
     uint32_t pino = get_parent_inode(parent);
@@ -422,7 +421,7 @@ int32_t sys_rmdir(const char* pathname) {
 }
 
 static uint32_t get_parent_dir_inode_nr(uint32_t child_inode_nr) {
-    struct inode* ino = inode_open(cur_part, child_inode_nr);
+    struct inode *ino = inode_open(cur_part, child_inode_nr);
     if (ino == NULL) {
         return (uint32_t)-1;
     }
@@ -439,8 +438,9 @@ static uint32_t get_parent_dir_inode_nr(uint32_t child_inode_nr) {
     return parent;
 }
 
-static int get_child_dir_name(uint32_t p_inode_nr, uint32_t c_inode_nr, char* path) {
-    struct inode* p = inode_open(cur_part, p_inode_nr);
+static int get_child_dir_name(uint32_t p_inode_nr, uint32_t c_inode_nr,
+                              char *path) {
+    struct inode *p = inode_open(cur_part, p_inode_nr);
     if (p == NULL) {
         return -1;
     }
@@ -448,7 +448,8 @@ static int get_child_dir_name(uint32_t p_inode_nr, uint32_t c_inode_nr, char* pa
     struct dir_entry de;
     int ret = -1;
     while (ext2_dir_next(p, &pos, &de) == 0) {
-        if (de.i_no == c_inode_nr && strcmp(de.filename, ".") != 0 && strcmp(de.filename, "..") != 0) {
+        if (de.i_no == c_inode_nr && strcmp(de.filename, ".") != 0 &&
+            strcmp(de.filename, "..") != 0) {
             strcat(path, "/");
             strcat(path, de.filename);
             ret = 0;
@@ -459,7 +460,7 @@ static int get_child_dir_name(uint32_t p_inode_nr, uint32_t c_inode_nr, char* pa
     return ret;
 }
 
-char* sys_getcwd(char* buf, uint32_t size) {
+char *sys_getcwd(char *buf, uint32_t size) {
     uint32_t child = current_task->cwd_inode_nr;
     if (child == 0 || child == 2) {
         buf[0] = '/';
@@ -475,7 +476,7 @@ char* sys_getcwd(char* buf, uint32_t size) {
         }
         child = parent;
     }
-    char* last_slash;
+    char *last_slash;
     while ((last_slash = strrchr(full_path_reverse, '/'))) {
         uint32_t len = strlen(buf);
         strcpy(buf + len, last_slash);
@@ -484,7 +485,7 @@ char* sys_getcwd(char* buf, uint32_t size) {
     return buf;
 }
 
-int32_t sys_chdir(const char* path) {
+int32_t sys_chdir(const char *path) {
     uint32_t ino = 0;
     int is_dir = 0;
     if (ext2_lookup(path, &ino, &is_dir) || !is_dir) {
@@ -494,7 +495,7 @@ int32_t sys_chdir(const char* path) {
     return 0;
 }
 
-int32_t sys_stat(const char* path, struct stat* buf) {
+int32_t sys_stat(const char *path, struct stat *buf) {
     if (!strcmp(path, ".") || !strcmp(path, "/.") || !strcmp(path, "/..")) {
         buf->st_filetype = FT_DIRECTORY;
         buf->st_ino = 2;
@@ -506,7 +507,7 @@ int32_t sys_stat(const char* path, struct stat* buf) {
     if (ext2_lookup(path, &ino, &is_dir)) {
         return -1;
     }
-    struct inode* obj = inode_open(cur_part, ino);
+    struct inode *obj = inode_open(cur_part, ino);
     if (obj == NULL) {
         return -1;
     }

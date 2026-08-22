@@ -1,14 +1,15 @@
 // 参考: 《操作系统真相还原》(于渊) 第12章 系统调用
 #include "./mmap.h"
-#include "../userprog/process.h"
-#include "../memory/pool/pool.h"
-#include "../memory/bitmap/bitmap.h"
-#include "../thread/thread.h"
-#include "../lib/str/str.h"
+
 #include "../include/assert.h"
+#include "../lib/str/str.h"
+#include "../memory/bitmap/bitmap.h"
+#include "../memory/pool/pool.h"
+#include "../thread/thread.h"
+#include "../userprog/process.h"
 
 static int32_t unmap_pages(uint32_t addr, uint32_t pages) {
-    struct task_struct* cur = current_task;
+    struct task_struct *cur = current_task;
     for (uint32_t i = 0; i < pages; i++) {
         uint32_t v = addr + i * PAGE_SIZE;
         free_user_page(v);
@@ -17,7 +18,7 @@ static int32_t unmap_pages(uint32_t addr, uint32_t pages) {
 }
 
 static int page_is_mapped(uint32_t v) {
-    uint32_t* pde = pde_ptr(v);
+    uint32_t *pde = pde_ptr(v);
     if (!(*pde & 1)) {
         return 0;
     }
@@ -28,7 +29,7 @@ static int page_is_mapped(uint32_t v) {
 }
 
 static uint32_t find_free_region(uint32_t pages) {
-    struct task_struct* cur = current_task;
+    struct task_struct *cur = current_task;
     uint32_t start = cur->userprog_v_addr.vaddr_start;
     uint32_t limit = USER_STACK3_VADDR;
     uint32_t run = 0;
@@ -50,7 +51,7 @@ static uint32_t find_free_region(uint32_t pages) {
     return 0;
 }
 
-uint32_t sys_mmap(const struct mmap_args* a) {
+uint32_t sys_mmap(const struct mmap_args *a) {
     if (a == 0) {
         return (uint32_t)-1;
     }
@@ -59,7 +60,7 @@ uint32_t sys_mmap(const struct mmap_args* a) {
         return (uint32_t)-1;
     }
     uint32_t pages = (len + PAGE_SIZE - 1) / PAGE_SIZE;
-    struct task_struct* cur = current_task;
+    struct task_struct *cur = current_task;
 
     if ((a->flags & MAP_FIXED) && (a->addr & (PAGE_SIZE - 1)) == 0 &&
         a->addr >= cur->userprog_v_addr.vaddr_start) {
@@ -85,15 +86,15 @@ uint32_t sys_mmap(const struct mmap_args* a) {
     return base;
 }
 
-uint32_t sys_mmap2(uint32_t addr, uint32_t len, uint32_t prot,
-                   uint32_t flags, uint32_t fd, uint32_t offset) {
+uint32_t sys_mmap2(uint32_t addr, uint32_t len, uint32_t prot, uint32_t flags,
+                   uint32_t fd, uint32_t offset) {
     struct mmap_args a;
-    a.addr   = addr;
-    a.len    = len;
-    a.prot   = prot;
-    a.flags  = flags;
-    a.fd     = fd;
-    a.offset = offset << 12; 
+    a.addr = addr;
+    a.len = len;
+    a.prot = prot;
+    a.flags = flags;
+    a.fd = fd;
+    a.offset = offset << 12;
     return sys_mmap(&a);
 }
 
@@ -125,7 +126,7 @@ int32_t sys_mprotect(uint32_t addr, uint32_t len, uint32_t prot) {
         if (!page_is_mapped(v)) {
             continue;
         }
-        uint32_t* pte = pte_ptr(v);
+        uint32_t *pte = pte_ptr(v);
         uint32_t new_pte = *pte & 0xfffff000u;
         if (prot != 0) {
             new_pte |= 1u;

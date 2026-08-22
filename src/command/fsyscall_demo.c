@@ -3,11 +3,7 @@
 #include "stdio.h"
 #include "syscall.h"
 
-enum file_types {
-    FT_UNKNOWN,
-    FT_REGULAR,
-    FT_DIRECTORY
-};
+enum file_types { FT_UNKNOWN, FT_REGULAR, FT_DIRECTORY };
 struct stat {
     uint32_t st_ino;
     uint32_t st_size;
@@ -16,14 +12,19 @@ struct stat {
 
 static int g_fail = 0;
 
-#define CHECK(cond, msg) do { \
-    if (!(cond)) { g_fail = 1; printf("  [FAIL] %s\n", msg); } \
-} while (0)
+#define CHECK(cond, msg)                                                       \
+    do {                                                                       \
+        if (!(cond)) {                                                         \
+            g_fail = 1;                                                        \
+            printf("  [FAIL] %s\n", msg);                                      \
+        }                                                                      \
+    } while (0)
 
-int main(int argc, char** argv) {
-    (void)argc; (void)argv;
-    const char* f1 = "/sysdemo.tmp";
-    const char* f2 = "/sysdemo.renamed";
+int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    const char *f1 = "/sysdemo.tmp";
+    const char *f2 = "/sysdemo.renamed";
     struct stat st;
 
     printf("fsyscall_demo: start\n");
@@ -55,7 +56,8 @@ int main(int argc, char** argv) {
     CHECK(fcntl((-1), F_GETFL, 0) == -1, "fcntl bad fd -> -1");
 
     char dbuf[256];
-    CHECK(getdents(-1, (struct linux_dirent*)dbuf, sizeof(dbuf)) == -1, "getdents bad fd -> -1");
+    CHECK(getdents(-1, (struct linux_dirent *)dbuf, sizeof(dbuf)) == -1,
+          "getdents bad fd -> -1");
 
     CHECK(chmod(f1, 0700) == 0, "chmod ok");
     CHECK(truncate(f1, 5) == 0, "truncate ok");
@@ -68,17 +70,21 @@ int main(int argc, char** argv) {
 
     struct timespec ts;
     struct timeval tv;
-    CHECK(clock_gettime(CLOCK_REALTIME, &ts) == 0 && ts.tv_sec >= 0, "clock_gettime");
+    CHECK(clock_gettime(CLOCK_REALTIME, &ts) == 0 && ts.tv_sec >= 0,
+          "clock_gettime");
     CHECK(gettimeofday(&tv, 0) == 0 && tv.tv_sec >= 0, "gettimeofday");
     struct timespec req = {0, 10 * 1000 * 1000};
     CHECK(nanosleep(&req, 0) == 0, "nanosleep 10ms");
 
-    close(fd); close(d); close(d2); close(d3);
+    close(fd);
+    close(d);
+    close(d2);
+    close(d3);
     CHECK(unlink(f2) == 0, "cleanup unlink");
 
     if (g_fail == 0) {
         printf("fsyscall_demo: PASS\n");
-        exit_group(0);   
+        exit_group(0);
     }
     printf("fsyscall_demo: FAIL\n");
     exit_group(1);

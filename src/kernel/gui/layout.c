@@ -1,30 +1,37 @@
 
 #include "./layout.h"
 
-const char* layout_name(enum layout_kind kind) {
+const char *layout_name(enum layout_kind kind) {
     switch (kind) {
-    case LAYOUT_MASTER_STACK: return "[M]";
-    case LAYOUT_TALL:         return "[|]";
-    case LAYOUT_WIDE:         return "[-]";
-    case LAYOUT_MONOCLE:      return "[F]";
-    default:                  return "[?]";
+    case LAYOUT_MASTER_STACK:
+        return "[M]";
+    case LAYOUT_TALL:
+        return "[|]";
+    case LAYOUT_WIDE:
+        return "[-]";
+    case LAYOUT_MONOCLE:
+        return "[F]";
+    default:
+        return "[?]";
     }
 }
 
-static void shrink(struct gfx_rect* r, int gap) {
+static void shrink(struct gfx_rect *r, int gap) {
     r->x += gap / 2;
     r->y += gap / 2;
     r->w -= gap;
     r->h -= gap;
-    if (r->w < 16) r->w = 16;
-    if (r->h < 16) r->h = 16;
+    if (r->w < 16)
+        r->w = 16;
+    if (r->h < 16)
+        r->h = 16;
 }
 
-void layout_arrange(const struct layout_params* p, int n,
-                    struct gfx_rect area, struct gfx_rect* out) {
-    if (n <= 0) return;
+void layout_arrange(const struct layout_params *p, int n, struct gfx_rect area,
+                    struct gfx_rect *out) {
+    if (n <= 0)
+        return;
 
-    
     if (n == 1 || p->kind == LAYOUT_MONOCLE) {
         for (int i = 0; i < n; i++) {
             out[i] = area;
@@ -36,13 +43,13 @@ void layout_arrange(const struct layout_params* p, int n,
     switch (p->kind) {
     case LAYOUT_MASTER_STACK: {
         int mw = area.w * p->mfact / 1000;
-        
+
         out[0].x = area.x;
         out[0].y = area.y;
         out[0].w = mw;
         out[0].h = area.h;
         shrink(&out[0], p->gap);
-        
+
         int sx = area.x + mw;
         int sw = area.w - mw;
         int cnt = n - 1;

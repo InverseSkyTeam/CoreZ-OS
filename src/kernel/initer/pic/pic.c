@@ -1,6 +1,8 @@
-#include <stdint.h>
-#include "../../include/asmFunc.h"
 #include "./pic.h"
+
+#include <stdint.h>
+
+#include "../../include/asmFunc.h"
 
 int initPic(void) {
     uint8_t a1 = inb(PIC1_DATA);
@@ -25,7 +27,7 @@ int initPic(void) {
     uint8_t imr2 = inb(PIC2_DATA);
     if (imr1 == 0xFF && imr2 == 0xFF) {
         outb(PIC1_DATA, 0xF8);
-        outb(PIC2_DATA, 0xAF);   
+        outb(PIC2_DATA, 0xAF);
         return 0;
     }
     return -1;

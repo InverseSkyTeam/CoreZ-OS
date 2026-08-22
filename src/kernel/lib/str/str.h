@@ -18,6 +18,9 @@ char* strrchr(const char* s, int c);
 void* memcpy(void* dst, const void* src, size_t n);
 void* memmove(void* dst, const void* src, size_t n);
 void* memset(void* s, int c, size_t n);
-int memcmp(const void* a, const void* b, size_t n);
+int memcmp(const void *a, const void *b, size_t n);
+
+uint16_t htons(uint16_t host16);
+uint32_t htonl(uint32_t host32);
 
 #endif

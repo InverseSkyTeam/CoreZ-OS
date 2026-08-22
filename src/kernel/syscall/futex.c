@@ -1,9 +1,10 @@
 #include "./futex.h"
-#include "../thread/thread.h"
-#include "../thread/sync.h"
-#include "../lib/list/list.h"
+
 #include "../include/asmFunc.h"
 #include "../include/assert.h"
+#include "../lib/list/list.h"
+#include "../thread/sync.h"
+#include "../thread/thread.h"
 
 #define FUTEX_BUCKETS 64
 
@@ -23,7 +24,7 @@ void futex_init(void) {
     g_futex_inited = 1;
 }
 
-static struct futex_bucket* futex_bucket_for(uint32_t uaddr, uint32_t pgdir) {
+static struct futex_bucket *futex_bucket_for(uint32_t uaddr, uint32_t pgdir) {
     if (!g_futex_inited) {
         futex_init();
     }
@@ -32,7 +33,7 @@ static struct futex_bucket* futex_bucket_for(uint32_t uaddr, uint32_t pgdir) {
 }
 
 static int32_t sys_futex_wait(uint32_t uaddr, uint32_t val, uint32_t timeout) {
-    struct futex_bucket* b = futex_bucket_for(uaddr, current_task->pgdir);
+    struct futex_bucket *b = futex_bucket_for(uaddr, current_task->pgdir);
     current_task->futex_ready = 0;
     (void)timeout;
 
@@ -40,7 +41,7 @@ static int32_t sys_futex_wait(uint32_t uaddr, uint32_t val, uint32_t timeout) {
     asm_cli();
 
     spinlock_acquire(&b->lock);
-    if (*(volatile uint32_t*)uaddr != val) {
+    if (*(volatile uint32_t *)uaddr != val) {
         spinlock_release(&b->lock);
         asm_restore_eflags(old);
         return -EAGAIN;
@@ -65,15 +66,15 @@ static int32_t sys_futex_wait(uint32_t uaddr, uint32_t val, uint32_t timeout) {
 }
 
 static int32_t sys_futex_wake(uint32_t uaddr, uint32_t nr) {
-    struct futex_bucket* b = futex_bucket_for(uaddr, current_task->pgdir);
+    struct futex_bucket *b = futex_bucket_for(uaddr, current_task->pgdir);
     int32_t woken = 0;
 
     uint32_t old = asm_save_eflags();
     asm_cli();
     spinlock_acquire(&b->lock);
     while (woken < (int32_t)nr && !list_empty(&b->waiters)) {
-        struct list_elem* e = list_pop_front(&b->waiters);
-        struct task_struct* t = list_entry(e, struct task_struct, futex_tag);
+        struct list_elem *e = list_pop_front(&b->waiters);
+        struct task_struct *t = list_entry(e, struct task_struct, futex_tag);
         t->futex_ready = 1;
         thread_unblock(t);
         woken++;

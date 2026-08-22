@@ -15,13 +15,13 @@ VRAMBYTES equ  0x0FFC
 STACK_PHYS equ  0x00090000
 
 %define PART_LBA        2048
-%define RESERVED_SECT   1
-%define FAT_SECTORS     256
-%define ROOT_SECTORS    32
+%define RESERVED_SECT   2
+%define FAT_SECTORS     127
+%define FAT_COUNT       2
 %define SPC             1
+%define ROOT_CLUSTER    2
 FAT_LBA   equ PART_LBA + RESERVED_SECT
-ROOT_LBA  equ FAT_LBA + 2*FAT_SECTORS
-DATA_LBA  equ ROOT_LBA + ROOT_SECTORS
+DATA_LBA  equ FAT_LBA + FAT_COUNT*FAT_SECTORS
 DIR_BUF   equ 0x3000
 FAT_BUF   equ 0x3400
 
@@ -132,10 +132,11 @@ vbe_done:
 
         xor     ax, ax
         mov     es, ax
-        mov     word [l_dirsec], 0
+        mov     word [l_rowcl], ROOT_CLUSTER
 .l_dirscan:
-        mov     ax, word [l_dirsec]
-        add     ax, ROOT_LBA
+        mov     ax, word [l_rowcl]
+        sub     ax, 2
+        add     ax, DATA_LBA
         mov     word [l_buf], DIR_BUF
         call    l_readsec
         jc      .lkerr
@@ -161,9 +162,6 @@ vbe_done:
         add     bx, 32
         dec     di
         jnz     .l_entry
-        inc     word [l_dirsec]
-        cmp     word [l_dirsec], ROOT_SECTORS
-        jb      .l_dirscan
         jmp     .lkerr
 
 .l_found:
@@ -202,7 +200,7 @@ vbe_done:
         add     dword [l_loadcur], eax
 
         mov     ax, word [l_cluster]
-        shl     ax, 1
+        shl     ax, 2
         mov     word [l_fbyte], ax
         mov     ax, word [l_fbyte]
         shr     ax, 9
@@ -213,9 +211,10 @@ vbe_done:
         mov     ax, word [l_fbyte]
         and     ax, 0x1FF
         mov     di, ax
-        mov     ax, word [FAT_BUF + di]
+        mov     eax, dword [FAT_BUF + di]
+        and     eax, 0x0FFFFFFF
         mov     word [l_cluster], ax
-        cmp     ax, 0xFFF8
+        cmp     eax, 0x0FFFFFF8
         jae     .l_kload_ok
         jmp     .l_loadloop
 
@@ -305,7 +304,7 @@ dap:
 
 l_drive: db     0
 l_loadcur: dd   0
-l_dirsec: dw    0
+l_rowcl:  dw    0     ; 根目录当前簇号 (FAT32)
 l_cluster: dw   0
 l_fbyte:  dw    0
 l_buf:    dw    0

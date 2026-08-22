@@ -37,7 +37,7 @@ def part_entry(bootable, fs_type, start_lba, sec_cnt):
 
 
 def make_mbr(boot_bin):
-    p1 = part_entry(0x80, 0x0E, make_fat.PART_START,
+    p1 = part_entry(0x80, 0x0C, make_fat.PART_START,
                     make_fat.P1_TOTAL_SECTORS)
     p2 = part_entry(0x00, 0x83, P2_START,
                     TOTAL_SECTORS - P2_START)
@@ -172,8 +172,8 @@ def build(build_dir, out):
 
     mbr = make_mbr(boot_bin)
 
-    fat_img = bd / "fat16.img"
-    make_fat.fat16(build_dir, str(fat_img))
+    fat_img = bd / "fat32.img"
+    make_fat.fat32(build_dir, str(fat_img))
     fat_data = fat_img.read_bytes()
 
     base = P2_START
@@ -206,7 +206,7 @@ def build(build_dir, out):
             f.write(payload)
 
     print(f"OK: {out} ({TOTAL_SECTORS * SECTOR // 1024 // 1024}MB)")
-    print(f"  P1 @{make_fat.PART_START} FAT16({make_fat.P1_TOTAL_SECTORS}sec) "
+    print(f"  P1 @{make_fat.PART_START} FAT32({make_fat.P1_TOTAL_SECTORS}sec) "
           f"[bootable] -> {fat_img}")
     print(f"  P2 @{P2_START} ext2: {len(names)} files, {free_blocks} free blocks")
 

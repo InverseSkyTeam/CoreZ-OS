@@ -9,8 +9,6 @@ PORT = 45454
 def connect():
     s = socket.create_connection(("127.0.0.1", PORT), timeout=5)
     s.settimeout(3)
-    # 关闭 telnet 协商（发 IAC WONT/IAC DO 等可略; 直接应答 DONT）
-    # 收到协商就回 WONT(252)/DONT(254)，避免超时
     return s
 
 

@@ -1,5 +1,4 @@
 // 参考: 《操作系统真相还原》(于渊) 第15章 fork + Linux
-// clone(CLONE_VM/CLONE_THREAD)
 #include "./clone.h"
 
 #include "../fs/file.h"

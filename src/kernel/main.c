@@ -4,10 +4,10 @@
 #include "./fs/fs.h"
 #include "./include/asmFunc.h"
 #include "./include/assert.h"
+#include "./initer/apic/apic.h"
 #include "./initer/gdt/gdt.h"
 #include "./initer/idt/idt.h"
 #include "./initer/io/io.h"
-#include "./initer/pic/pic.h"
 #include "./initer/pit/pit.h"
 #include "./initer/tss/tss.h"
 #include "./lib/user/stdio.h"
@@ -91,14 +91,12 @@ void KMain(void) {
     setTextColor(10);
     printf("[OK] Higher Half Kernel @ 0xC0000000+\n");
 
-    if (initPic() == 0) {
-        printf("[OK] PIC inited\n");
+    if (apic_init() == 0) {
+        printf("[OK] APIC (LAPIC timer + I/O APIC) inited\n");
     } else {
         setTextColor(12);
-        printf("[FAIL] PIC init error\n");
+        printf("[FAIL] APIC init error\n");
     }
-
-    initPIT(PIT_HZ);
 
     keyboard_init();
     mouse_init();

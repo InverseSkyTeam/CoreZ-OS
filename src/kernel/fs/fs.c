@@ -81,7 +81,6 @@ int create_file(const char *pathname) {
     return ext2_create_common(pathname, 0x8000u /*EXT2_S_IFREG*/, 0);
 }
 
-/* 把路径拆成父目录路径 + 末级文件名 */
 static int split_parent_path(const char *pathname, char *parent,
                              char **base_out, uint32_t buf_len) {
     uint32_t plen = (uint32_t)strlen(pathname);
@@ -141,7 +140,7 @@ static int ext2_create_common(const char *pathname, uint32_t mode, int is_dir) {
     uint32_t tino = 0;
     int tdir = 0;
     if (ext2_lookup(pathname, &tino, &tdir) == 0) {
-        return -1; /* 已存在 */
+        return -1;
     }
     struct inode par;
     if (ext2_read_inode(pino, &par)) {
@@ -317,7 +316,7 @@ int sys_unlink(const char *pathname) {
     uint32_t ino = 0;
     int is_dir = 0;
     if (ext2_lookup(pathname, &ino, &is_dir) || is_dir) {
-        return -1; /* 目录用 rmdir；此处仅删除普通文件 */
+        return -1;
     }
     struct inode par;
     struct inode obj;

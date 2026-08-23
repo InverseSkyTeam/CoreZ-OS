@@ -1,5 +1,4 @@
-// 参考: Wine syscall 翻译(gitlab.winehq.org/wine), Linux set_thread_area(glibc
-// user_desc)
+// 参考: Wine syscall 翻译(gitlab.winehq.org/wine), Linux set_thread_area
 #include "./linux_compat.h"
 
 #include "../device/ioqueue.h"

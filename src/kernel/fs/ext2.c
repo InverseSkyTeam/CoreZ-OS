@@ -48,7 +48,6 @@ static uint32_t g_inodes_per_group = 0;
 static uint32_t g_inode_table_blk = 0;
 static uint32_t g_first_block = 0;
 
-/* 写路径用到的几何布局 */
 static uint32_t g_block_bitmap_blk = 0;
 static uint32_t g_inode_bitmap_blk = 0;
 static uint32_t g_total_blocks = 0;
@@ -458,7 +457,6 @@ void ext2_truncate_inode(struct inode *ino) {
     ino->i_size = 0;
 }
 
-/* 前向声明：目录项函数在 ext2_map_block 定义之前使用它 */
 static int ext2_map_block(const struct inode *ino, uint32_t fblk,
                           uint32_t *out);
 
@@ -491,7 +489,6 @@ int ext2_add_entry(struct inode *dino, uint32_t ino, const char *name,
         return -1;
     }
 
-    /* 1) 优先在已有数据块的空闲目录项中落位 */
     for (uint32_t fblk = 0; fblk * g_bs < dino->i_size; fblk++) {
         uint32_t addr = 0;
         if (ext2_map_block((struct inode *)dino, fblk, &addr)) {
@@ -506,7 +503,6 @@ int ext2_add_entry(struct inode *dino, uint32_t ino, const char *name,
             struct ext2_dirent *de = (struct ext2_dirent *)(blk + off);
             uint32_t rl = de->rec_len;
             if (rl < 8u) {
-                /* 遇到无效槽位：若块尾剩余空间足够，则当作新条目 */
                 if (g_bs - off >= need) {
                     target = off;
                     slot_rec = g_bs - off;
@@ -533,7 +529,6 @@ int ext2_add_entry(struct inode *dino, uint32_t ino, const char *name,
         }
     }
 
-    /* 2) 无空闲槽位：分配新数据块，条目从块首开始 */
     uint32_t nfblk = dino->i_size / g_bs;
     uint32_t naddr = ext2_ensure_block((struct inode *)dino, nfblk);
     if (naddr == 0) {

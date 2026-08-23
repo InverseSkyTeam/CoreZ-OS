@@ -140,8 +140,6 @@ uint16_t htons(uint16_t host16) {
 }
 
 uint32_t htonl(uint32_t host32) {
-    return ((host32 >> 24) & 0x000000FFu) |
-           ((host32 >>  8) & 0x0000FF00u) |
-           ((host32 <<  8) & 0x00FF0000u) |
-           ((host32 << 24) & 0xFF000000u);
+    return ((host32 >> 24) & 0x000000FFu) | ((host32 >> 8) & 0x0000FF00u) |
+           ((host32 << 8) & 0x00FF0000u) | ((host32 << 24) & 0xFF000000u);
 }

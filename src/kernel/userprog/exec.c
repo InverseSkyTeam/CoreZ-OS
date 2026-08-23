@@ -63,7 +63,7 @@ static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
                             uint32_t memsz, uint32_t vaddr) {
     uint32_t vaddr_first_page = vaddr & 0xfffff000;
     uint32_t size_in_first_page = PAGE_SIZE - (vaddr & 0x00000fff);
-   
+
     uint32_t occupy_pages =
         (memsz > size_in_first_page)
             ? DIV_ROUND_UP(memsz - size_in_first_page, PAGE_SIZE) + 1
@@ -119,8 +119,7 @@ static int32_t load(const char *pathname) {
             prog_header.p_vaddr >= USER_VADDR_START &&
             prog_header.p_vaddr < USER_STACK3_VADDR) {
             if (segment_load(fd, prog_header.p_offset, prog_header.p_filesz,
-                             prog_header.p_memsz,
-                             prog_header.p_vaddr) == -1) {
+                             prog_header.p_memsz, prog_header.p_vaddr) == -1) {
                 goto done;
             }
         }

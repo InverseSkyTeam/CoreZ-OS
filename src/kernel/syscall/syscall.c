@@ -95,7 +95,7 @@ static uint32_t sys_write(int32_t fd, char *str, uint32_t count) {
     if (is_pipe(fd)) {
         return pipe_write(fd, str, count);
     }
-    /* 普通文件描述符(含被重定向的 stdout/stdin)写盘 */
+
     uint32_t gfd = fd_local2global((uint32_t)fd);
     if (gfd >= 3 && gfd < MAX_FILE_OPEN && file_table[gfd].fd_inode != NULL &&
         file_table[gfd].fd_flag != PIPE_FLAG) {

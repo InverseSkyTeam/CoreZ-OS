@@ -1,5 +1,4 @@
 // 参考: Wine ntdll/unix/syscall.c 的式 trampoline + glibc set_thread_area/errno
-// 用法
 #include "./lc.h"
 
 static int __lc_ever_set = 0;

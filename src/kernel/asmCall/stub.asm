@@ -1,6 +1,5 @@
 [bits 32]
 section .text
-
 %macro ISR_NOERR 1
 global isr%1
 isr%1:
@@ -8,14 +7,12 @@ isr%1:
     push dword %1
     jmp isr_common_stub
 %endmacro
-
 %macro ISR_ERR 1
 global isr%1
 isr%1:
     push dword %1
     jmp isr_common_stub
 %endmacro
-
 ISR_NOERR 0
 ISR_NOERR 1
 ISR_NOERR 2
@@ -48,7 +45,6 @@ ISR_NOERR 28
 ISR_NOERR 29
 ISR_NOERR 30
 ISR_NOERR 31
-
 extern isr_handler
 isr_common_stub:
     pusha
@@ -60,20 +56,16 @@ isr_common_stub:
     push eax
     mov ax, gs
     push eax
-
     mov ax, 0x10
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov ax, 0x38
     mov gs, ax
-
     push esp
     call isr_handler
     add esp, 4
-
     jmp intr_exit
-
 %macro IRQ 2
 global irq%1
 irq%1:
@@ -81,7 +73,6 @@ irq%1:
     push dword %2
     jmp irq_common_stub
 %endmacro
-
 IRQ 0, 32
 IRQ 1, 33
 IRQ 2, 34
@@ -98,7 +89,6 @@ IRQ 12, 44
 IRQ 13, 45
 IRQ 14, 46
 IRQ 15, 47
-
 extern irq_handler
 irq_common_stub:
     pusha
@@ -110,20 +100,16 @@ irq_common_stub:
     push eax
     mov ax, gs
     push eax
-
     mov ax, 0x10
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov ax, 0x38
     mov gs, ax
-
     push esp
     call irq_handler
     add esp, 4
-
     jmp intr_exit
-
 global intr_exit
 intr_exit:
     pop eax
@@ -134,23 +120,19 @@ intr_exit:
     mov es, ax
     pop eax
     mov ds, ax
-
     popa
     add esp, 8
     iret
-
 global default_handler
 default_handler:
     push dword 0
     push dword 0xFFFF
     jmp isr_common_stub
-
 global syscall_0x80
 syscall_0x80:
     push dword 0
     push dword 0x80
     jmp syscall_common_stub
-
 extern syscall_handler
 syscall_common_stub:
     pusha
@@ -162,18 +144,14 @@ syscall_common_stub:
     push eax
     mov ax, gs
     push eax
-
     mov ax, 0x10
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov ax, 0x38
     mov gs, ax
-
     push esp
     call syscall_handler
     add esp, 4
-
-    mov [esp + 44], eax 
-
+    mov [esp + 44], eax
     jmp intr_exit

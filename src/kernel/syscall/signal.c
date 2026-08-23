@@ -8,7 +8,6 @@
 #include "../thread/thread.h"
 #include "../userprog/process.h"
 #include "../userprog/wait_exit.h"
-
 static const uint8_t g_sig_default[NSIG] = {
     [SIGHUP] = SIG_ACT_TERM,  [SIGINT] = SIG_ACT_TERM,
     [SIGQUIT] = SIG_ACT_TERM, [SIGILL] = SIG_ACT_TERM,
@@ -22,7 +21,6 @@ static const uint8_t g_sig_default[NSIG] = {
     [SIGTSTP] = SIG_ACT_STOP, [SIGTTIN] = SIG_ACT_STOP,
     [SIGTTOU] = SIG_ACT_STOP, [SIGSYS] = SIG_ACT_TERM,
 };
-
 void init_signal_state(struct task_struct *t) {
     t->signal_pending = 0;
     t->signal_mask = 0;
@@ -33,9 +31,7 @@ void init_signal_state(struct task_struct *t) {
         t->sigactions[i].sa_restorer = NULL;
     }
 }
-
 void signal_reset_user(struct task_struct *t) { init_signal_state(t); }
-
 int exception_to_signal(int int_no) {
     switch (int_no) {
     case 0:
@@ -54,11 +50,9 @@ int exception_to_signal(int int_no) {
         return 0;
     }
 }
-
 void signal_terminate(struct task_struct *t, int sig) {
     proc_exit(t, 128 + sig);
 }
-
 static void signal_stop_current(void) {
     struct task_struct *cur = current;
     cur->status = TASK_STOPPED;
@@ -67,7 +61,6 @@ static void signal_stop_current(void) {
     }
     schedule();
 }
-
 static void deliver_signal(struct task_struct *cur, struct Registers *r,
                            int sig, struct sigaction *sa) {
     struct sigframe frame;
@@ -86,41 +79,32 @@ static void deliver_signal(struct task_struct *cur, struct Registers *r,
     frame.edi = r->edi;
     frame.ebp = r->ebp;
     frame.old_mask = cur->signal_mask;
-
     uint32_t frame_size = sizeof(struct sigframe);
     uint32_t new_esp = (r->user_esp - frame_size) & ~3u;
-
     if (new_esp < USER_STACK3_VADDR) {
         signal_terminate(cur, sig);
     }
-
     memcpy((void *)new_esp, &frame, frame_size);
-
     if (!(sa->sa_flags & SA_NODEFER)) {
         cur->signal_mask |= (1u << sig);
     }
     cur->signal_mask |= sa->sa_mask;
-
     cur->signal_mask &= ~((1u << SIGKILL) | (1u << SIGSTOP));
-
     r->user_esp = new_esp;
     r->eip = (uint32_t)sa->sa_handler;
     r->eax = (uint32_t)sig;
 }
-
 void check_pending_signals(struct Registers *r) {
     struct task_struct *cur = current;
     if (cur == NULL) {
         return;
     }
-
     if ((r->cs & 3) != 3) {
         return;
     }
     if (cur->signal_pending == 0) {
         return;
     }
-
     for (;;) {
         uint32_t deliverable = cur->signal_pending & ~cur->signal_mask;
         if (deliverable == 0) {
@@ -132,19 +116,15 @@ void check_pending_signals(struct Registers *r) {
             break;
         }
         cur->signal_pending &= ~(1u << sig);
-
         struct sigaction *sa = &cur->sigactions[sig];
         void (*handler)(int) = sa->sa_handler;
-
         if (sig == SIGKILL) {
             signal_terminate(cur, sig);
         }
-
         if (sig == SIGSTOP) {
             signal_stop_current();
             continue;
         }
-
         if (handler == SIG_DFL) {
             uint8_t act = g_sig_default[sig];
             if (act == SIG_ACT_IGN) {
@@ -160,17 +140,14 @@ void check_pending_signals(struct Registers *r) {
         } else if (handler == SIG_IGN) {
             continue;
         }
-
         deliver_signal(cur, r, sig, sa);
         return;
     }
 }
-
 int sys_sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
     if (sig < 1 || sig >= NSIG) {
         return -1;
     }
-
     if (sig == SIGKILL || sig == SIGSTOP) {
         return -1;
     }
@@ -184,7 +161,6 @@ int sys_sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
     }
     return 0;
 }
-
 int sys_sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
     if (oldset) {
         *oldset = current->signal_mask;
@@ -200,12 +176,10 @@ int sys_sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
         } else {
             return -1;
         }
-
         current->signal_mask &= ~((1u << SIGKILL) | (1u << SIGSTOP));
     }
     return 0;
 }
-
 int sys_kill(int pid, int sig) {
     if (sig < 0 || sig >= NSIG) {
         return -1;
@@ -220,12 +194,10 @@ int sys_kill(int pid, int sig) {
     if (sig == 0) {
         return 0;
     }
-
     if (sig == SIGKILL) {
         thread_kill_pid((uint32_t)pid);
         return 0;
     }
-
     if (sig == SIGCONT && t->status == TASK_STOPPED) {
         t->status = TASK_READY;
         if (!elem_find(&g_ready_list, &t->general_tag)) {
@@ -234,16 +206,12 @@ int sys_kill(int pid, int sig) {
         t->signal_pending &= ~(1u << SIGCONT);
         return 0;
     }
-
     t->signal_pending |= (1u << sig);
     return 0;
 }
-
 void sys_sigreturn(struct Registers *r) {
     struct task_struct *cur = current;
-
     struct sigframe *sf = (struct sigframe *)(r->user_esp - 4);
-
     r->eip = sf->eip;
     r->cs = sf->cs;
     r->eflags = sf->eflags;
@@ -256,7 +224,6 @@ void sys_sigreturn(struct Registers *r) {
     r->esi = sf->esi;
     r->edi = sf->edi;
     r->ebp = sf->ebp;
-
     cur->signal_mask = sf->old_mask;
     cur->signal_mask &= ~((1u << SIGKILL) | (1u << SIGSTOP));
 }

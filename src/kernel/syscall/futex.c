@@ -1,21 +1,16 @@
 #include "./futex.h"
-
 #include "../include/asmFunc.h"
 #include "../include/assert.h"
 #include "../lib/list/list.h"
 #include "../thread/sync.h"
 #include "../thread/thread.h"
-
 #define FUTEX_BUCKETS 64
-
 struct futex_bucket {
     struct list waiters;
     struct spinlock lock;
 };
-
 static struct futex_bucket g_futex_buckets[FUTEX_BUCKETS];
 static int g_futex_inited = 0;
-
 void futex_init(void) {
     for (int i = 0; i < FUTEX_BUCKETS; i++) {
         list_init(&g_futex_buckets[i].waiters);
@@ -23,7 +18,6 @@ void futex_init(void) {
     }
     g_futex_inited = 1;
 }
-
 static struct futex_bucket *futex_bucket_for(uint32_t uaddr, uint32_t pgdir) {
     if (!g_futex_inited) {
         futex_init();
@@ -31,15 +25,12 @@ static struct futex_bucket *futex_bucket_for(uint32_t uaddr, uint32_t pgdir) {
     uint32_t h = (pgdir ^ (uaddr >> 2)) % FUTEX_BUCKETS;
     return &g_futex_buckets[h];
 }
-
 static int32_t sys_futex_wait(uint32_t uaddr, uint32_t val, uint32_t timeout) {
     struct futex_bucket *b = futex_bucket_for(uaddr, current->pgdir);
     current->futex_ready = 0;
     (void)timeout;
-
     uint32_t old = asm_save_eflags();
     asm_cli();
-
     spinlock_acquire(&b->lock);
     if (*(volatile uint32_t *)uaddr != val) {
         spinlock_release(&b->lock);
@@ -48,11 +39,9 @@ static int32_t sys_futex_wait(uint32_t uaddr, uint32_t val, uint32_t timeout) {
     }
     list_append(&b->waiters, &current->futex_tag);
     spinlock_release(&b->lock);
-
     current->status = TASK_BLOCKED;
     schedule();
     asm_restore_eflags(old);
-
     if (!current->futex_ready) {
         spinlock_acquire(&b->lock);
         if (elem_find(&b->waiters, &current->futex_tag)) {
@@ -64,11 +53,9 @@ static int32_t sys_futex_wait(uint32_t uaddr, uint32_t val, uint32_t timeout) {
     }
     return 0;
 }
-
 static int32_t sys_futex_wake(uint32_t uaddr, uint32_t nr) {
     struct futex_bucket *b = futex_bucket_for(uaddr, current->pgdir);
     int32_t woken = 0;
-
     uint32_t old = asm_save_eflags();
     asm_cli();
     spinlock_acquire(&b->lock);
@@ -83,7 +70,6 @@ static int32_t sys_futex_wake(uint32_t uaddr, uint32_t nr) {
     asm_restore_eflags(old);
     return woken;
 }
-
 int32_t sys_futex(uint32_t uaddr, uint32_t op, uint32_t val, uint32_t timeout) {
     if (uaddr == 0) {
         return -1;

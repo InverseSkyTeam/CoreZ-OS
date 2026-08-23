@@ -1,13 +1,11 @@
 // 参考: 《操作系统真相还原》(于渊) 第12章 系统调用
 #include "./mmap.h"
-
 #include "../include/assert.h"
 #include "../lib/str/str.h"
 #include "../memory/bitmap/bitmap.h"
 #include "../memory/pool/pool.h"
 #include "../thread/thread.h"
 #include "../userprog/process.h"
-
 static int32_t unmap_pages(uint32_t addr, uint32_t pages) {
     struct task_struct *cur = current;
     for (uint32_t i = 0; i < pages; i++) {
@@ -16,7 +14,6 @@ static int32_t unmap_pages(uint32_t addr, uint32_t pages) {
     }
     return 0;
 }
-
 static int page_is_mapped(uint32_t v) {
     uint32_t *pde = pde_ptr(v);
     if (!(*pde & 1)) {
@@ -27,7 +24,6 @@ static int page_is_mapped(uint32_t v) {
     }
     return (*pte_ptr(v) & 1) ? 1 : 0;
 }
-
 static uint32_t find_free_region(uint32_t pages) {
     struct task_struct *cur = current;
     uint32_t start = cur->userprog_v_addr.vaddr_start;
@@ -50,7 +46,6 @@ static uint32_t find_free_region(uint32_t pages) {
     }
     return 0;
 }
-
 uint32_t sys_mmap(const struct mmap_args *a) {
     if (a == 0) {
         return (uint32_t)-1;
@@ -61,7 +56,6 @@ uint32_t sys_mmap(const struct mmap_args *a) {
     }
     uint32_t pages = (len + PAGE_SIZE - 1) / PAGE_SIZE;
     struct task_struct *cur = current;
-
     if ((a->flags & MAP_FIXED) && (a->addr & (PAGE_SIZE - 1)) == 0 &&
         a->addr >= cur->userprog_v_addr.vaddr_start) {
         for (uint32_t i = 0; i < pages; i++) {
@@ -85,7 +79,6 @@ uint32_t sys_mmap(const struct mmap_args *a) {
     }
     return base;
 }
-
 uint32_t sys_mmap2(uint32_t addr, uint32_t len, uint32_t prot, uint32_t flags,
                    uint32_t fd, uint32_t offset) {
     struct mmap_args a;
@@ -97,7 +90,6 @@ uint32_t sys_mmap2(uint32_t addr, uint32_t len, uint32_t prot, uint32_t flags,
     a.offset = offset << 12;
     return sys_mmap(&a);
 }
-
 int32_t sys_munmap(uint32_t addr, uint32_t len) {
     if (addr == 0 || len == 0) {
         return -1;
@@ -109,7 +101,6 @@ int32_t sys_munmap(uint32_t addr, uint32_t len) {
     unmap_pages(addr, pages);
     return 0;
 }
-
 int32_t sys_mprotect(uint32_t addr, uint32_t len, uint32_t prot) {
     if (addr & (PAGE_SIZE - 1)) {
         return -1;

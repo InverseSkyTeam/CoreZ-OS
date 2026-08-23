@@ -1,7 +1,5 @@
 // 参考: 《操作系统真相还原》(于渊) 第12章 系统调用
-
 #include "./syscall.h"
-
 #include "../device/ioqueue.h"
 #include "../device/keyboard.h"
 #include "../fs/file.h"
@@ -28,9 +26,7 @@
 #include "./futex.h"
 #include "./linux_compat.h"
 #include "./mmap.h"
-
 static uint32_t sys_getpid(void) { return current->pid; }
-
 static int32_t sys_clock_gettime(int32_t clk_id, struct timespec *tp) {
     if (tp == NULL) {
         return -1;
@@ -42,7 +38,6 @@ static int32_t sys_clock_gettime(int32_t clk_id, struct timespec *tp) {
         (int32_t)((g_tick % PIT_HZ) * (1000u * 1000u * 1000u / PIT_HZ));
     return 0;
 }
-
 static int32_t sys_gettimeofday(struct timeval *tv, void *tz) {
     if (tv == NULL) {
         return -1;
@@ -53,12 +48,10 @@ static int32_t sys_gettimeofday(struct timeval *tv, void *tz) {
     tv->tv_usec = (int32_t)((g_tick % PIT_HZ) * (1000u * 1000u / PIT_HZ));
     return 0;
 }
-
 static int32_t sys_nanosleep(const struct timespec *req, struct timespec *rem) {
     if (req == NULL || req->tv_sec < 0 || req->tv_nsec < 0) {
         return -1;
     }
-
     uint32_t sec = (uint32_t)req->tv_sec;
     uint32_t ms;
     if (sec > 0x1fffff) {
@@ -76,27 +69,22 @@ static int32_t sys_nanosleep(const struct timespec *req, struct timespec *rem) {
     }
     return 0;
 }
-
 static uint32_t sys_getuid(void) { return 0; }
 static uint32_t sys_getgid(void) { return 0; }
 static uint32_t sys_geteuid(void) { return 0; }
 static uint32_t sys_getegid(void) { return 0; }
-
 static void sys_exit_group(int32_t status) {
     sys_exit(status);
     for (;;) {
     }
 }
-
 static uint32_t sys_write(int32_t fd, char *str, uint32_t count) {
     if (fd < 0) {
         return (uint32_t)-1;
     }
-
     if (is_pipe(fd)) {
         return pipe_write(fd, str, count);
     }
-
     uint32_t gfd = fd_local2global((uint32_t)fd);
     if (gfd >= 3 && gfd < MAX_FILE_OPEN && file_table[gfd].fd_inode != NULL &&
         file_table[gfd].fd_flag != PIPE_FLAG) {
@@ -107,21 +95,17 @@ static uint32_t sys_write(int32_t fd, char *str, uint32_t count) {
     }
     return count;
 }
-
 static uint32_t sys_putchar(char c) {
     console_putc(c);
     return (uint32_t)(unsigned char)c;
 }
-
 static uint32_t sys_clear(void) {
     io_clear_screen();
     return 0;
 }
-
 static int32_t sys_read(int32_t fd, void *buf, uint32_t count) {
     if (fd == 1 || fd == 2)
         return -1;
-
     if (is_pipe(fd)) {
         return (int32_t)pipe_read(fd, buf, count);
     }
@@ -147,7 +131,6 @@ static int32_t sys_read(int32_t fd, void *buf, uint32_t count) {
     int32_t r = (int32_t)read_file(fd, buf, count);
     return r;
 }
-
 static const char *task_status_str(enum task_status s) {
     switch (s) {
     case TASK_RUNNING:
@@ -165,7 +148,6 @@ static const char *task_status_str(enum task_status s) {
     }
     return "?";
 }
-
 static int ps_action(struct task_struct *t, void *arg) {
     (void)arg;
     char buf[80];
@@ -192,13 +174,11 @@ static int ps_action(struct task_struct *t, void *arg) {
             task_status_str(t->status), t->elapsed_ticks, t->name);
     return 0;
 }
-
 static uint32_t sys_ps(void) {
     kprintf("=== ps ===\n");
     thread_traverse_all(ps_action, NULL);
     return 0;
 }
-
 uint32_t sys_brk(uint32_t addr) {
     struct task_struct *cur = current;
     if (cur->user_brk == 0) {
@@ -207,20 +187,16 @@ uint32_t sys_brk(uint32_t addr) {
     uint32_t base = USER_HEAP_BASE;
     uint32_t limit = USER_HEAP_LIMIT;
     uint32_t cur_brk = cur->user_brk;
-
     if (addr == 0) {
         return cur_brk;
     }
-
     uint32_t new_brk = addr;
     if (new_brk < base)
         new_brk = base;
     if (new_brk > limit)
         new_brk = limit;
-
     uint32_t old_page = (cur_brk + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     uint32_t new_page = (new_brk + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-
     if (new_page > old_page) {
         for (uint32_t p = old_page; p < new_page; p += PAGE_SIZE) {
             if (get_a_page(p) == 0) {
@@ -236,7 +212,6 @@ uint32_t sys_brk(uint32_t addr) {
     cur->user_brk = new_brk;
     return new_brk;
 }
-
 static uint32_t sys_set_thread_area(struct Registers *r, uint32_t base) {
     if (base == 0)
         return (uint32_t)-1;
@@ -248,7 +223,6 @@ static uint32_t sys_set_thread_area(struct Registers *r, uint32_t base) {
     *(volatile int32_t *)base = 0;
     return 0;
 }
-
 uint32_t syscall_handler(struct Registers *r) {
     uint32_t nr = r->eax;
     uint32_t ret = (uint32_t)-1;
@@ -521,11 +495,9 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)-1;
         break;
     }
-
     check_pending_signals(r);
     return ret;
 }
-
 void syscall_init(void) {
     kprintf("[OK] syscall init, 0x80 registered (full table)\n");
 }

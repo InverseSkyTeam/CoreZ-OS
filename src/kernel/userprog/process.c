@@ -1,6 +1,5 @@
 // 参考: 《操作系统真相还原》(于渊) 第11章 用户进程
 #include "./process.h"
-
 #include "../include/asm/stub.h"
 #include "../include/asmFunc.h"
 #include "../include/assert.h"
@@ -9,12 +8,10 @@
 #include "../lib/str/str.h"
 #include "../memory/bitmap/bitmap.h"
 #include "../memory/pool/pool.h"
-
 #define DIV_ROUND_UP(X, STEP) ((X + STEP - 1) / STEP)
 #define EFLAGS_MBS (1 << 1)
 #define EFLAGS_IF_1 (1 << 9)
 #define EFLAGS_IOPL_0 0
-
 void start_process(void *filename_) {
     void *function = filename_;
     struct task_struct *cur = current;
@@ -43,7 +40,6 @@ void start_process(void *filename_) {
     ps->ss = SELECTOR_U_DATA;
     __asm__ volatile("movl %0, %%esp; jmp intr_exit" : : "g"(ps) : "memory");
 }
-
 void page_dir_activate(struct task_struct *pthread) {
     uint32_t page_dir_phy = 0x400000;
     if (pthread->pgdir != 0) {
@@ -51,7 +47,6 @@ void page_dir_activate(struct task_struct *pthread) {
     }
     asm_write_cr3(page_dir_phy);
 }
-
 void process_activate(struct task_struct *pthread) {
     page_dir_activate(pthread);
     if (pthread->pgdir != 0) {
@@ -61,23 +56,19 @@ void process_activate(struct task_struct *pthread) {
         update_tss_esp(pthread);
     }
 }
-
 uint32_t *create_page_dir(void) {
     uint32_t *page_dir_vaddr = (uint32_t *)palloc(&kernel_pool);
     if (page_dir_vaddr == 0) {
         return 0;
     }
     memset(page_dir_vaddr, 0, PAGE_SIZE);
-
     for (int i = 0; i < 64; i++) {
         page_dir_vaddr[i] = (uint32_t)(i * 0x400000) | 0x87;
     }
-
     memcpy(page_dir_vaddr + 768, (void *)0x400C00, 256 * 4);
     page_dir_vaddr[1023] = (uint32_t)page_dir_vaddr | 7;
     return page_dir_vaddr;
 }
-
 void create_user_vaddr_bitmap(struct task_struct *user_prog) {
     user_prog->userprog_v_addr.vaddr_start = USER_VADDR_START;
     uint32_t bitmap_pg_cnt = DIV_ROUND_UP(
@@ -88,10 +79,8 @@ void create_user_vaddr_bitmap(struct task_struct *user_prog) {
         (0xc0000000 - USER_VADDR_START) / PAGE_SIZE / 8;
     bitmap_init(&user_prog->userprog_v_addr.vaddr_bitmap);
 }
-
 void process_execute(void *filename, char *name) {
     struct task_struct *thread = thread_alloc_slot(name, DEFAULT_PRIO);
-
     struct thread_stack *ts =
         (struct thread_stack *)(thread->kernel_stack_top -
                                 sizeof(struct thread_stack));
@@ -99,10 +88,8 @@ void process_execute(void *filename, char *name) {
     ts->unused_retaddr = 0;
     ts->function = filename;
     ts->func_arg = 0;
-
     create_user_vaddr_bitmap(thread);
     thread->pgdir = (uint32_t)create_page_dir();
     thread->user_brk = 0;
-
     thread_ready(thread);
 }

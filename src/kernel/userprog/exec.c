@@ -1,6 +1,5 @@
 // 参考: 《操作系统真相还原》(于渊) 第15章 加载用户进程
 #include "./exec.h"
-
 #include "../fs/fs.h"
 #include "../include/asm/stub.h"
 #include "../include/assert.h"
@@ -11,16 +10,13 @@
 #include "../memory/pool/pool.h"
 #include "../thread/thread.h"
 #include "../userprog/process.h"
-
 #define DIV_ROUND_UP(X, STEP) ((X + STEP - 1) / STEP)
 #define EFLAGS_MBS (1 << 1)
 #define EFLAGS_IF_1 (1 << 9)
 #define EFLAGS_IOPL_0 0
 #define MAX_ARG_NR 16
-
 typedef uint32_t Elf32_Word, Elf32_Addr, Elf32_Off;
 typedef uint16_t Elf32_Half;
-
 struct Elf32_Ehdr {
     unsigned char e_ident[16];
     Elf32_Half e_type;
@@ -37,7 +33,6 @@ struct Elf32_Ehdr {
     Elf32_Half e_shnum;
     Elf32_Half e_shstrndx;
 };
-
 struct Elf32_Phdr {
     Elf32_Word p_type;
     Elf32_Off p_offset;
@@ -48,7 +43,6 @@ struct Elf32_Phdr {
     Elf32_Word p_flags;
     Elf32_Word p_align;
 };
-
 enum segment_type {
     PT_NULL,
     PT_LOAD,
@@ -58,22 +52,18 @@ enum segment_type {
     PT_SHLIB,
     PT_PHDR
 };
-
 static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
                             uint32_t memsz, uint32_t vaddr) {
     uint32_t vaddr_first_page = vaddr & 0xfffff000;
     uint32_t size_in_first_page = PAGE_SIZE - (vaddr & 0x00000fff);
-
     uint32_t occupy_pages =
         (memsz > size_in_first_page)
             ? DIV_ROUND_UP(memsz - size_in_first_page, PAGE_SIZE) + 1
             : 1;
-
     uint32_t vaddr_page = vaddr_first_page;
     for (uint32_t i = 0; i < occupy_pages; i++) {
         uint32_t *pde = pde_ptr(vaddr_page);
         uint32_t *pte = pte_ptr(vaddr_page);
-
         if (!(*pde & 1) || (*pde & 0x80) || !(*pte & 1)) {
             if (get_a_page(vaddr_page) == 0) {
                 return -1;
@@ -85,18 +75,15 @@ static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
     read_file(fd, (void *)vaddr, filesz);
     return 0;
 }
-
 static int32_t load(const char *pathname) {
     int32_t ret = -1;
     struct Elf32_Ehdr elf_header;
     struct Elf32_Phdr prog_header;
     memset(&elf_header, 0, sizeof(elf_header));
-
     int32_t fd = open_file(pathname, O_RDONLY);
     if (fd == -1) {
         return -1;
     }
-
     if (read_file(fd, &elf_header, sizeof(elf_header)) != sizeof(elf_header)) {
         goto done;
     }
@@ -106,7 +93,6 @@ static int32_t load(const char *pathname) {
         elf_header.e_phentsize != sizeof(struct Elf32_Phdr)) {
         goto done;
     }
-
     Elf32_Off prog_header_offset = elf_header.e_phoff;
     for (uint32_t prog_idx = 0; prog_idx < elf_header.e_phnum; prog_idx++) {
         memset(&prog_header, 0, sizeof(prog_header));
@@ -130,7 +116,6 @@ done:
     close_file(fd);
     return ret;
 }
-
 int32_t sys_execv(const char *path, const char *argv[]) {
     uint32_t argc;
     int32_t entry_point;
@@ -142,9 +127,7 @@ int32_t sys_execv(const char *path, const char *argv[]) {
     int32_t i;
     uint32_t slen;
     struct Registers *ps;
-
     cur = current;
-
     old_pgdir = cur->pgdir;
     if (cur->pgdir == 0) {
         cur->pgdir = (uint32_t)create_page_dir();
@@ -161,12 +144,10 @@ int32_t sys_execv(const char *path, const char *argv[]) {
         cur->userprog_v_addr.vaddr_bitmap.bits = NULL;
     }
     create_user_vaddr_bitmap(cur);
-
     argc = 0;
     while (argv && argv[argc] && argc < MAX_ARG_NR) {
         ++argc;
     }
-
     entry_point = load(path);
     if (entry_point == -1) {
         if (cur->pgdir != old_pgdir) {
@@ -175,12 +156,10 @@ int32_t sys_execv(const char *path, const char *argv[]) {
         }
         return -1;
     }
-
     memcpy(cur->name, path, 15);
     cur->name[15] = 0;
     cur->user_brk = 0;
     signal_reset_user(cur);
-
     for (uint32_t sp = USER_STACK3_VADDR - PAGE_SIZE; sp <= USER_STACK3_VADDR;
          sp += PAGE_SIZE) {
         uint32_t *pde = pde_ptr(sp);
@@ -192,18 +171,14 @@ int32_t sys_execv(const char *path, const char *argv[]) {
             }
         }
     }
-
     cur->tls_base = 0;
     cur->tls_selector = 0;
     cur->errno = 0;
     cur->compat = 0;
-
     ustack_ptr = USER_STACK3_VADDR + PAGE_SIZE;
-
     for (i = 0; i < MAX_ARG_NR; ++i) {
         argv_user_addrs[i] = 0;
     }
-
     if (argc > 0) {
         for (i = (int32_t)argc - 1; i >= 0; --i) {
             slen = strlen(argv[i]) + 1;
@@ -217,7 +192,6 @@ int32_t sys_execv(const char *path, const char *argv[]) {
             argv_user_addrs[i] = ustack_ptr;
         }
     }
-
     {
         static const char *env_defaults[] = {"PATH=/", "HOME=/", 0};
         const char *exefn = path;
@@ -230,14 +204,12 @@ int32_t sys_execv(const char *path, const char *argv[]) {
         (sp) -= 4;                                                             \
         *((uint32_t *)(sp)) = (uint32_t)(v);                                   \
     } while (0)
-
         exefn_addr = 0;
         slen = strlen(exefn) + 1;
         ustack_ptr -= slen;
         ustack_ptr &= 0xfffffffc;
         memcpy((void *)ustack_ptr, exefn, slen);
         exefn_addr = ustack_ptr;
-
         while (env_defaults[envc] != 0 && envc < 8) {
             envc++;
         }
@@ -251,9 +223,7 @@ int32_t sys_execv(const char *path, const char *argv[]) {
             memcpy((void *)ustack_ptr, env_defaults[e], slen);
             envp_addrs[e] = ustack_ptr;
         }
-
         ustack_ptr &= 0xfffffffc;
-
         {
             uint32_t auxwords[32];
             int naw = 0;
@@ -275,7 +245,6 @@ int32_t sys_execv(const char *path, const char *argv[]) {
             ustack_ptr -= naw * 4;
             memcpy((void *)ustack_ptr, auxwords, naw * 4);
         }
-
         PSTACK(ustack_ptr, 0);
         for (e = envc - 1; e >= 0; --e)
             PSTACK(ustack_ptr, envp_addrs[e]);
@@ -284,9 +253,7 @@ int32_t sys_execv(const char *path, const char *argv[]) {
             PSTACK(ustack_ptr, argv_user_addrs[i]);
         PSTACK(ustack_ptr, argc);
     }
-
     argv_user_base = (uint32_t)((char *)ustack_ptr + 4);
-
     ps =
         (struct Registers *)(cur->kernel_stack_top - THREAD_STACK_SIZE + 0x100);
     ps->edi = 0;

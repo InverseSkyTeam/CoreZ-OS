@@ -14,13 +14,13 @@
 #include "./lib/user/syscall.h"
 #include "./memory/pool/pool.h"
 #include "./net/nt_net.h"
+#include "./initer/smp/smp.h"
 #include "./shell/shell.h"
 #include "./syscall/futex.h"
 #include "./syscall/syscall.h"
 #include "./thread/thread.h"
 #include "./userprog/exec.h"
 #include "./userprog/process.h"
-
 struct BootInfo {
     uint8_t cyls;
     uint8_t leds;
@@ -31,19 +31,16 @@ struct BootInfo {
     uint32_t vram;
     uint32_t vram_bytes;
 };
-
 static void k_thread_a(void *arg) {
     for (;;) {
         thread_yield();
     }
 }
-
 static void k_thread_b(void *arg) {
     for (;;) {
         thread_yield();
     }
 }
-
 static void init(void) {
     g_init_pid = getpid();
     uint32_t ret_pid = fork();
@@ -59,7 +56,6 @@ static void init(void) {
             }
         }
     } else if (ret_pid == 0) {
-        /* 参考: exec.c 用户程序加载; 以用户态 nr_micro_shell 作为系统 shell */
         my_shell(NULL);
     } else {
         printf("init: fork failed\n");
@@ -67,7 +63,6 @@ static void init(void) {
         }
     }
 }
-
 void KMain(void) {
     const struct BootInfo *bootInfo = (const struct BootInfo *)0x0FF0;
     initPalette();
@@ -83,41 +78,31 @@ void KMain(void) {
     setTextColor(10);
     printf("[OK] TSS loaded, TR=0x%x esp0=0x%x\n", (uint32_t)asm_str(),
            tss.esp0);
-
     setCursor(0, 0);
-
     setTextColor(14);
     printf("NiTianOS Kernel Inited.\n");
-
     setTextColor(10);
     printf("[OK] Higher Half Kernel @ 0xC0000000+\n");
-
     if (apic_init() == 0) {
         printf("[OK] APIC (LAPIC timer + I/O APIC) inited\n");
     } else {
         setTextColor(12);
         printf("[FAIL] APIC init error\n");
     }
-
     keyboard_init();
     mouse_init();
     thread_init();
     setTextColor(10);
     printf("[OK] thread mgr ready\n");
-
     kernel_thread("k_a", 4, k_thread_a, 0);
     kernel_thread("k_b", 4, k_thread_b, 0);
-
     asm_sti();
-
     ide_init();
     filesys_init();
-
     setTextColor(10);
     printf("[OK] user programs on ext2\n");
-
+    smp_init();
     net_init();
-
     process_execute(init, "init");
     for (;;) {
         thread_yield();

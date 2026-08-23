@@ -1,34 +1,27 @@
 // 参考: 《操作系统真相还原》(于渊) 第11章 输入输出系统
 #include "./sync.h"
-
 #include "../include/asmFunc.h"
 #include "../include/assert.h"
 #include "../initer/io/io.h"
 #include "./thread.h"
-
 void spinlock_init(struct spinlock *s) { s->locked = 0; }
-
 void spinlock_acquire(struct spinlock *s) {
     while (asm_xchg(&s->locked, 1) != 0) {
         while (s->locked != 0) {
             asm_pause();
         }
     }
-
     __asm__ volatile("" : : : "memory");
 }
-
 void spinlock_release(struct spinlock *s) {
     __asm__ volatile("" : : : "memory");
     s->locked = 0;
 }
-
 void sema_init(struct semaphore *psema, uint8_t value) {
     psema->value = value;
     list_init(&psema->waiters);
     spinlock_init(&psema->lock);
 }
-
 void sema_down(struct semaphore *psema) {
     uint32_t old = asm_save_eflags();
     asm_cli();
@@ -43,7 +36,6 @@ void sema_down(struct semaphore *psema) {
     spinlock_release(&psema->lock);
     asm_restore_eflags(old);
 }
-
 void sema_up(struct semaphore *psema) {
     uint32_t old = asm_save_eflags();
     asm_cli();
@@ -57,13 +49,11 @@ void sema_up(struct semaphore *psema) {
     spinlock_release(&psema->lock);
     asm_restore_eflags(old);
 }
-
 void lock_init(struct lock *plock) {
     plock->holder = 0;
     plock->holder_repeat_nr = 0;
     sema_init(&plock->semaphore, 1);
 }
-
 void lock_acquire(struct lock *plock) {
     if (plock->holder != current || plock->holder == 0) {
         uint32_t old_holder = (uint32_t)plock->holder;
@@ -86,7 +76,6 @@ void lock_acquire(struct lock *plock) {
         plock->holder_repeat_nr++;
     }
 }
-
 void lock_release(struct lock *plock) {
     if (plock->holder != current) {
         asm_cli();

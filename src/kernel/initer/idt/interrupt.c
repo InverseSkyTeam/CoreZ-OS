@@ -1,5 +1,4 @@
 #include "interrupt.h"
-
 #include "../../device/ide.h"
 #include "../../device/keyboard.h"
 #include "../../device/mouse.h"
@@ -12,9 +11,7 @@
 #include "../apic/apic.h"
 #include "../io/io.h"
 #include "../pit/pit.h"
-
 volatile uint32_t g_tick = 0;
-
 static const char *g_exc_names[32] = {"Divide Error",
                                       "Debug",
                                       "Non-Maskable Interrupt",
@@ -47,20 +44,17 @@ static const char *g_exc_names[32] = {"Divide Error",
                                       "(Reserved)",
                                       "(Reserved)",
                                       "(Reserved)"};
-
 #define INT_NO_UNREGISTERED 0xFFFFu
-
 static int handle_cow_fault(uint32_t fault_addr, uint32_t error_code) {
     if (fault_addr < USER_VADDR_START || fault_addr >= 0xc0000000) {
         return 0;
     }
-    if (!(error_code & 0x2)) {  
+    if (!(error_code & 0x2)) {
         return 0;
     }
     if (current == 0 || current->pgdir == 0) {
         return 0;
     }
-
     uint32_t *pte = pte_ptr(fault_addr);
     if (!(*pte & 1) || !(*pte & COW_FLAG)) {
         return 0;
@@ -71,31 +65,25 @@ static int handle_cow_fault(uint32_t fault_addr, uint32_t error_code) {
         __asm__ volatile("invlpg (%0)" : : "r"(fault_addr) : "memory");
         return 1;
     }
-
     uint32_t new_phy = (uint32_t)palloc(&kernel_pool);
     if (new_phy == 0) {
-        return 0;  
+        return 0;
     }
     memcpy((void *)new_phy, (void *)phy, PAGE_SIZE);
-
     *pte = (new_phy & 0xfffff000) | 7;
     __asm__ volatile("invlpg (%0)" : : "r"(fault_addr) : "memory");
-
     page_free_or_decref(phy);
     return 1;
 }
-
 void isr_handler(struct Registers *r) {
     uint32_t n = r->int_no;
-
     if (n == 14) {
         uint32_t cr2;
         __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
         if (handle_cow_fault(cr2, r->err_code)) {
-            return; 
+            return;
         }
     }
-
     if ((r->cs & 3) == 3) {
         int sig = exception_to_signal((int)n);
         if (sig > 0) {
@@ -103,7 +91,6 @@ void isr_handler(struct Registers *r) {
             check_pending_signals(r);
             return;
         }
-
         setTextColor(12);
         kprintf("\n*** UNHANDLED USER EXCEPTION ***\n");
         if (n < 32) {
@@ -112,24 +99,20 @@ void isr_handler(struct Registers *r) {
         }
         signal_terminate(current, SIGSEGV);
     }
-
     setTextColor(12);
     kprintf("\n*** EXCEPTION ***\n");
-
     if (n < 32) {
         kprintf("  %s (vector %d)\n", g_exc_names[n], (int)n);
         kprintf("  err_code = 0x%x\n", r->err_code);
     } else {
         kprintf("  Unregistered interrupt (vector %d)\n", (int)n);
     }
-
     kprintf("  eip = 0x%x  cs = 0x%x  eflags = 0x%x\n", r->eip, r->cs,
             r->eflags);
     kprintf("  eax = 0x%x  ebx = 0x%x  ecx = 0x%x  edx = 0x%x\n", r->eax,
             r->ebx, r->ecx, r->edx);
     kprintf("  esi = 0x%x  edi = 0x%x  ebp = 0x%x  ds = 0x%x\n", r->esi, r->edi,
             r->ebp, r->ds);
-
     uint32_t cr2;
     asm volatile("mov %%cr2, %0" : "=r"(cr2));
     kprintf("  cr2 (fault addr) = 0x%x\n", cr2);
@@ -139,16 +122,13 @@ void isr_handler(struct Registers *r) {
     } else if (cr2 >= 0xE0000000) {
         kprintf("  (note: fault is inside VRAM region 0xE0000000+)\n");
     }
-
     asm_cli();
     for (;;) {
         asm_hlt();
     }
 }
-
 void irq_handler(struct Registers *r) {
     uint32_t irq = r->int_no - 32;
-
     if (irq == 0) {
         lapic_eoi();
         g_tick++;
@@ -161,18 +141,14 @@ void irq_handler(struct Registers *r) {
         }
         return;
     }
-
     if (irq == 1) {
         keyboard_handler();
     }
-
     if (irq == 12) {
         mouse_handler();
     }
-
     if (irq == 14) {
         intr_hd_handler((uint8_t)r->int_no);
     }
-
     lapic_eoi();
 }

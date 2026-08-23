@@ -1,7 +1,5 @@
 // 参考: 《操作系统真相还原》(于渊) 第14章 文件系统
-
 #include "file_syscall.h"
-
 #include "../device/ide.h"
 #include "../fs/dir.h"
 #include "../fs/ext2.h"
@@ -11,20 +9,17 @@
 #include "../lib/str/str.h"
 #include "../memory/pool/pool.h"
 #include "../thread/thread.h"
-
 struct linux_dirent {
     uint32_t d_ino;
     uint32_t d_off;
     uint16_t d_reclen;
     char d_name[1];
 };
-
 #define F_DUPFD 0
 #define F_GETFD 1
 #define F_SETFD 2
 #define F_GETFL 3
 #define F_SETFL 4
-
 int32_t sys_fstat(int32_t fd, void *buf) {
     if (buf == NULL || fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
@@ -44,7 +39,6 @@ int32_t sys_fstat(int32_t fd, void *buf) {
     st->st_filetype = FT_REGULAR;
     return 0;
 }
-
 int32_t sys_dup(int32_t oldfd) {
     if (oldfd < 0 || oldfd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
@@ -59,7 +53,6 @@ int32_t sys_dup(int32_t oldfd) {
     }
     return newfd;
 }
-
 int32_t sys_dup2(int32_t oldfd, int32_t newfd) {
     if (oldfd < 0 || oldfd >= (int32_t)MAX_FILES_OPEN_PER_PROC || newfd < 0 ||
         newfd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
@@ -72,14 +65,12 @@ int32_t sys_dup2(int32_t oldfd, int32_t newfd) {
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
         return -1;
     }
-
     if (current->fd_table[newfd] != (uint32_t)-1) {
         close_file(newfd);
     }
     current->fd_table[newfd] = global_fd;
     return newfd;
 }
-
 int32_t sys_fcntl(int32_t fd, int32_t cmd, uint32_t arg) {
     if (fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
@@ -107,7 +98,6 @@ int32_t sys_fcntl(int32_t fd, int32_t cmd, uint32_t arg) {
         return -1;
     }
 }
-
 int32_t sys_getdents(int32_t fd, void *dirp, uint32_t count) {
     if (dirp == NULL || fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
@@ -139,7 +129,6 @@ int32_t sys_getdents(int32_t fd, void *dirp, uint32_t count) {
     }
     return (int32_t)written;
 }
-
 int32_t sys_readlink(const char *path, char *buf, uint32_t bufsiz) {
     (void)path;
     (void)buf;
@@ -147,7 +136,6 @@ int32_t sys_readlink(const char *path, char *buf, uint32_t bufsiz) {
     current->errno = 2;
     return -1;
 }
-
 int32_t sys_access(const char *path, int32_t mode) {
     if (path == NULL) {
         return -1;
@@ -163,21 +151,18 @@ int32_t sys_access(const char *path, int32_t mode) {
     }
     return 0;
 }
-
 int32_t sys_rename(const char *oldpath, const char *newpath) {
     (void)oldpath;
     (void)newpath;
     current->errno = 30;
     return -1;
 }
-
 int32_t sys_truncate(const char *path, int32_t length) {
     (void)path;
     (void)length;
     current->errno = 30;
     return -1;
 }
-
 int32_t sys_chmod(const char *path, uint32_t mode) {
     if (path == NULL) {
         return -1;

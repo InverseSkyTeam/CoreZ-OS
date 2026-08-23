@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import argparse
 import io
 import os
@@ -12,7 +11,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator, List, Optional, Sequence, Tuple
-
 def _force_utf8_stdout() -> None:
     for stream_name in ("stdout", "stderr"):
         stream = getattr(sys, stream_name, None)
@@ -27,15 +25,12 @@ def _force_utf8_stdout() -> None:
                                          errors="replace"))
             except Exception:
                 pass
-
 _force_utf8_stdout()
-
 ROOT       = Path(__file__).resolve().parent
 _local_tmp = (ROOT / ".zig-tmp").resolve()
 os.makedirs(_local_tmp, exist_ok=True)
 os.environ["TMP"] = os.environ["TEMP"] = str(_local_tmp)
 os.environ.setdefault("ZIG_GLOBAL_CACHE_DIR", str(ROOT / ".zig-cache"))
-
 SRC_DIR    = ROOT / "src"
 BOOT_DIR   = SRC_DIR / "boot"
 CMD_DIR    = SRC_DIR / "command"
@@ -46,7 +41,6 @@ SCRIPTS    = ROOT / "scripts"
 MUSL_SRC   = SRC_DIR / "app" / "musl"
 SHELL_SRC  = SRC_DIR / "app" / "mr_micro_shell"
 NRSHELL    = CMD_DIR / "nr_shell"
-
 CFLAGS_BASE = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
     "-target", "x86-freestanding",
@@ -59,7 +53,6 @@ UP_CFLAGS = CFLAGS_BASE + [
     "-I", str(KERNEL_DIR / "lib"),
 ]
 UP_LDFLAGS = ["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_start"]
-
 MUSL_CFLAGS = CFLAGS_BASE + [
     "-I", str(MUSL_SRC / "arch" / "i386"),
     "-I", str(MUSL_SRC / "arch" / "generic"),
@@ -68,9 +61,7 @@ MUSL_CFLAGS = CFLAGS_BASE + [
     "-I", str(MUSL_SRC / "nitian"),
     "-include", str(MUSL_SRC / "nitian" / "nt_libc_macros.h"),
 ]
-
 LC_CFLAGS = CFLAGS_BASE + ["-I", str(KERNEL_DIR / "lib" / "compat")]
-
 class Ansi:
     RESET   = "\x1b[0m"
     BOLD    = "\x1b[1m"
@@ -96,7 +87,6 @@ class Ansi:
     CURSOR_SHOW = "\x1b[?25h"
     ERASE_LINE  = "\x1b[2K"
     CR          = "\r"
-
 def _enable_vt_on_windows() -> None:
     if os.name != "nt":
         return
@@ -110,14 +100,12 @@ def _enable_vt_on_windows() -> None:
                 kernel32.SetConsoleMode(handle, mode.value | 0x4)
     except Exception:
         pass
-
 def color_enabled(no_color_flag: bool, stream=sys.stdout) -> bool:
     if no_color_flag:
         return False
     if not hasattr(stream, "isatty") or not stream.isatty():
         return True
     return True
-
 @dataclass
 class Tools:
     nasm:    str
@@ -125,7 +113,6 @@ class Tools:
     ld:      str
     objcopy: str
     python:  str
-
 def _find(name: str, candidates: Sequence[str]) -> str:
     for c in candidates:
         path = shutil.which(c)
@@ -141,7 +128,6 @@ def _find(name: str, candidates: Sequence[str]) -> str:
     raise FileNotFoundError(
         f"Could not find any of: {', '.join(candidates)} (needed for `{name}`)."
     )
-
 def _resolve_cc() -> List[str]:
     zig = shutil.which("zig")
     if zig:
@@ -153,7 +139,6 @@ def _resolve_cc() -> List[str]:
     raise FileNotFoundError(
         "Could not find any C compiler (zig/cc/gcc/x86_64-elf-gcc)."
     )
-
 def detect_tools() -> Tools:
     return Tools(
         nasm    = _find("nasm",    ["nasm"]),
@@ -162,7 +147,6 @@ def detect_tools() -> Tools:
         objcopy = _find("objcopy", ["objcopy", "llvm-objcopy", "x86_64-elf-objcopy"]),
         python  = sys.executable,
     )
-
 @dataclass
 class CmdResult:
     returncode: int
@@ -172,7 +156,6 @@ class CmdResult:
     @property
     def ok(self) -> bool:
         return self.returncode == 0
-
 def run(cmd: Sequence[str], cwd: Optional[Path] = None,
         env: Optional[dict] = None, quiet: bool = False) -> CmdResult:
     start = time.perf_counter()
@@ -188,7 +171,6 @@ def run(cmd: Sequence[str], cwd: Optional[Path] = None,
     )
     dur = time.perf_counter() - start
     return CmdResult(proc.returncode, proc.stdout, proc.stderr, dur)
-
 class Console:
     def __init__(self, use_color: bool):
         self.use_color = use_color
@@ -268,7 +250,6 @@ class Console:
             c.writeln(f"      {c._c(Ansi.GRAY)}{label:<14}{c._c(Ansi.RESET)}"
                       f" {c._c(color)}{c._c(Ansi.BOLD)}{value}{c._c(Ansi.RESET)}")
         c.writeln()
-
 @dataclass
 class Task:
     name: str
@@ -298,28 +279,24 @@ class Task:
             p = Path(tok)
             if p.exists() and p.is_file():
                 yield p
-
 @dataclass
 class BuildStats:
     compiled: int = 0
     cache_hit: int = 0
     failed:   int = 0
     timings: dict = field(default_factory=dict)
-
 def task_assemble_bin(name: str, src: Path, out: Path, tools: Tools) -> Task:
     return Task(
         name=name, cmd=[tools.nasm, "-f", "bin", str(src), "-o", str(out)],
         out=out, deps=[], description=str(src.relative_to(ROOT)),
         group="asm",
     )
-
 def task_assemble_elf(name: str, src: Path, out: Path, tools: Tools) -> Task:
     return Task(
         name=name, cmd=[tools.nasm, "-f", "elf32", str(src), "-o", str(out)],
         out=out, deps=[], description=str(src.relative_to(ROOT)),
         group="asm",
     )
-
 def task_cc(name: str, src: Path, out: Path, tools: Tools, flags: List[str]) -> Task:
     return Task(
         name=name,
@@ -327,7 +304,6 @@ def task_cc(name: str, src: Path, out: Path, tools: Tools, flags: List[str]) -> 
         out=out, deps=[], description=str(src.relative_to(ROOT)),
         group="cc",
     )
-
 def task_link(name: str, out: Path, tools: Tools,
               objs: Sequence[Path], script: Optional[Path] = None,
               flags: Sequence[str] = ()) -> Task:
@@ -337,7 +313,6 @@ def task_link(name: str, out: Path, tools: Tools,
     cmd += [*flags, "-o", str(out), *map(str, objs)]
     return Task(name=name, cmd=cmd, cwd=BUILD_DIR, out=out,
                 deps=[], description=f"link → {out.name}", group="link")
-
 def task_objcopy_binary(name: str, src_elf: Path, out: Path, tools: Tools,
                         symbol: str) -> Task:
     return Task(
@@ -347,7 +322,6 @@ def task_objcopy_binary(name: str, src_elf: Path, out: Path, tools: Tools,
         cwd=BUILD_DIR, out=out, deps=[],
         description=f"objcopy {symbol}", group="objcopy",
     )
-
 def task_python(name: str, script: Path, args: Sequence[str],
                 out: Optional[Path] = None) -> Task:
     return Task(
@@ -355,29 +329,32 @@ def task_python(name: str, script: Path, args: Sequence[str],
         cmd=[sys.executable, str(script), *args],
         out=out, deps=[], description=str(script.name), group="python",
     )
-
 def make_plan(tools: Tools):
     tasks: List[Task] = []
     user_elves: List[Task] = []
-
     tasks.append(task_assemble_bin("boot.bin",
                           BOOT_DIR / "boot.asm", BUILD_DIR / "boot.bin", tools))
     tasks.append(task_assemble_bin("vbr.bin",
                           BOOT_DIR / "vbr.asm", BUILD_DIR / "vbr.bin", tools))
     tasks.append(task_assemble_bin("loader.bin",
                           BOOT_DIR / "loader.asm", BUILD_DIR / "loader.bin", tools))
-
     for stem in ("func", "io", "stub", "entry", "switch"):
         tasks.append(task_assemble_elf(
             f"{stem}.o",
             KERNEL_DIR / "asmCall" / f"{stem}.asm",
             BUILD_DIR / f"{stem}.o", tools,
         ))
-
+    tasks.append(task_assemble_bin(
+        "ap_trampoline.bin",
+        KERNEL_DIR / "asmCall" / "ap_trampoline.asm",
+        BUILD_DIR / "ap_trampoline.bin", tools))
+    tasks.append(task_objcopy_binary(
+        "ap_tramp.o", BUILD_DIR / "ap_trampoline.bin",
+        BUILD_DIR / "ap_tramp.o", tools,
+        "_binary_ap_trampoline_bin_start"))
     tasks.append(task_assemble_elf(
         "up_start.o", CMD_DIR / "start.asm", BUILD_DIR / "up_start.o", tools,
     ))
-
     kernel_c_sources = [
         ("ioc.o",        KERNEL_DIR / "initer" / "io" / "io.c"),
         ("pit.o",        KERNEL_DIR / "initer" / "pit" / "pit.c"),
@@ -394,6 +371,7 @@ def make_plan(tools: Tools):
         ("thread.o",     KERNEL_DIR / "thread" / "thread.c"),
         ("sync.o",       KERNEL_DIR / "thread" / "sync.c"),
         ("percpu.o",     KERNEL_DIR / "thread" / "percpu.c"),
+        ("smp.o",        KERNEL_DIR / "initer" / "smp" / "smp.c"),
         ("ioqueue.o",    KERNEL_DIR / "device" / "ioqueue.c"),
         ("keyboard.o",   KERNEL_DIR / "device" / "keyboard.c"),
         ("ide.o",        KERNEL_DIR / "device" / "ide.c"),
@@ -431,7 +409,6 @@ def make_plan(tools: Tools):
     ]
     for stem, src in kernel_c_sources:
         tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, CFLAGS))
-
     user_programs = [
         ("prog_no_arg", "prog_no_arg.c", "main",   []),
         ("prog_arg",    "prog_arg.c",    "_start", []),
@@ -447,15 +424,14 @@ def make_plan(tools: Tools):
         ("fsyscall_demo","fsyscall_demo.c","_start", []),
         ("clone_demo",  "clone_demo.c",  "_start", []),
         ("ping",        "ping.c",        "_start", []),
+        ("cow_stress",  "cow_stress.c",  "_start", []),
     ]
-
     user_lib_sources = [
         (KERNEL_DIR / "lib" / "user", "stdio.c",   "up_stdio.o"),
         (KERNEL_DIR / "lib" / "user", "syscall.c", "up_syscall.o"),
         (KERNEL_DIR / "lib" / "str",  "str.c",     "up_str.o"),
         (KERNEL_DIR / "lib" / "user", "stdlib.c",  "up_stdlib.o"),
     ]
-
     def compile_user_lib(out_dir: Path) -> List[Path]:
         outs = []
         for _dir, fname, oname in user_lib_sources:
@@ -464,9 +440,7 @@ def make_plan(tools: Tools):
             tasks.append(task_cc(oname, src, obj, tools, UP_CFLAGS))
             outs.append(obj)
         return outs
-
     lib_objs = compile_user_lib(BUILD_DIR)
-
     for prog_name, src_c, entry_flag, opt_flags in user_programs:
         nick_map = {"prog_no_arg": "up_no_arg", "prog_arg": "up_arg",
                     "cat": "up_cat", "fork_demo": "up_fork",
@@ -490,7 +464,6 @@ def make_plan(tools: Tools):
         )
         tasks.append(elf_task)
         user_elves.append(elf_task)
-
     tasks.append(task_assemble_elf(
         "lc_start.o", CMD_DIR / "lc_crt0.asm", BUILD_DIR / "lc_start.o", tools,
     ))
@@ -506,14 +479,12 @@ def make_plan(tools: Tools):
                        flags=["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_lc_start"])
     tasks.append(lc_elf)
     user_elves.append(lc_elf)
-
     musl_start = task_assemble_elf("musl_start.o", MUSL_SRC / "nitian" / "musl_crt0.asm",
                                    BUILD_DIR / "musl_start.o", tools)
     tasks.append(musl_start)
     musl_syscall = task_assemble_elf("musl_syscall.o", MUSL_SRC / "nitian" / "musl_syscall.asm",
                                      BUILD_DIR / "musl_syscall.o", tools)
     tasks.append(musl_syscall)
-
     musl_c_sources = [
         ("nt_errno.o", MUSL_SRC / "nitian" / "nt_errno.c"),
         ("musl_ret.o", MUSL_SRC / "src" / "internal" / "syscall_ret.c"),
@@ -572,11 +543,9 @@ def make_plan(tools: Tools):
     ]
     for stem, src in musl_c_sources:
         tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, MUSL_CFLAGS))
-
     musl_demo_c = task_cc("musl_demo.o", CMD_DIR / "musl_demo.c",
                           BUILD_DIR / "musl_demo.o", tools, MUSL_CFLAGS)
     tasks.append(musl_demo_c)
-
     musl_demo_elf = task_link("musl_demo.elf", BUILD_DIR / "musl_demo.elf", tools,
         [BUILD_DIR / "musl_start.o", BUILD_DIR / "musl_demo.o",
          BUILD_DIR / "musl_getpid.o", BUILD_DIR / "musl_write.o",
@@ -589,11 +558,9 @@ def make_plan(tools: Tools):
         flags=["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_musl_start"])
     tasks.append(musl_demo_elf)
     user_elves.append(musl_demo_elf)
-
     libc_tests_main = task_cc("libc_tests_main.o", CMD_DIR / "libc_tests_main.c",
                               BUILD_DIR / "libc_tests_main.o", tools, MUSL_CFLAGS)
     tasks.append(libc_tests_main)
-
     tests_sources = [
         ("test_string.o", SRC_DIR / "app" / "libc-testsuite" / "string.c"),
         ("test_qsort.o", SRC_DIR / "app" / "libc-testsuite" / "qsort.c"),
@@ -605,7 +572,6 @@ def make_plan(tools: Tools):
     ]
     for stem, src in tests_sources:
         tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, MUSL_CFLAGS))
-
     libc_tests_elf = task_link("libc_testsuite.elf", BUILD_DIR / "libc_testsuite.elf", tools,
         [BUILD_DIR / "musl_start.o", BUILD_DIR / "musl_syscall.o",
          BUILD_DIR / "musl_ret.o", BUILD_DIR / "nt_errno.o",
@@ -639,7 +605,6 @@ def make_plan(tools: Tools):
         flags=["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_musl_start"])
     tasks.append(libc_tests_elf)
     user_elves.append(libc_tests_elf)
-
     shell_cflags = MUSL_CFLAGS + [
         "-I", str(SHELL_SRC / "inc"),
         "-I", str(NRSHELL),
@@ -651,7 +616,6 @@ def make_plan(tools: Tools):
     ]
     for stem, src in shell_objs:
         tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, shell_cflags))
-
     nr_shell_lib_objs = [
         BUILD_DIR / "musl_ret.o", BUILD_DIR / "nt_errno.o",
         BUILD_DIR / "musl_vfprintf.o", BUILD_DIR / "musl_vsnprintf.o",
@@ -670,7 +634,6 @@ def make_plan(tools: Tools):
         BUILD_DIR / "musl_memmove.o", BUILD_DIR / "musl_read.o",
         BUILD_DIR / "musl_write.o", BUILD_DIR / "nt_libc_stubs.o",
     ]
-
     nr_shell_elf = task_link("nr_shell.elf", BUILD_DIR / "nr_shell.elf", tools,
         [BUILD_DIR / "musl_start.o", BUILD_DIR / "musl_syscall.o",
          BUILD_DIR / "shell_core.o", BUILD_DIR / "shell_cmds.o",
@@ -678,7 +641,6 @@ def make_plan(tools: Tools):
         flags=["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_musl_start"])
     tasks.append(nr_shell_elf)
     user_elves.append(nr_shell_elf)
-
     mongoose_src = SRC_DIR / "app" / "mongoose"
     net_dir = KERNEL_DIR / "net"
     mongoose_cflags = MUSL_CFLAGS + [
@@ -687,7 +649,6 @@ def make_plan(tools: Tools):
     ]
     tasks.append(task_cc("mongoose.o", mongoose_src / "mongoose.c",
                          BUILD_DIR / "mongoose.o", tools, mongoose_cflags))
-
     net_c_sources = [
         ("rtl8139.o", net_dir / "rtl8139.c"),
         ("e1000.o", net_dir / "e1000.c"),
@@ -696,7 +657,6 @@ def make_plan(tools: Tools):
     ]
     for stem, src in net_c_sources:
         tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, mongoose_cflags))
-
     font_subset = BUILD_DIR / "font_subset.ttf"
     tasks.append(task_python(
         "font_subset.ttf",
@@ -704,12 +664,12 @@ def make_plan(tools: Tools):
         [str(KERNEL_DIR / "lib" / "assets" / "font.ttf"), str(font_subset)],
         out=font_subset,
     ))
-
     kernel_objs_names = [
         "entry.o", "kernel.o", "func.o", "ioc.o", "io.o",
         "apic.o", "pit.o", "stub.o", "idt.o", "interrupt.o",
         "assert.o", "str.o", "bitmap.o", "pool.o", "access.o", "list.o",
-        "switch.o", "thread.o", "sync.o", "percpu.o", "ioqueue.o", "keyboard.o",
+        "switch.o", "thread.o", "sync.o", "percpu.o", "smp.o",
+        "ap_tramp.o", "ioqueue.o", "keyboard.o",
         "ide.o", "ext2.o", "fs.o", "inode.o", "dir.o", "file.o",
         "gdt.o", "tss.o", "process.o", "exec.o", "shell.o",
         "buildin_cmd.o", "pipe.o", "ksyscall.o", "mmap.o", "futex.o",
@@ -720,7 +680,6 @@ def make_plan(tools: Tools):
         "mongoose.o", "rtl8139.o", "e1000.o", "nt_mongoose_plat.o", "nt_net.o",
     ]
     kernel_link_objs = [BUILD_DIR / n for n in kernel_objs_names]
-
     kernel_elf = BUILD_DIR / "kernel.elf"
     tasks.append(task_link(
         "kernel.elf", kernel_elf, tools, kernel_link_objs,
@@ -733,7 +692,6 @@ def make_plan(tools: Tools):
         out=kernel_bin, deps=[], description="strip ELF → flat binary",
         group="objcopy",
     ))
-
     floppy_img = BUILD_DIR / "floppy.img"
     tasks.append(task_python(
         "floppy.img",
@@ -744,21 +702,17 @@ def make_plan(tools: Tools):
          str(floppy_img)],
         out=floppy_img,
     ))
-
     return BuildPlan(tasks=tasks, user_elves=user_elves)
-
 @dataclass
 class BuildPlan:
     tasks: List[Task]
     user_elves: List[Task]
     def all(self) -> List[Task]:
         return list(self.tasks) + list(self.user_elves)
-
 def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
                  jobs: int = 1) -> BuildStats:
     stats = BuildStats()
     overall_t0 = time.perf_counter()
-
     def run_task(task: Task) -> None:
         t0 = time.perf_counter()
         if task.out and task.out.exists():
@@ -786,34 +740,31 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
             raise SystemExit(res.returncode)
         stats.compiled += 1
         stats.timings[task.name] = (time.perf_counter() - t0, "built")
-
     def fmt_dur(seconds: float) -> str:
         if seconds < 0.05:
             return "(<0.1s)"
         if seconds < 10:
             return f"({seconds:.2f}s)"
         return f"({seconds/60:.1f}min)"
-
     def c_dim(s: str) -> str:
         return f"{console._c(Ansi.DIM)}{console._c(Ansi.GRAY)}{s}{console._c(Ansi.RESET)}"
-
     total_steps = 9
     s = 1
-
     console.step_header(s, total_steps, "Assembling boot sectors")
     for t in plan.tasks[:3]:
         run_task(t)
         console.ok(f"{t.description}  {c_dim(fmt_dur(stats.timings[t.name][0]))}")
     s += 1
-
     console.step_header(s, total_steps, "Compiling kernel assembly")
     asm_kern = [t for t in plan.tasks if t.group == "asm" and t.name in
-                ("func.o", "io.o", "stub.o", "entry.o", "switch.o")]
+                ("func.o", "io.o", "stub.o", "entry.o", "switch.o",
+                 "ap_trampoline.bin")]
     for t in asm_kern:
         run_task(t)
         console.ok(f"{t.description}  {c_dim(fmt_dur(stats.timings[t.name][0]))}")
+    for t in (t for t in plan.tasks if t.name == "ap_tramp.o"):
+        run_task(t)
     s += 1
-
     console.step_header(s, total_steps, "Compiling kernel C objects")
     cc_kern = [t for t in plan.tasks if t.group == "cc" and t.name.endswith(".o")
                and not t.name.startswith("up_") and not t.name.startswith("lc_")
@@ -824,7 +775,6 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
             run_task(t)
             update(i, t.description)
     s += 1
-
     console.step_header(s, total_steps, "Compiling user & lib objects")
     user_lib = [t for t in plan.tasks if t.group == "cc" and t.name.startswith("up_")]
     prog_obj = [t for t in plan.tasks if t.group == "cc" and t.name.startswith("up_")
@@ -839,7 +789,6 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
                 run_task(t)
                 update(i, t.description)
     s += 1
-
     console.step_header(s, total_steps, "Building lc_demo")
     lc_tasks = [t for t in plan.tasks if t.group in ("asm","cc","link","objcopy") and "lc_" in t.name]
     with console.progress(len(lc_tasks), "lc_demo", Ansi.BR_MAG) as update:
@@ -847,7 +796,6 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
             run_task(t)
             update(i, t.description)
     s += 1
-
     console.step_header(s, total_steps, "Building musl demos & libc testsuite")
     musl_tasks = [t for t in plan.tasks if t.group in ("asm","cc","link","objcopy") and
                   ("musl_" in t.name or "test_" in t.name or "nt_" in t.name or
@@ -857,7 +805,6 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
             run_task(t)
             update(i, t.description)
     s += 1
-
     console.step_header(s, total_steps, "Generating font subset")
     font_py = [t for t in plan.tasks if t.group == "python" and "font" in t.name]
     with console.progress(len(font_py), "font", Ansi.BR_MAG) as update:
@@ -867,7 +814,6 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
             run_task(t)
             update(i, t.description)
     s += 1
-
     console.step_header(s, total_steps, "Linking user ELFs (remaining)")
     user_elf_tasks = list(plan.user_elves)
     with console.progress(len(user_elf_tasks), "user ELFs", Ansi.BR_GRN) as update:
@@ -875,7 +821,6 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
             run_task(t)
             update(i, t.description)
     s += 1
-
     console.step_header(s, total_steps, "Linking kernel image")
     kernel_link = [t for t in plan.tasks
                    if t.group in ("link", "objcopy") and "kernel" in t.name]
@@ -884,7 +829,6 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
             run_task(t)
             update(i, t.description)
     s += 1
-
     console.step_header(s, total_steps, "Packing floppy image")
     floppy_task = [t for t in plan.tasks if t.name == "floppy.img"][0]
     t0 = time.perf_counter()
@@ -897,10 +841,8 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
     dur = time.perf_counter() - t0
     console.ok(f"build/floppy.img  {c_dim(fmt_dur(dur))}")
     s += 1
-
     stats.timings["__total__"] = (time.perf_counter() - overall_t0, "overall")
     return stats
-
 def show_failure_hint(console: Console, missing: List[str]) -> None:
     console.writeln()
     console.fail("Missing required toolchain components:")
@@ -912,35 +854,43 @@ def show_failure_hint(console: Console, missing: List[str]) -> None:
     console.writeln("          • macOS   : brew install nasm zig")
     console.writeln("          • Windows : install zig, nasm, llvm (winget/choco/scoop)")
     console.writeln()
-
 def do_clean(console: Console) -> None:
     if BUILD_DIR.exists():
         shutil.rmtree(BUILD_DIR)
         console.ok(f"removed {BUILD_DIR}")
     else:
         console.info(f"{BUILD_DIR} already absent")
-
-def do_run(console: Console, stats: BuildStats) -> None:
+def do_run(console: Console, stats: BuildStats,
+           smp: int, gdb: bool, no_net: bool, boot_floppy: bool) -> None:
     qemu = shutil.which("qemu-system-i386")
     if qemu is None:
         console.warn("qemu-system-i386 not found on PATH; build is up-to-date.")
         return
-    hd_img = BUILD_DIR / "test_hd.img"
-    mkdisk = SCRIPTS / "make_ext2.py"
-    if mkdisk.exists():
-        console.info("generating test_hd.img via make_ext2.py")
-        run([sys.executable, str(mkdisk), str(BUILD_DIR), str(hd_img)])
+    cmd = [qemu, "-accel", "tcg,tb-size=256", "-m", "1G",
+           "-smp", str(max(1, smp))]
+    if boot_floppy:
+        cmd += ["-fda", str(BUILD_DIR / "floppy.img")]
+    else:
+        hd_img = BUILD_DIR / "test_hd.img"
+        mkdisk = SCRIPTS / "make_ext2.py"
+        if mkdisk.exists():
+            console.info("generating test_hd.img via make_ext2.py")
+            run([sys.executable, str(mkdisk), str(BUILD_DIR), str(hd_img)])
+        cmd += ["-hda", str(hd_img)]
+    cmd += ["-debugcon", "stdio"]
+    if not no_net:
+        cmd += ["-netdev", "user,id=net0,hostfwd=tcp::8765-:8765",
+                "-device", "e1000,netdev=net0"]
+    if gdb:
+        cmd += ["-s", "-S"]
     console.writeln()
-    console.writeln(f"  {console._c(Ansi.BR_GRN)}▶ launching qemu...{console._c(Ansi.RESET)}")
+    console.writeln(f"  {console._c(Ansi.BR_GRN)}▶ launching qemu..."
+                    f"{'（SMP' if smp > 1 else ''}"
+                    f"{' · GDB 等待' if gdb else ''}"
+                    f"{' · floppy 引导' if boot_floppy else ''}"
+                    f"{console._c(Ansi.RESET)}")
     console.writeln()
-    subprocess.run([
-        qemu, "-accel", "tcg,tb-size=256", "-m", "1G",
-        "-hda", str(hd_img),
-        "-debugcon", "stdio",
-        "-netdev", "user,id=net0,hostfwd=tcp::8765-:8765",
-        "-device", "e1000,netdev=net0"
-    ])
-
+    subprocess.run(cmd)
 def main(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="build.py",
@@ -954,16 +904,21 @@ def main(argv: Sequence[str]) -> int:
     parser.add_argument("--jobs", "-j", type=int, default=1,
                         help="parallel compile jobs (default: 1)")
     parser.add_argument("--version", action="version", version="nitian-build 1.0")
+    parser.add_argument("--sm", type=int, default=1, metavar="N",
+                        help="SMP CPU 数(qemu -smp N, 多核启动验证; 默认 1)")
+    parser.add_argument("--gdb", action="store_true",
+                        help="QEMU GDB stub(-s -S, 等待 gdb 连接 kernel.elf)")
+    parser.add_argument("--no-net", action="store_true",
+                        help="不挂虚拟网卡/后端(默认挂 e1000 + user 后端)")
+    parser.add_argument("--boot-floppy", action="store_true",
+                        help="以 floppy.img 作为引导软盘(-fda); 默认用 test_hd.img(-hda)")
     args = parser.parse_args(argv)
-
     _enable_vt_on_windows()
     console = Console(use_color=color_enabled(args.no_color))
     console.banner("v1.0  ·  Windows / Linux / macOS")
-
     if args.target == "clean":
         do_clean(console)
         return 0
-
     try:
         tools = detect_tools()
     except FileNotFoundError as exc:
@@ -974,19 +929,15 @@ def main(argv: Sequence[str]) -> int:
     console.info(f"nasm    = {tools.nasm}")
     console.info(f"objcopy = {tools.objcopy}")
     console.writeln()
-
     plan = make_plan(tools)
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
-
     try:
         stats = execute_plan(plan, tools, console, jobs=args.jobs)
     except SystemExit as exc:
         return int(exc.code) if exc.code is not None else 1
-
     floppy = BUILD_DIR / "floppy.img"
     kernel = BUILD_DIR / "kernel.bin"
     elf    = BUILD_DIR / "kernel.elf"
-
     def human_size(p: Path) -> str:
         try:
             n = p.stat().st_size
@@ -997,7 +948,6 @@ def main(argv: Sequence[str]) -> int:
                 return f"{n:.1f} {unit}" if unit != "B" else f"{n} {unit}"
             n /= 1024
         return f"{n:.1f} GB"
-
     total_dur = stats.timings.get("__total__", (0.0, ""))[0]
     def fmt_dur(seconds: float) -> str:
         if seconds < 0.05:
@@ -1005,7 +955,6 @@ def main(argv: Sequence[str]) -> int:
         if seconds < 10:
             return f"({seconds:.2f}s)"
         return f"({seconds/60:.1f}min)"
-
     console.summary([
         ("artefacts",   f"floppy.img · kernel.bin · kernel.elf", Ansi.BR_WHT),
         ("floppy size", human_size(floppy),                       Ansi.BR_CYN),
@@ -1019,11 +968,8 @@ def main(argv: Sequence[str]) -> int:
     console.writeln(f"  {console._c(Ansi.GREEN)}{console._c(Ansi.BOLD)}"
                     f"✔  build complete{console._c(Ansi.RESET)}")
     console.writeln()
-
     if args.target == "run":
-        do_run(console, stats)
-
+        do_run(console, stats, 2, args.gdb, args.no_net, args.boot_floppy)
     return 0
-
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

@@ -1,29 +1,22 @@
 // 参考: 《操作系统真相还原》(于渊) 第8章 内存管理
 #include "./pool.h"
-
 #include "../../include/asmFunc.h"
 #include "../../include/assert.h"
 #include "../../lib/str/str.h"
 #include "../../thread/sync.h"
 #include "../../thread/thread.h"
 #include "../../thread/percpu.h"
-
 static struct lock mem_lock;
-
 #define PDE_INDEX(addr) ((addr & 0xffc00000) >> 22)
 #define PTE_INDEX(addr) ((addr & 0x003ff000) >> 12)
-
 static uint8_t kernel_pool_bitmap[(MAX_PHYS_MEM - MEMORY_BASE) / PAGE_SIZE / 8];
 static uint8_t kernel_vaddr_bitmap[0x1000000 / PAGE_SIZE / 8];
 struct pool kernel_pool;
 struct virtual_addr kernel_vaddr;
-
 #define FRAME_IDX(phy) (((phy) - MEMORY_BASE) / PAGE_SIZE)
 #define FRAME_IDX_MAX ((MAX_PHYS_MEM - MEMORY_BASE) / PAGE_SIZE)
 static uint8_t frame_owner[FRAME_IDX_MAX];
-
 #define KERNEL_VADDR_START 0xC1000000
-
 static uint32_t e820_mem_upper(void) {
     uint32_t count = *(uint32_t *)0x6000;
     uint8_t *p = (uint8_t *)0x6004;
@@ -40,7 +33,6 @@ static uint32_t e820_mem_upper(void) {
     }
     return upper;
 }
-
 static void mark_used(uint32_t start, uint32_t size) {
     uint32_t end = start + size;
     while (start < end) {
@@ -51,7 +43,6 @@ static void mark_used(uint32_t start, uint32_t size) {
         start += PAGE_SIZE;
     }
 }
-
 void mm_init(void) {
     uint32_t upper = e820_mem_upper();
     kernel_pool.phy_addr_start = MEMORY_BASE;
@@ -67,16 +58,13 @@ void mm_init(void) {
     bitmap_init(&kernel_pool.pool_bitmap);
     mark_used(0x280000, 0x400000 - 0x280000);
     mark_used(0x400000, 0x460000 - 0x400000);
-    mark_used(PER_CPU_BASE, PAGE_SIZE);
-
+    mark_used(PER_CPU_BASE, NR_CPU * PAGE_SIZE);
     kernel_vaddr.vaddr_start = KERNEL_VADDR_START;
     kernel_vaddr.vaddr_bitmap.bits = kernel_vaddr_bitmap;
     kernel_vaddr.vaddr_bitmap.btmp_bytes_len = sizeof(kernel_vaddr_bitmap);
     bitmap_init(&kernel_vaddr.vaddr_bitmap);
-
     lock_init(&mem_lock);
 }
-
 static uint32_t palloc_raw(struct pool *pool) {
     int idx = bitmap_scan(&pool->pool_bitmap, 1);
     if (idx == -1) {
@@ -85,7 +73,6 @@ static uint32_t palloc_raw(struct pool *pool) {
     bitmap_set(&pool->pool_bitmap, (uint32_t)idx, 1);
     return pool->phy_addr_start + (uint32_t)idx * PAGE_SIZE;
 }
-
 static void pfree_raw(struct pool *pool, uint32_t phy_addr) {
     if (phy_addr < pool->phy_addr_start) {
         return;
@@ -93,7 +80,6 @@ static void pfree_raw(struct pool *pool, uint32_t phy_addr) {
     uint32_t idx = (phy_addr - pool->phy_addr_start) / PAGE_SIZE;
     bitmap_set(&pool->pool_bitmap, idx, 0);
 }
-
 static uint32_t palloc_pages_raw(struct pool *pool, uint32_t cnt) {
     int idx = bitmap_scan(&pool->pool_bitmap, cnt);
     if (idx == -1) {
@@ -104,20 +90,16 @@ static uint32_t palloc_pages_raw(struct pool *pool, uint32_t cnt) {
     }
     return pool->phy_addr_start + (uint32_t)idx * PAGE_SIZE;
 }
-
 uint32_t *pde_ptr(uint32_t vaddr) {
     return (uint32_t *)(0xfffff000 + PDE_INDEX(vaddr) * 4);
 }
-
 uint32_t *pte_ptr(uint32_t vaddr) {
     return (uint32_t *)(0xffc00000 + ((vaddr & 0xffc00000) >> 10) +
                         PTE_INDEX(vaddr) * 4);
 }
-
 static void page_table_add_raw(uint32_t vaddr, uint32_t phy_addr) {
     uint32_t *pde = pde_ptr(vaddr);
     uint32_t *pte = pte_ptr(vaddr);
-
     if (*pde & 1) {
         if (*pde & 0x80) {
             uint32_t pde_base = vaddr & 0xffc00000;
@@ -144,11 +126,9 @@ static void page_table_add_raw(uint32_t vaddr, uint32_t phy_addr) {
         *pte = phy_addr | 7;
     }
 }
-
 static void page_table_add_no_cache(uint32_t vaddr, uint32_t phy_addr) {
     uint32_t *pde = pde_ptr(vaddr);
     uint32_t *pte = pte_ptr(vaddr);
-
     if (*pde & 1) {
         if (*pde & 0x80) {
             uint32_t pde_base = vaddr & 0xffc00000;
@@ -175,7 +155,6 @@ static void page_table_add_no_cache(uint32_t vaddr, uint32_t phy_addr) {
         *pte = phy_addr | 0x17;
     }
 }
-
 void *ioremap(uint32_t phy_addr, uint32_t size) {
     uint32_t phy = phy_addr & ~0xfff;
     uint32_t cnt = (phy_addr + size - 1) / PAGE_SIZE - phy / PAGE_SIZE + 1;
@@ -193,7 +172,6 @@ void *ioremap(uint32_t phy_addr, uint32_t size) {
     lock_release(&mem_lock);
     return (void *)(vaddr + (phy_addr & 0xfff));
 }
-
 void *get_a_page(uint32_t vaddr) {
     struct task_struct *cur = current;
     uint32_t bit_idx = (vaddr - cur->userprog_v_addr.vaddr_start) / PAGE_SIZE;
@@ -210,7 +188,6 @@ void *get_a_page(uint32_t vaddr) {
     lock_release(&mem_lock);
     return (void *)vaddr;
 }
-
 void *get_kernel_pages(uint32_t pg_cnt) {
     lock_acquire(&mem_lock);
     int bit = bitmap_scan(&kernel_vaddr.vaddr_bitmap, pg_cnt);
@@ -240,33 +217,28 @@ void *get_kernel_pages(uint32_t pg_cnt) {
     lock_release(&mem_lock);
     return (void *)vaddr;
 }
-
 void *palloc(struct pool *pool) {
     lock_acquire(&mem_lock);
     void *r = (void *)palloc_raw(pool);
     lock_release(&mem_lock);
     return r;
 }
-
 void pfree(struct pool *pool, uint32_t phy_addr) {
     lock_acquire(&mem_lock);
     pfree_raw(pool, phy_addr);
     lock_release(&mem_lock);
 }
-
 uint32_t palloc_pages(struct pool *pool, uint32_t cnt) {
     lock_acquire(&mem_lock);
     uint32_t r = palloc_pages_raw(pool, cnt);
     lock_release(&mem_lock);
     return r;
 }
-
 void page_table_add(uint32_t vaddr, uint32_t phy_addr) {
     lock_acquire(&mem_lock);
     page_table_add_raw(vaddr, phy_addr);
     lock_release(&mem_lock);
 }
-
 void free_kernel_page(uint32_t vaddr) {
     uint32_t old_cr3;
     __asm__ volatile("mov %%cr3, %0" : "=r"(old_cr3));
@@ -291,7 +263,6 @@ void free_kernel_page(uint32_t vaddr) {
     lock_release(&mem_lock);
     asm_write_cr3(old_cr3);
 }
-
 void free_user_page(uint32_t vaddr) {
     struct task_struct *cur = current;
     lock_acquire(&mem_lock);
@@ -306,20 +277,17 @@ void free_user_page(uint32_t vaddr) {
             bitmap_set(&cur->userprog_v_addr.vaddr_bitmap, bit_idx, 0);
         }
         lock_release(&mem_lock);
-
         page_free_or_decref(phy);
         return;
     }
     lock_release(&mem_lock);
 }
-
 void page_incr_shared(uint32_t phy_addr) {
     if (phy_addr < MEMORY_BASE || phy_addr >= MAX_PHYS_MEM) {
         return;
     }
     uint32_t idx = FRAME_IDX(phy_addr);
     lock_acquire(&mem_lock);
-
     if (frame_owner[idx] == 0) {
         frame_owner[idx] = 2;
     } else if (frame_owner[idx] < 0xFF) {
@@ -327,7 +295,6 @@ void page_incr_shared(uint32_t phy_addr) {
     }
     lock_release(&mem_lock);
 }
-
 void page_free_or_decref(uint32_t phy_addr) {
     if (phy_addr < MEMORY_BASE || phy_addr >= MAX_PHYS_MEM) {
         return;
@@ -340,18 +307,14 @@ void page_free_or_decref(uint32_t phy_addr) {
             lock_release(&mem_lock);
             return;
         }
-
         frame_owner[idx] = 0;
         lock_release(&mem_lock);
-
         pfree(&kernel_pool, phy_addr);
         return;
     }
-
     lock_release(&mem_lock);
     pfree(&kernel_pool, phy_addr);
 }
-
 int page_is_shared(uint32_t phy_addr) {
     if (phy_addr < MEMORY_BASE || phy_addr >= MAX_PHYS_MEM) {
         return 0;

@@ -1,10 +1,8 @@
 // 参考: 《操作系统真相还原》(于渊) 第11章 输入输出系统
 #include "./ioqueue.h"
-
 #include "../include/asmFunc.h"
 #include "../include/assert.h"
 #include "../thread/sync.h"
-
 void ioq_init(struct ioqueue *ioq) {
     lock_init(&ioq->lock);
     ioq->producer = 0;
@@ -12,13 +10,9 @@ void ioq_init(struct ioqueue *ioq) {
     ioq->head = 0;
     ioq->tail = 0;
 }
-
 static int32_t next_pos(int32_t pos) { return (pos + 1) % BUFSIZE; }
-
 int ioq_full(struct ioqueue *ioq) { return next_pos(ioq->head) == ioq->tail; }
-
 int ioq_empty(struct ioqueue *ioq) { return ioq->head == ioq->tail; }
-
 uint32_t ioq_length(struct ioqueue *ioq) {
     uint32_t len = 0;
     if (ioq->head >= ioq->tail) {
@@ -28,12 +22,10 @@ uint32_t ioq_length(struct ioqueue *ioq) {
     }
     return len;
 }
-
 static void ioq_wait(struct task_struct **waiter) {
     *waiter = current;
     thread_block();
 }
-
 static void wakeup(struct task_struct **waiter) {
     struct task_struct *w = *waiter;
     *waiter = 0;
@@ -41,10 +33,8 @@ static void wakeup(struct task_struct **waiter) {
         thread_unblock(w);
     }
 }
-
 void ioq_putchar(struct ioqueue *ioq, char byte) {
     ASSERT((asm_save_eflags() & 0x200) == 0);
-
     while (ioq_full(ioq)) {
         lock_acquire(&ioq->lock);
         ioq_wait(&ioq->producer);
@@ -52,15 +42,12 @@ void ioq_putchar(struct ioqueue *ioq, char byte) {
     }
     ioq->buf[ioq->head] = byte;
     ioq->head = next_pos(ioq->head);
-
     if (ioq->consumer != 0) {
         wakeup(&ioq->consumer);
     }
 }
-
 char ioq_getchar(struct ioqueue *ioq) {
     ASSERT((asm_save_eflags() & 0x200) == 0);
-
     while (ioq_empty(ioq)) {
         lock_acquire(&ioq->lock);
         ioq_wait(&ioq->consumer);
@@ -68,7 +55,6 @@ char ioq_getchar(struct ioqueue *ioq) {
     }
     char byte = ioq->buf[ioq->tail];
     ioq->tail = next_pos(ioq->tail);
-
     if (ioq->producer != 0) {
         wakeup(&ioq->producer);
     }

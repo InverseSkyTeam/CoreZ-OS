@@ -1,6 +1,5 @@
 // 参考: 《操作系统真相还原》(于渊) 第15章 fork + Linux
 #include "./clone.h"
-
 #include "../fs/file.h"
 #include "../include/asmFunc.h"
 #include "../include/assert.h"
@@ -9,9 +8,7 @@
 #include "../shell/pipe.h"
 #include "../thread/thread.h"
 #include "../userprog/process.h"
-
 extern void intr_exit(void);
-
 static void build_clone_stack(struct task_struct *child,
                               struct Registers *parent_frame,
                               uint32_t user_stack) {
@@ -28,7 +25,6 @@ static void build_clone_stack(struct task_struct *child,
     ts->eip = (void (*)(void))intr_exit;
     child->self_kstack = (uint32_t *)ts;
 }
-
 pid_t sys_clone(struct Registers *r) {
     uint32_t flags = r->ebx;
     uint32_t child_user_stack = r->ecx;
@@ -50,23 +46,18 @@ pid_t sys_clone(struct Registers *r) {
         }
     }
     child->exit_status = 0;
-
     child->signal_mask = parent->signal_mask;
     child->signal_pending = 0;
     for (int i = 0; i < NSIG; i++) {
         child->sigactions[i] = parent->sigactions[i];
     }
-
     child->pgdir = parent->pgdir;
     child->tls_base = parent->tls_base;
     child->tls_selector = parent->tls_selector;
-
     if (child_user_stack == 0) {
         child_user_stack = (uint32_t)get_a_page(USER_STACK3_VADDR) + PAGE_SIZE;
     }
-
     build_clone_stack(child, r, child_user_stack);
-
     child->status = TASK_BLOCKED;
     thread_ready(child);
     (void)flags;

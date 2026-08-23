@@ -60,6 +60,33 @@ static uint32_t lapic_read(uint32_t off) { return lapic[off / 4]; }
 
 void lapic_eoi(void) { lapic_write(LAPIC_EOI, 0); }
 
+#define LAPIC_ID 0x020
+#define LAPIC_ICR 0x300
+#define LAPIC_ICR_HIGH 0x310
+#define ICR_IRR_MASK 0x00001000 
+
+uint32_t lapic_get_id(void) { return lapic_read(LAPIC_ID) >> 24; }
+
+static void lapic_send_icr(uint32_t apic_id, uint32_t low) {
+    lapic_write(LAPIC_ICR_HIGH, apic_id << 24);
+    lapic_write(LAPIC_ICR, low);
+
+    uint32_t spins = 0;
+    while (lapic_read(LAPIC_ICR) & ICR_IRR_MASK) {
+        asm_pause();
+        if (++spins > 1000000u)
+            break;
+    }
+}
+
+void lapic_send_ipi_init(uint32_t apic_id) {
+    lapic_send_icr(apic_id, 0x00000500u);
+}
+
+void lapic_send_ipi_sipi(uint32_t apic_id, uint32_t vector) {
+    lapic_send_icr(apic_id, 0x00000600u | (vector & 0xFF));
+}
+
 static uint32_t ioapic_read(uint32_t reg) {
     ioapic[0] = reg;
     return ioapic[4];

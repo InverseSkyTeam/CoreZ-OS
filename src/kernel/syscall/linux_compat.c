@@ -1,6 +1,5 @@
 // 参考: Wine syscall 翻译(gitlab.winehq.org/wine), Linux set_thread_area
 #include "./linux_compat.h"
-
 #include "../device/ioqueue.h"
 #include "../device/keyboard.h"
 #include "../fs/fs.h"
@@ -11,21 +10,17 @@
 #include "../thread/thread.h"
 #include "../userprog/process.h"
 #include "../userprog/wait_exit.h"
-
 uint32_t sys_brk(uint32_t addr);
-
 struct lc_iovec {
     uint32_t base;
     uint32_t len;
 };
-
 static void lc_seterrno(struct task_struct *cur, int32_t val) {
     cur->errno = val;
     if (cur->tls_base != 0) {
         *(volatile int32_t *)cur->tls_base = val;
     }
 }
-
 static int32_t compat_write(int32_t fd, const void *buf, uint32_t count) {
     if (fd < 0)
         return -1;
@@ -37,7 +32,6 @@ static int32_t compat_write(int32_t fd, const void *buf, uint32_t count) {
     }
     return (int32_t)count;
 }
-
 static int32_t compat_read(int32_t fd, void *buf, uint32_t count) {
     if (fd == 0) {
         uint8_t *p = (uint8_t *)buf;
@@ -60,7 +54,6 @@ static int32_t compat_read(int32_t fd, void *buf, uint32_t count) {
         return -1;
     return (int32_t)read_file(fd, buf, count);
 }
-
 static uint32_t compat_brk_alloc(struct task_struct *cur, uint32_t len) {
     uint32_t curbrk = sys_brk(0);
     uint32_t want = curbrk + ((len + 0xFFF) & ~0xFFF);
@@ -68,7 +61,6 @@ static uint32_t compat_brk_alloc(struct task_struct *cur, uint32_t len) {
         return (uint32_t)-1;
     return curbrk;
 }
-
 static int32_t compat_set_thread_area(struct Registers *r,
                                       struct task_struct *cur, uint32_t base) {
     if (base == 0)
@@ -80,7 +72,6 @@ static int32_t compat_set_thread_area(struct Registers *r,
     lc_seterrno(cur, 0);
     return 0;
 }
-
 static int32_t sys_compat_writev(int32_t fd, struct lc_iovec *iov,
                                  int32_t iovcnt) {
     if (iovcnt < 0)
@@ -96,21 +87,17 @@ static int32_t sys_compat_writev(int32_t fd, struct lc_iovec *iov,
     }
     return (int32_t)total;
 }
-
 uint32_t linux_compat_handler(struct Registers *r) {
     struct task_struct *cur = current;
     uint32_t nr = r->eax;
     uint32_t ret = (uint32_t)-1;
-
     cur->compat = 1;
-
     uint32_t a = r->ebx;
     uint32_t b = r->ecx;
     uint32_t c = r->edx;
     uint32_t d = r->esi;
     uint32_t e = r->edi;
     uint32_t f = r->ebp;
-
     switch (nr) {
     case LC_PID:
         ret = cur->pid;
@@ -179,6 +166,5 @@ uint32_t linux_compat_handler(struct Registers *r) {
         ret = (uint32_t)-1;
         break;
     }
-
     return ret;
 }

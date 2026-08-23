@@ -1,5 +1,4 @@
 #include "fs.h"
-
 #include "../initer/io/io.h"
 #include "../lib/str/str.h"
 #include "../memory/pool/pool.h"
@@ -9,9 +8,7 @@
 #include "ext2.h"
 #include "file.h"
 #include "inode.h"
-
 struct partition *cur_part;
-
 void filesys_init(void) {
     if (ext2_init()) {
         kprintf("filesys: ext2 init failed\n");
@@ -25,7 +22,6 @@ void filesys_init(void) {
     open_root_dir(cur_part);
     kprintf("filesys init done, root=%s\n", cur_part->name);
 }
-
 char *path_parse(char *pathname, char *name_store) {
     uint32_t cnt = 0;
     if (pathname[0] == '/') {
@@ -41,7 +37,6 @@ char *path_parse(char *pathname, char *name_store) {
     }
     return pathname;
 }
-
 int search_file(const char *pathname,
                 struct path_search_record *searched_record) {
     if (!strcmp(pathname, "/") || !strcmp(pathname, "/.") ||
@@ -75,12 +70,10 @@ int search_file(const char *pathname,
     searched_record->parent_dir = &root_dir;
     return (int)ino;
 }
-
 static int ext2_create_common(const char *pathname, uint32_t mode, int is_dir);
 int create_file(const char *pathname) {
-    return ext2_create_common(pathname, 0x8000u /*EXT2_S_IFREG*/, 0);
+    return ext2_create_common(pathname, 0x8000u , 0);
 }
-
 static int split_parent_path(const char *pathname, char *parent,
                              char **base_out, uint32_t buf_len) {
     uint32_t plen = (uint32_t)strlen(pathname);
@@ -111,7 +104,6 @@ static int split_parent_path(const char *pathname, char *parent,
     }
     return 0;
 }
-
 static uint32_t get_parent_inode(const char *parent) {
     uint32_t pino = 0;
     int is_dir = 0;
@@ -120,9 +112,7 @@ static uint32_t get_parent_inode(const char *parent) {
     }
     return pino;
 }
-
 static void ext2_free_best_effort(struct inode *ino);
-
 static int ext2_create_common(const char *pathname, uint32_t mode, int is_dir) {
     char parent[MAX_PATH_LEN];
     char *base;
@@ -164,13 +154,11 @@ static int ext2_create_common(const char *pathname, uint32_t mode, int is_dir) {
     }
     return (int)ino;
 }
-
 static void ext2_free_best_effort(struct inode *ino) {
     ext2_truncate_inode(ino);
     ext2_write_inode(ino->i_no, ino);
     ext2_free_inode(ino->i_no);
 }
-
 int open_file(const char *pathname, uint8_t flags) {
     if (pathname[strlen(pathname) - 1] == '/') {
         return -1;
@@ -215,7 +203,6 @@ int open_file(const char *pathname, uint8_t flags) {
     }
     return fd;
 }
-
 int close_file(int fd) {
     if (fd < 3 || fd >= MAX_FILES_OPEN_PER_PROC) {
         return -1;
@@ -240,7 +227,6 @@ int close_file(int fd) {
     fd_release((uint32_t)fd);
     return 0;
 }
-
 uint32_t read_file(int fd, void *buf, uint32_t count) {
     if (fd < 0 || fd >= MAX_FILES_OPEN_PER_PROC) {
         return (uint32_t)-1;
@@ -251,7 +237,6 @@ uint32_t read_file(int fd, void *buf, uint32_t count) {
     }
     return file_read(&file_table[global_fd_idx], buf, count);
 }
-
 uint32_t write_file(int fd, const void *buf, uint32_t count) {
     if (fd < 0 || fd >= MAX_FILES_OPEN_PER_PROC) {
         return (uint32_t)-1;
@@ -262,7 +247,6 @@ uint32_t write_file(int fd, const void *buf, uint32_t count) {
     }
     return file_write(&file_table[global_fd_idx], buf, count);
 }
-
 int32_t sys_lseek(int32_t fd, int32_t offset, uint8_t whence) {
     if (fd < 3 || fd >= MAX_FILES_OPEN_PER_PROC) {
         return -1;
@@ -293,15 +277,10 @@ int32_t sys_lseek(int32_t fd, int32_t offset, uint8_t whence) {
     pf->fd_pos = (uint32_t)new_pos;
     return (int32_t)pf->fd_pos;
 }
-
 int32_t block_bitmap_alloc(struct partition *part) { return -1; }
-
 int32_t inode_bitmap_alloc(struct partition *part) { return -1; }
-
 void block_bitmap_free(struct partition *part, uint32_t lba) {}
-
 void inode_bitmap_free(struct partition *part, uint32_t inode_no) {}
-
 int sys_unlink(const char *pathname) {
     char parent[MAX_PATH_LEN];
     char *base;
@@ -331,14 +310,12 @@ int sys_unlink(const char *pathname) {
     ext2_free_inode(obj.i_no);
     return 0;
 }
-
 int32_t sys_mkdir(const char *pathname) {
     if (pathname == NULL) {
         return -1;
     }
-    return ext2_create_common(pathname, 0x4000u /*EXT2_S_IFDIR*/, 1) ? 0 : -1;
+    return ext2_create_common(pathname, 0x4000u , 1) ? 0 : -1;
 }
-
 static int ext2_dir_is_empty(struct inode *dino) {
     uint32_t pos = 0;
     struct dir_entry de;
@@ -349,7 +326,6 @@ static int ext2_dir_is_empty(struct inode *dino) {
     }
     return 1;
 }
-
 struct dir *sys_opendir(const char *name) {
     uint32_t ino = 0;
     int is_dir = 0;
@@ -364,7 +340,6 @@ struct dir *sys_opendir(const char *name) {
     }
     return dir_open(cur_part, ino);
 }
-
 int32_t sys_closedir(struct dir *dir) {
     int32_t ret = -1;
     if (dir != NULL) {
@@ -373,11 +348,8 @@ int32_t sys_closedir(struct dir *dir) {
     }
     return ret;
 }
-
 struct dir_entry *sys_readdir(struct dir *dir) { return dir_read(dir); }
-
 void sys_rewinddir(struct dir *dir) { dir->dir_pos = 0; }
-
 int32_t sys_rmdir(const char *pathname) {
     if (pathname == NULL) {
         return -1;
@@ -418,7 +390,6 @@ int32_t sys_rmdir(const char *pathname) {
     ext2_free_inode(obj.i_no);
     return 0;
 }
-
 static uint32_t get_parent_dir_inode_nr(uint32_t child_inode_nr) {
     struct inode *ino = inode_open(cur_part, child_inode_nr);
     if (ino == NULL) {
@@ -436,7 +407,6 @@ static uint32_t get_parent_dir_inode_nr(uint32_t child_inode_nr) {
     inode_close(ino);
     return parent;
 }
-
 static int get_child_dir_name(uint32_t p_inode_nr, uint32_t c_inode_nr,
                               char *path) {
     struct inode *p = inode_open(cur_part, p_inode_nr);
@@ -458,7 +428,6 @@ static int get_child_dir_name(uint32_t p_inode_nr, uint32_t c_inode_nr,
     inode_close(p);
     return ret;
 }
-
 char *sys_getcwd(char *buf, uint32_t size) {
     uint32_t child = current->cwd_inode_nr;
     if (child == 0 || child == 2) {
@@ -483,7 +452,6 @@ char *sys_getcwd(char *buf, uint32_t size) {
     }
     return buf;
 }
-
 int32_t sys_chdir(const char *path) {
     uint32_t ino = 0;
     int is_dir = 0;
@@ -493,7 +461,6 @@ int32_t sys_chdir(const char *path) {
     current->cwd_inode_nr = ino;
     return 0;
 }
-
 int32_t sys_stat(const char *path, struct stat *buf) {
     if (!strcmp(path, ".") || !strcmp(path, "/.") || !strcmp(path, "/..")) {
         buf->st_filetype = FT_DIRECTORY;

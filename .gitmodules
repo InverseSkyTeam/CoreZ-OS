@@ -6,4 +6,4 @@
 	url = https://github.com/Nrusher/nr_micro_shell.git
 [submodule "src/app/mongoose"]
 	path = src/app/mongoose
-	url = https://github.com/cesanta/mongoose.git
+	url = https://github.com/InverseSkyTeam/nitianos-mongoose.git

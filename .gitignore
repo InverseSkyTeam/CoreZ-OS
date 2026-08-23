@@ -1,3 +1,4 @@
 build/
 .zig-cache/
 .zig-tmp/
+__pycache__/

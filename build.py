@@ -389,6 +389,7 @@ def make_plan(tools: Tools):
         ("str.o",        KERNEL_DIR / "lib" / "str" / "str.c"),
         ("bitmap.o",     KERNEL_DIR / "memory" / "bitmap" / "bitmap.c"),
         ("pool.o",       KERNEL_DIR / "memory" / "pool" / "pool.c"),
+        ("access.o",     KERNEL_DIR / "memory" / "access.c"),
         ("list.o",       KERNEL_DIR / "lib" / "list" / "list.c"),
         ("thread.o",     KERNEL_DIR / "thread" / "thread.c"),
         ("sync.o",       KERNEL_DIR / "thread" / "sync.c"),
@@ -706,7 +707,7 @@ def make_plan(tools: Tools):
     kernel_objs_names = [
         "entry.o", "kernel.o", "func.o", "ioc.o", "io.o",
         "apic.o", "pit.o", "stub.o", "idt.o", "interrupt.o",
-        "assert.o", "str.o", "bitmap.o", "pool.o", "list.o",
+        "assert.o", "str.o", "bitmap.o", "pool.o", "access.o", "list.o",
         "switch.o", "thread.o", "sync.o", "ioqueue.o", "keyboard.o",
         "ide.o", "ext2.o", "fs.o", "inode.o", "dir.o", "file.o",
         "gdt.o", "tss.o", "process.o", "exec.o", "shell.o",

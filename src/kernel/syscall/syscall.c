@@ -15,6 +15,7 @@
 #include "../initer/pit/pit.h"
 #include "../lib/str/str.h"
 #include "../lib/user/syscall.h"
+#include "../memory/access.h"
 #include "../net/nt_net.h"
 #include "../shell/pipe.h"
 #include "../thread/thread.h"
@@ -260,6 +261,8 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = sys_getpid();
         break;
     case SYS_WRITE:
+        if (!access_ok((const void *)r->ecx, (size_t)r->edx, 0))
+            break;
         ret = sys_write((int32_t)r->ebx, (char *)r->ecx, (uint32_t)r->edx);
         break;
     case SYS_PUTCHAR:
@@ -269,6 +272,8 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = sys_clear();
         break;
     case SYS_READ:
+        if (!access_ok((const void *)r->ecx, (size_t)r->edx, 1))
+            break;
         ret = (uint32_t)sys_read((int32_t)r->ebx, (void *)r->ecx,
                                  (uint32_t)r->edx);
         break;
@@ -276,18 +281,28 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)sys_fork(r);
         break;
     case SYS_GETCWD:
+        if (!access_ok((const void *)r->ebx, (size_t)r->ecx, 1))
+            break;
         ret = (uint32_t)sys_getcwd((char *)r->ebx, (uint32_t)r->ecx);
         break;
     case SYS_CHDIR:
+        if (!access_ok((const void *)r->ebx, 1, 0))
+            break;
         ret = (uint32_t)sys_chdir((const char *)r->ebx);
         break;
     case SYS_MKDIR:
+        if (!access_ok((const void *)r->ebx, 1, 0))
+            break;
         ret = (uint32_t)sys_mkdir((const char *)r->ebx);
         break;
     case SYS_RMDIR:
+        if (!access_ok((const void *)r->ebx, 1, 0))
+            break;
         ret = (uint32_t)sys_rmdir((const char *)r->ebx);
         break;
     case SYS_OPEN:
+        if (!access_ok((const void *)r->ebx, 1, 0))
+            break;
         ret = (uint32_t)open_file((const char *)r->ebx, (uint8_t)r->ecx);
         break;
     case SYS_CLOSE:
@@ -298,9 +313,13 @@ uint32_t syscall_handler(struct Registers *r) {
                                   (uint8_t)r->edx);
         break;
     case SYS_UNLINK:
+        if (!access_ok((const void *)r->ebx, 1, 0))
+            break;
         ret = (uint32_t)sys_unlink((const char *)r->ebx);
         break;
     case SYS_OPENDIR:
+        if (!access_ok((const void *)r->ebx, 1, 0))
+            break;
         ret = (uint32_t)sys_opendir((const char *)r->ebx);
         break;
     case SYS_CLOSEDIR:
@@ -314,6 +333,9 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = 0;
         break;
     case SYS_STAT:
+        if (!access_ok((const void *)r->ebx, 1, 0) ||
+            !access_ok((const void *)r->ecx, sizeof(struct stat), 1))
+            break;
         ret = (uint32_t)sys_stat((const char *)r->ebx, (struct stat *)r->ecx);
         break;
     case SYS_PS:
@@ -321,6 +343,9 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = 0;
         break;
     case SYS_EXECV:
+        if (!access_ok((const void *)r->ebx, 1, 0) ||
+            !access_ok((const void *)r->ecx, sizeof(void *), 0))
+            break;
         ret = (uint32_t)sys_execv((const char *)r->ebx, (const char **)r->ecx);
         break;
     case SYS_EXIT:
@@ -328,9 +353,13 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = 0;
         break;
     case SYS_WAIT:
+        if (!access_ok((const void *)r->ebx, sizeof(int32_t), 1))
+            break;
         ret = (uint32_t)sys_wait((int32_t *)r->ebx);
         break;
     case SYS_PIPE:
+        if (!access_ok((const void *)r->ebx, 2 * sizeof(int32_t), 1))
+            break;
         ret = (uint32_t)sys_pipe((int32_t *)r->ebx);
         break;
     case SYS_FD_REDIRECT:
@@ -344,6 +373,11 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)sys_brk((uint32_t)r->ebx);
         break;
     case SYS_SIGACTION:
+        if ((r->ecx && !access_ok((const void *)r->ecx,
+                                  sizeof(struct sigaction), 0)) ||
+            (r->edx && !access_ok((const void *)r->edx,
+                                  sizeof(struct sigaction), 1)))
+            break;
         ret = (uint32_t)sys_sigaction((int)r->ebx,
                                       (const struct sigaction *)r->ecx,
                                       (struct sigaction *)r->edx);
@@ -356,13 +390,20 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = 0;
         break;
     case SYS_SIGPROCMASK:
+        if ((r->ecx && !access_ok((const void *)r->ecx, sizeof(sigset_t), 0)) ||
+            (r->edx && !access_ok((const void *)r->edx, sizeof(sigset_t), 1)))
+            break;
         ret = (uint32_t)sys_sigprocmask((int)r->ebx, (const sigset_t *)r->ecx,
                                         (sigset_t *)r->edx);
         break;
     case SYS_SET_THREAD_AREA:
+        if (!access_ok((const void *)r->ebx, sizeof(int32_t), 1))
+            break;
         ret = sys_set_thread_area(r, (uint32_t)r->ebx);
         break;
     case SYS_MMAP:
+        if (!access_ok((const void *)r->ebx, sizeof(struct mmap_args), 0))
+            break;
         ret = sys_mmap((const struct mmap_args *)r->ebx);
         break;
     case SYS_MUNMAP:
@@ -384,6 +425,8 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)sys_clone(r);
         break;
     case SYS_FSTAT:
+        if (!access_ok((const void *)r->ecx, sizeof(struct stat), 1))
+            break;
         ret = (uint32_t)sys_fstat((int32_t)r->ebx, (void *)r->ecx);
         break;
     case SYS_DUP:
@@ -397,34 +440,54 @@ uint32_t syscall_handler(struct Registers *r) {
                                   (uint32_t)r->edx);
         break;
     case SYS_GETDENTS:
+        if (!access_ok((const void *)r->ecx, (size_t)r->edx, 1))
+            break;
         ret = (uint32_t)sys_getdents((int32_t)r->ebx, (void *)r->ecx,
                                      (uint32_t)r->edx);
         break;
     case SYS_READLINK:
+        if (!access_ok((const void *)r->ebx, 1, 0) ||
+            !access_ok((const void *)r->ecx, (size_t)r->edx, 1))
+            break;
         ret = (uint32_t)sys_readlink((const char *)r->ebx, (char *)r->ecx,
                                      (uint32_t)r->edx);
         break;
     case SYS_ACCESS:
+        if (!access_ok((const void *)r->ebx, 1, 0))
+            break;
         ret = (uint32_t)sys_access((const char *)r->ebx, (int32_t)r->ecx);
         break;
     case SYS_RENAME:
+        if (!access_ok((const void *)r->ebx, 1, 0) ||
+            !access_ok((const void *)r->ecx, 1, 0))
+            break;
         ret = (uint32_t)sys_rename((const char *)r->ebx, (const char *)r->ecx);
         break;
     case SYS_TRUNCATE:
+        if (!access_ok((const void *)r->ebx, 1, 0))
+            break;
         ret = (uint32_t)sys_truncate((const char *)r->ebx, (int32_t)r->ecx);
         break;
     case SYS_CHMOD:
+        if (!access_ok((const void *)r->ebx, 1, 0))
+            break;
         ret = (uint32_t)sys_chmod((const char *)r->ebx, (uint32_t)r->ecx);
         break;
     case SYS_CLOCK_GETTIME:
+        if (!access_ok((const void *)r->ecx, sizeof(struct timespec), 1))
+            break;
         ret = (uint32_t)sys_clock_gettime((int32_t)r->ebx,
                                           (struct timespec *)r->ecx);
         break;
     case SYS_GETTIMEOFDAY:
+        if (!access_ok((const void *)r->ebx, sizeof(struct timeval), 1))
+            break;
         ret = (uint32_t)sys_gettimeofday((struct timeval *)r->ebx,
                                          (void *)r->ecx);
         break;
     case SYS_NANOSLEEP:
+        if (!access_ok((const void *)r->ebx, sizeof(struct timespec), 0))
+            break;
         ret = (uint32_t)sys_nanosleep((const struct timespec *)r->ebx,
                                       (struct timespec *)r->ecx);
         break;
@@ -449,6 +512,8 @@ uint32_t syscall_handler(struct Registers *r) {
                                      (uint16_t)r->edx);
         break;
     case SYS_ICMP_RECV:
+        if (!access_ok((const void *)r->ebx, sizeof(struct nt_ping_reply), 1))
+            break;
         ret =
             (uint32_t)nt_icmp_recv((struct nt_ping_reply *)r->ebx, (int)r->ecx);
         break;

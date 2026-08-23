@@ -19,14 +19,9 @@ int access_ok(const void *addr, size_t n, int write) {
     }
 
     if (a >= USER_SPACE_END) {
-        /* 内核高半区: 由内核自身传入的缓冲(如 shell 的 cmd_line), 属可信地址.
-         * 内核未开 SMAP, 高半区页必定映射, 放行不会触发 #PF. */
         return 1;
     }
 
-    /* 用户区 [USER_VADDR_BEGIN, USER_SPACE_END): 防整型回绕.
-     * 先算用户上界与起始点的差值(必然为正), 再与长度比较;
-     * n 大于该差值即说明 [addr, addr+n) 越出用户空间. */
     if (n > (size_t)(USER_SPACE_END - a)) {
         return 0;
     }

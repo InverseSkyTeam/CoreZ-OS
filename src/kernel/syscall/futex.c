@@ -33,8 +33,8 @@ static struct futex_bucket *futex_bucket_for(uint32_t uaddr, uint32_t pgdir) {
 }
 
 static int32_t sys_futex_wait(uint32_t uaddr, uint32_t val, uint32_t timeout) {
-    struct futex_bucket *b = futex_bucket_for(uaddr, current_task->pgdir);
-    current_task->futex_ready = 0;
+    struct futex_bucket *b = futex_bucket_for(uaddr, current->pgdir);
+    current->futex_ready = 0;
     (void)timeout;
 
     uint32_t old = asm_save_eflags();
@@ -46,27 +46,27 @@ static int32_t sys_futex_wait(uint32_t uaddr, uint32_t val, uint32_t timeout) {
         asm_restore_eflags(old);
         return -EAGAIN;
     }
-    list_append(&b->waiters, &current_task->futex_tag);
+    list_append(&b->waiters, &current->futex_tag);
     spinlock_release(&b->lock);
 
-    current_task->status = TASK_BLOCKED;
+    current->status = TASK_BLOCKED;
     schedule();
     asm_restore_eflags(old);
 
-    if (!current_task->futex_ready) {
+    if (!current->futex_ready) {
         spinlock_acquire(&b->lock);
-        if (elem_find(&b->waiters, &current_task->futex_tag)) {
-            list_remove(&current_task->futex_tag);
+        if (elem_find(&b->waiters, &current->futex_tag)) {
+            list_remove(&current->futex_tag);
         }
         spinlock_release(&b->lock);
     } else {
-        current_task->futex_ready = 0;
+        current->futex_ready = 0;
     }
     return 0;
 }
 
 static int32_t sys_futex_wake(uint32_t uaddr, uint32_t nr) {
-    struct futex_bucket *b = futex_bucket_for(uaddr, current_task->pgdir);
+    struct futex_bucket *b = futex_bucket_for(uaddr, current->pgdir);
     int32_t woken = 0;
 
     uint32_t old = asm_save_eflags();

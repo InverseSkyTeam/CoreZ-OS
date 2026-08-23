@@ -65,6 +65,7 @@ isr_common_stub:
     mov ds, ax
     mov es, ax
     mov fs, ax
+    mov ax, 0x38
     mov gs, ax
 
     push esp
@@ -114,6 +115,7 @@ irq_common_stub:
     mov ds, ax
     mov es, ax
     mov fs, ax
+    mov ax, 0x38
     mov gs, ax
 
     push esp
@@ -165,6 +167,7 @@ syscall_common_stub:
     mov ds, ax
     mov es, ax
     mov fs, ax
+    mov ax, 0x38
     mov gs, ax
 
     push esp

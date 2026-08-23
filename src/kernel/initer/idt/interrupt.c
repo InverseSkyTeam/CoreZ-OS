@@ -57,7 +57,7 @@ static int handle_cow_fault(uint32_t fault_addr, uint32_t error_code) {
     if (!(error_code & 0x2)) {  
         return 0;
     }
-    if (current_task == 0 || current_task->pgdir == 0) {
+    if (current == 0 || current->pgdir == 0) {
         return 0;
     }
 
@@ -99,7 +99,7 @@ void isr_handler(struct Registers *r) {
     if ((r->cs & 3) == 3) {
         int sig = exception_to_signal((int)n);
         if (sig > 0) {
-            current_task->signal_pending |= (1u << sig);
+            current->signal_pending |= (1u << sig);
             check_pending_signals(r);
             return;
         }
@@ -110,7 +110,7 @@ void isr_handler(struct Registers *r) {
             kprintf("  %s (vector %d)  eip = 0x%x\n", g_exc_names[n], (int)n,
                     r->eip);
         }
-        signal_terminate(current_task, SIGSEGV);
+        signal_terminate(current, SIGSEGV);
     }
 
     setTextColor(12);
@@ -155,7 +155,7 @@ void irq_handler(struct Registers *r) {
         if (g_tick % PIT_HZ == 0) {
             setTextColor(10);
         }
-        if (current_task != 0) {
+        if (current != 0) {
             check_pending_signals(r);
             schedule();
         }

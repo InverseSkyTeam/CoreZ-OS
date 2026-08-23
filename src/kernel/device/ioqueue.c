@@ -30,7 +30,7 @@ uint32_t ioq_length(struct ioqueue *ioq) {
 }
 
 static void ioq_wait(struct task_struct **waiter) {
-    *waiter = current_task;
+    *waiter = current;
     thread_block();
 }
 

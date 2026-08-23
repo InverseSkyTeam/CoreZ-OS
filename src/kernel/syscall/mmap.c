@@ -9,7 +9,7 @@
 #include "../userprog/process.h"
 
 static int32_t unmap_pages(uint32_t addr, uint32_t pages) {
-    struct task_struct *cur = current_task;
+    struct task_struct *cur = current;
     for (uint32_t i = 0; i < pages; i++) {
         uint32_t v = addr + i * PAGE_SIZE;
         free_user_page(v);
@@ -29,7 +29,7 @@ static int page_is_mapped(uint32_t v) {
 }
 
 static uint32_t find_free_region(uint32_t pages) {
-    struct task_struct *cur = current_task;
+    struct task_struct *cur = current;
     uint32_t start = cur->userprog_v_addr.vaddr_start;
     uint32_t limit = USER_STACK3_VADDR;
     uint32_t run = 0;
@@ -60,7 +60,7 @@ uint32_t sys_mmap(const struct mmap_args *a) {
         return (uint32_t)-1;
     }
     uint32_t pages = (len + PAGE_SIZE - 1) / PAGE_SIZE;
-    struct task_struct *cur = current_task;
+    struct task_struct *cur = current;
 
     if ((a->flags & MAP_FIXED) && (a->addr & (PAGE_SIZE - 1)) == 0 &&
         a->addr >= cur->userprog_v_addr.vaddr_start) {

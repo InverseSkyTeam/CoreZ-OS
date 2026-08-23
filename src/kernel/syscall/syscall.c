@@ -29,7 +29,7 @@
 #include "./linux_compat.h"
 #include "./mmap.h"
 
-static uint32_t sys_getpid(void) { return current_task->pid; }
+static uint32_t sys_getpid(void) { return current->pid; }
 
 static int32_t sys_clock_gettime(int32_t clk_id, struct timespec *tp) {
     if (tp == NULL) {
@@ -200,7 +200,7 @@ static uint32_t sys_ps(void) {
 }
 
 uint32_t sys_brk(uint32_t addr) {
-    struct task_struct *cur = current_task;
+    struct task_struct *cur = current;
     if (cur->user_brk == 0) {
         cur->user_brk = USER_HEAP_BASE;
     }
@@ -240,11 +240,11 @@ uint32_t sys_brk(uint32_t addr) {
 static uint32_t sys_set_thread_area(struct Registers *r, uint32_t base) {
     if (base == 0)
         return (uint32_t)-1;
-    current_task->tls_base = base;
-    current_task->tls_selector = SELECTOR_TLS;
+    current->tls_base = base;
+    current->tls_selector = SELECTOR_TLS;
     tls_desc_set_base(base);
     r->gs = SELECTOR_TLS;
-    current_task->errno = 0;
+    current->errno = 0;
     *(volatile int32_t *)base = 0;
     return 0;
 }
@@ -252,7 +252,7 @@ static uint32_t sys_set_thread_area(struct Registers *r, uint32_t base) {
 uint32_t syscall_handler(struct Registers *r) {
     uint32_t nr = r->eax;
     uint32_t ret = (uint32_t)-1;
-    if (current_task->compat || nr >= COMPAT_SYSCALL_BASE) {
+    if (current->compat || nr >= COMPAT_SYSCALL_BASE) {
         check_pending_signals(r);
         return linux_compat_handler(r);
     }

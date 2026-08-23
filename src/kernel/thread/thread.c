@@ -15,7 +15,6 @@ static uint32_t g_task_count = 0;
 static uint32_t g_pid_alloc = 0;
 struct list g_thread_all_list;
 
-struct task_struct *current_task;
 struct task_struct *idle_thread;
 
 uint32_t g_foreground_pid = (uint32_t)-1;
@@ -30,7 +29,7 @@ static void idle(void *arg) {
 
 static void kernel_thread_entry(thread_func function, void *arg) {
     function(arg);
-    current_task->status = TASK_DIED;
+    current->status = TASK_DIED;
     uint32_t old = asm_save_eflags();
     asm_cli();
     schedule();
@@ -104,7 +103,7 @@ struct task_struct *thread_create(char *name, uint8_t priority,
 void thread_init(void) {
     list_init(&g_ready_list);
     list_init(&g_thread_all_list);
-    current_task = &g_task_table[0];
+    set_current(&g_task_table[0]);
     g_task_table[0].self_kstack = 0;
     g_task_table[0].status = TASK_RUNNING;
     g_task_table[0].pid = g_pid_alloc++;
@@ -178,7 +177,7 @@ void kernel_thread(char *name, uint8_t priority, thread_func function,
 void thread_block(void) {
     uint32_t old = asm_save_eflags();
     asm_cli();
-    current_task->status = TASK_BLOCKED;
+    current->status = TASK_BLOCKED;
     schedule();
     asm_restore_eflags(old);
 }
@@ -186,7 +185,7 @@ void thread_block(void) {
 void thread_block_with_status(enum task_status status) {
     uint32_t old = asm_save_eflags();
     asm_cli();
-    current_task->status = status;
+    current->status = status;
     schedule();
     asm_restore_eflags(old);
 }
@@ -207,9 +206,9 @@ void thread_unblock(struct task_struct *t) {
 void thread_yield(void) {
     uint32_t old = asm_save_eflags();
     asm_cli();
-    current_task->status = TASK_READY;
-    list_append(&g_ready_list, &current_task->general_tag);
-    current_task->ticks = current_task->priority;
+    current->status = TASK_READY;
+    list_append(&g_ready_list, &current->general_tag);
+    current->ticks = current->priority;
     schedule();
     asm_restore_eflags(old);
 }
@@ -217,10 +216,10 @@ void thread_yield(void) {
 void schedule(void) {
     ASSERT((asm_save_eflags() & 0x200) == 0);
 
-    if (current_task->status == TASK_RUNNING) {
-        current_task->status = TASK_READY;
-        list_append(&g_ready_list, &current_task->general_tag);
-        current_task->ticks = current_task->priority;
+    if (current->status == TASK_RUNNING) {
+        current->status = TASK_READY;
+        list_append(&g_ready_list, &current->general_tag);
+        current->ticks = current->priority;
     }
     if (list_empty(&g_ready_list)) {
         thread_unblock(idle_thread);
@@ -228,8 +227,8 @@ void schedule(void) {
     struct list_elem *e = list_pop_front(&g_ready_list);
     struct task_struct *next = list_entry(e, struct task_struct, general_tag);
     next->status = TASK_RUNNING;
-    struct task_struct *prev = current_task;
-    current_task = next;
+    struct task_struct *prev = current;
+    set_current(next);
     process_activate(next);
     switch_to(&prev->self_kstack, &next->self_kstack);
 }
@@ -267,7 +266,7 @@ int thread_fork_with_cb(const char *name, uint8_t priority,
     uint32_t old = asm_save_eflags();
     asm_cli();
 
-    struct task_struct *parent = current_task;
+    struct task_struct *parent = current;
     struct task_struct *child = thread_alloc_slot(name, priority);
     if (child == NULL) {
         asm_restore_eflags(old);
@@ -324,9 +323,9 @@ int thread_traverse_all(thread_all_action action, void *arg) {
 void thread_exit_current(void) {
     uint32_t old = asm_save_eflags();
     asm_cli();
-    current_task->status = TASK_DIED;
-    if (elem_find(&g_ready_list, &current_task->general_tag)) {
-        list_remove(&current_task->general_tag);
+    current->status = TASK_DIED;
+    if (elem_find(&g_ready_list, &current->general_tag)) {
+        list_remove(&current->general_tag);
     }
     schedule();
     asm_restore_eflags(old);
@@ -369,7 +368,7 @@ void thread_kill_pid(uint32_t pid) {
     if (parent && parent->status == TASK_WAITING) {
         thread_unblock(parent);
     }
-    if (t == current_task) {
+    if (t == current) {
         schedule();
     }
     asm_restore_eflags(old);

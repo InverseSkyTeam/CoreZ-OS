@@ -60,7 +60,7 @@ void signal_terminate(struct task_struct *t, int sig) {
 }
 
 static void signal_stop_current(void) {
-    struct task_struct *cur = current_task;
+    struct task_struct *cur = current;
     cur->status = TASK_STOPPED;
     if (elem_find(&g_ready_list, &cur->general_tag)) {
         list_remove(&cur->general_tag);
@@ -109,7 +109,7 @@ static void deliver_signal(struct task_struct *cur, struct Registers *r,
 }
 
 void check_pending_signals(struct Registers *r) {
-    struct task_struct *cur = current_task;
+    struct task_struct *cur = current;
     if (cur == NULL) {
         return;
     }
@@ -175,11 +175,11 @@ int sys_sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
         return -1;
     }
     if (old) {
-        memcpy((void *)old, &current_task->sigactions[sig],
+        memcpy((void *)old, &current->sigactions[sig],
                sizeof(struct sigaction));
     }
     if (act) {
-        memcpy(&current_task->sigactions[sig], (const void *)act,
+        memcpy(&current->sigactions[sig], (const void *)act,
                sizeof(struct sigaction));
     }
     return 0;
@@ -187,21 +187,21 @@ int sys_sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 
 int sys_sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
     if (oldset) {
-        *oldset = current_task->signal_mask;
+        *oldset = current->signal_mask;
     }
     if (set) {
         sigset_t s = *set;
         if (how == SIG_BLOCK) {
-            current_task->signal_mask |= s;
+            current->signal_mask |= s;
         } else if (how == SIG_UNBLOCK) {
-            current_task->signal_mask &= ~s;
+            current->signal_mask &= ~s;
         } else if (how == SIG_SETMASK) {
-            current_task->signal_mask = s;
+            current->signal_mask = s;
         } else {
             return -1;
         }
 
-        current_task->signal_mask &= ~((1u << SIGKILL) | (1u << SIGSTOP));
+        current->signal_mask &= ~((1u << SIGKILL) | (1u << SIGSTOP));
     }
     return 0;
 }
@@ -211,7 +211,7 @@ int sys_kill(int pid, int sig) {
         return -1;
     }
     if (pid == 0) {
-        pid = (int)current_task->pid;
+        pid = (int)current->pid;
     }
     struct task_struct *t = pid2thread(pid);
     if (t == NULL) {
@@ -240,7 +240,7 @@ int sys_kill(int pid, int sig) {
 }
 
 void sys_sigreturn(struct Registers *r) {
-    struct task_struct *cur = current_task;
+    struct task_struct *cur = current;
 
     struct sigframe *sf = (struct sigframe *)(r->user_esp - 4);
 

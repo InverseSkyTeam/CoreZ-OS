@@ -78,6 +78,7 @@ void KMain(void) {
     futex_init();
     mm_init();
     gdt_init();
+    percpu_init();
     tss_init();
     setTextColor(10);
     printf("[OK] TSS loaded, TR=0x%x esp0=0x%x\n", (uint32_t)asm_str(),

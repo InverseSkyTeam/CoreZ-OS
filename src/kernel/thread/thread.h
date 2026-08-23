@@ -6,6 +6,7 @@
 #include "../lib/list/list.h"
 #include "../memory/pool/pool.h"
 #include "../include/signal.h"
+#include "./percpu.h"
 
 #define THREAD_STACK_SIZE 0x2000
 #define MAX_TASKS 64
@@ -68,7 +69,6 @@ struct task_struct {
     uint32_t stack_magic;
 };
 
-extern struct task_struct* current_task;
 extern struct task_struct* idle_thread;
 extern struct list g_thread_all_list;
 extern struct list g_ready_list;

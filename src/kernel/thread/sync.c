@@ -34,7 +34,7 @@ void sema_down(struct semaphore *psema) {
     asm_cli();
     spinlock_acquire(&psema->lock);
     while (psema->value == 0) {
-        list_append(&psema->waiters, &current_task->general_tag);
+        list_append(&psema->waiters, &current->general_tag);
         spinlock_release(&psema->lock);
         thread_block();
         spinlock_acquire(&psema->lock);
@@ -65,18 +65,18 @@ void lock_init(struct lock *plock) {
 }
 
 void lock_acquire(struct lock *plock) {
-    if (plock->holder != current_task || plock->holder == 0) {
+    if (plock->holder != current || plock->holder == 0) {
         uint32_t old_holder = (uint32_t)plock->holder;
         uint32_t sval = plock->semaphore.value;
         void *ret = __builtin_return_address(0);
         sema_down(&plock->semaphore);
-        plock->holder = current_task;
+        plock->holder = current;
         if (plock->holder_repeat_nr != 0) {
             asm_cli();
             kprintf("\n[LOCK ACQ BUG] plock=0x%x old_holder=0x%x cur=0x%x "
                     "rn=%d sval=%d "
                     "caller=0x%x\n",
-                    (uint32_t)plock, old_holder, (uint32_t)current_task,
+                    (uint32_t)plock, old_holder, (uint32_t)current,
                     plock->holder_repeat_nr, sval, (uint32_t)ret);
             for (;;)
                 asm_hlt();
@@ -88,12 +88,12 @@ void lock_acquire(struct lock *plock) {
 }
 
 void lock_release(struct lock *plock) {
-    if (plock->holder != current_task) {
+    if (plock->holder != current) {
         asm_cli();
         kprintf("\n[LOCK REL BUG] plock=0x%x holder=0x%x cur=0x%x rn=%d "
                 "caller=0x%x\n",
                 (uint32_t)plock, (uint32_t)plock->holder,
-                (uint32_t)current_task, plock->holder_repeat_nr,
+                (uint32_t)current, plock->holder_repeat_nr,
                 (uint32_t)__builtin_return_address(0));
         for (;;)
             asm_hlt();

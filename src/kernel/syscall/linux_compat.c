@@ -98,7 +98,7 @@ static int32_t sys_compat_writev(int32_t fd, struct lc_iovec *iov,
 }
 
 uint32_t linux_compat_handler(struct Registers *r) {
-    struct task_struct *cur = current_task;
+    struct task_struct *cur = current;
     uint32_t nr = r->eax;
     uint32_t ret = (uint32_t)-1;
 

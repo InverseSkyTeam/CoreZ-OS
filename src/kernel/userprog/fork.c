@@ -91,7 +91,7 @@ static void build_child_stack(struct task_struct *child,
 }
 
 pid_t sys_fork(struct Registers *r) {
-    struct task_struct *parent = current_task;
+    struct task_struct *parent = current;
     struct task_struct *child =
         thread_alloc_slot(parent->name, parent->priority);
     if (child == NULL) {

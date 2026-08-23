@@ -143,7 +143,7 @@ int32_t sys_execv(const char *path, const char *argv[]) {
     uint32_t slen;
     struct Registers *ps;
 
-    cur = current_task;
+    cur = current;
 
     old_pgdir = cur->pgdir;
     if (cur->pgdir == 0) {

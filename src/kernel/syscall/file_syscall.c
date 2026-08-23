@@ -29,7 +29,7 @@ int32_t sys_fstat(int32_t fd, void *buf) {
     if (buf == NULL || fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
     }
-    uint32_t global_fd = current_task->fd_table[fd];
+    uint32_t global_fd = current->fd_table[fd];
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
         return -1;
     }
@@ -49,7 +49,7 @@ int32_t sys_dup(int32_t oldfd) {
     if (oldfd < 0 || oldfd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
     }
-    uint32_t global_fd = current_task->fd_table[oldfd];
+    uint32_t global_fd = current->fd_table[oldfd];
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
         return -1;
     }
@@ -68,15 +68,15 @@ int32_t sys_dup2(int32_t oldfd, int32_t newfd) {
     if (oldfd == newfd) {
         return newfd;
     }
-    uint32_t global_fd = current_task->fd_table[oldfd];
+    uint32_t global_fd = current->fd_table[oldfd];
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
         return -1;
     }
 
-    if (current_task->fd_table[newfd] != (uint32_t)-1) {
+    if (current->fd_table[newfd] != (uint32_t)-1) {
         close_file(newfd);
     }
-    current_task->fd_table[newfd] = global_fd;
+    current->fd_table[newfd] = global_fd;
     return newfd;
 }
 
@@ -84,7 +84,7 @@ int32_t sys_fcntl(int32_t fd, int32_t cmd, uint32_t arg) {
     if (fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
     }
-    uint32_t global_fd = current_task->fd_table[fd];
+    uint32_t global_fd = current->fd_table[fd];
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
         return -1;
     }
@@ -112,7 +112,7 @@ int32_t sys_getdents(int32_t fd, void *dirp, uint32_t count) {
     if (dirp == NULL || fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
     }
-    uint32_t global_fd = current_task->fd_table[fd];
+    uint32_t global_fd = current->fd_table[fd];
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
         return -1;
     }
@@ -144,7 +144,7 @@ int32_t sys_readlink(const char *path, char *buf, uint32_t bufsiz) {
     (void)path;
     (void)buf;
     (void)bufsiz;
-    current_task->errno = 2;
+    current->errno = 2;
     return -1;
 }
 
@@ -158,7 +158,7 @@ int32_t sys_access(const char *path, int32_t mode) {
     int inode_no = search_file(path, &rec);
     dir_close(rec.parent_dir);
     if (inode_no == -1) {
-        current_task->errno = 2;
+        current->errno = 2;
         return -1;
     }
     return 0;
@@ -167,14 +167,14 @@ int32_t sys_access(const char *path, int32_t mode) {
 int32_t sys_rename(const char *oldpath, const char *newpath) {
     (void)oldpath;
     (void)newpath;
-    current_task->errno = 30;
+    current->errno = 30;
     return -1;
 }
 
 int32_t sys_truncate(const char *path, int32_t length) {
     (void)path;
     (void)length;
-    current_task->errno = 30;
+    current->errno = 30;
     return -1;
 }
 
@@ -188,7 +188,7 @@ int32_t sys_chmod(const char *path, uint32_t mode) {
     int inode_no = search_file(path, &rec);
     dir_close(rec.parent_dir);
     if (inode_no == -1) {
-        current_task->errno = 2;
+        current->errno = 2;
         return -1;
     }
     return 0;

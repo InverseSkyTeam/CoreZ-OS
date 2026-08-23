@@ -78,7 +78,7 @@ static int find_child(struct list_elem *pelem, int32_t ppid) {
 }
 
 pid_t sys_wait(int32_t *status) {
-    struct task_struct *parent = current_task;
+    struct task_struct *parent = current;
     for (;;) {
         struct list_elem *e = g_thread_all_list.head.next;
         while (e != &g_thread_all_list.tail) {
@@ -127,4 +127,4 @@ void proc_exit(struct task_struct *cur, int status) {
     thread_block_with_status(TASK_HANGING);
 }
 
-void sys_exit(int32_t status) { proc_exit(current_task, status); }
+void sys_exit(int32_t status) { proc_exit(current, status); }

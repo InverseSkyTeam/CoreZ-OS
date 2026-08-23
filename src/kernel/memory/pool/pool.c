@@ -6,6 +6,7 @@
 #include "../../lib/str/str.h"
 #include "../../thread/sync.h"
 #include "../../thread/thread.h"
+#include "../../thread/percpu.h"
 
 static struct lock mem_lock;
 
@@ -66,6 +67,7 @@ void mm_init(void) {
     bitmap_init(&kernel_pool.pool_bitmap);
     mark_used(0x280000, 0x400000 - 0x280000);
     mark_used(0x400000, 0x460000 - 0x400000);
+    mark_used(PER_CPU_BASE, PAGE_SIZE);
 
     kernel_vaddr.vaddr_start = KERNEL_VADDR_START;
     kernel_vaddr.vaddr_bitmap.bits = kernel_vaddr_bitmap;
@@ -193,7 +195,7 @@ void *ioremap(uint32_t phy_addr, uint32_t size) {
 }
 
 void *get_a_page(uint32_t vaddr) {
-    struct task_struct *cur = current_task;
+    struct task_struct *cur = current;
     uint32_t bit_idx = (vaddr - cur->userprog_v_addr.vaddr_start) / PAGE_SIZE;
     ASSERT(bit_idx < cur->userprog_v_addr.vaddr_bitmap.btmp_bytes_len * 8);
     lock_acquire(&mem_lock);
@@ -291,7 +293,7 @@ void free_kernel_page(uint32_t vaddr) {
 }
 
 void free_user_page(uint32_t vaddr) {
-    struct task_struct *cur = current_task;
+    struct task_struct *cur = current;
     lock_acquire(&mem_lock);
     uint32_t *pte = pte_ptr(vaddr);
     if (*pte & 1) {

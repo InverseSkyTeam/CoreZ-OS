@@ -10,8 +10,8 @@ struct file file_table[MAX_FILE_OPEN];
 int fd_install(int32_t global_fd_idx) {
     uint32_t local_fd = 3;
     while (local_fd < MAX_FILES_OPEN_PER_PROC) {
-        if (current_task->fd_table[local_fd] == (uint32_t)-1) {
-            current_task->fd_table[local_fd] = (uint32_t)global_fd_idx;
+        if (current->fd_table[local_fd] == (uint32_t)-1) {
+            current->fd_table[local_fd] = (uint32_t)global_fd_idx;
             return local_fd;
         }
         local_fd++;
@@ -23,12 +23,12 @@ int fd_release(uint32_t local_fd) {
     if (local_fd >= MAX_FILES_OPEN_PER_PROC) {
         return -1;
     }
-    current_task->fd_table[local_fd] = (uint32_t)-1;
+    current->fd_table[local_fd] = (uint32_t)-1;
     return 0;
 }
 
 uint32_t fd_local2global(uint32_t local_fd) {
-    return current_task->fd_table[local_fd];
+    return current->fd_table[local_fd];
 }
 
 uint32_t file_read(struct file *file, void *buf, uint32_t count) {

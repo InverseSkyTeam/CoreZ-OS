@@ -17,7 +17,7 @@
 
 void start_process(void *filename_) {
     void *function = filename_;
-    struct task_struct *cur = current_task;
+    struct task_struct *cur = current;
     uint32_t stack_top = cur->kernel_stack_top;
     uint32_t user_stack = (uint32_t)get_a_page(USER_STACK3_VADDR) + PAGE_SIZE;
     struct Registers *ps =

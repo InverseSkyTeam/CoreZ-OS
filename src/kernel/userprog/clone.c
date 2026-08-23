@@ -32,7 +32,7 @@ static void build_clone_stack(struct task_struct *child,
 pid_t sys_clone(struct Registers *r) {
     uint32_t flags = r->ebx;
     uint32_t child_user_stack = r->ecx;
-    struct task_struct *parent = current_task;
+    struct task_struct *parent = current;
     struct task_struct *child =
         thread_alloc_slot(parent->name, parent->priority);
     if (child == NULL) {

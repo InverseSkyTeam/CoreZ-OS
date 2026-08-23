@@ -10,8 +10,10 @@
 #define SELECTOR_U_CODE      0x23
 #define SELECTOR_U_DATA      0x2B
 #define SELECTOR_TLS         0x33
+#define SELECTOR_PER_CPU     0x38
 
 #define GDT_TLS_INDEX 6
+#define GDT_PER_CPU_INDEX 7
 
 struct gdt_desc {
     uint16_t limit_low;

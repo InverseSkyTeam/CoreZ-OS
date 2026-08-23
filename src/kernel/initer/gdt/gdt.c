@@ -2,8 +2,9 @@
 #include "gdt.h"
 
 #include "../../include/asmFunc.h"
+#include "../../thread/percpu.h"
 
-struct gdt_desc gdt[7];
+struct gdt_desc gdt[8];
 
 struct gdtr {
     uint16_t limit;
@@ -34,6 +35,8 @@ void gdt_init(void) {
     desc_init(&gdt[2], 0, 0xFFFFF, 0x9A, 0xCF);
     desc_init(&gdt[4], 0, 0xFFFFF, 0xFA, 0xCF);
     desc_init(&gdt[5], 0, 0xFFFFF, 0xF2, 0xCF);
+
+    desc_init(&gdt[GDT_PER_CPU_INDEX], PER_CPU_BASE, 0xFFF, 0x92, 0x40);
     tls_desc_set_base(0);
 
     gdtr0.limit = (uint16_t)(sizeof(gdt) - 1);

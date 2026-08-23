@@ -220,7 +220,7 @@ int close_file(int fd) {
     if (fd < 3 || fd >= MAX_FILES_OPEN_PER_PROC) {
         return -1;
     }
-    uint32_t global_fd_idx = current_task->fd_table[fd];
+    uint32_t global_fd_idx = current->fd_table[fd];
     if (global_fd_idx == (uint32_t)-1) {
         return -1;
     }
@@ -245,7 +245,7 @@ uint32_t read_file(int fd, void *buf, uint32_t count) {
     if (fd < 0 || fd >= MAX_FILES_OPEN_PER_PROC) {
         return (uint32_t)-1;
     }
-    uint32_t global_fd_idx = current_task->fd_table[fd];
+    uint32_t global_fd_idx = current->fd_table[fd];
     if (global_fd_idx == (uint32_t)-1) {
         return (uint32_t)-1;
     }
@@ -256,7 +256,7 @@ uint32_t write_file(int fd, const void *buf, uint32_t count) {
     if (fd < 0 || fd >= MAX_FILES_OPEN_PER_PROC) {
         return (uint32_t)-1;
     }
-    uint32_t global_fd_idx = current_task->fd_table[fd];
+    uint32_t global_fd_idx = current->fd_table[fd];
     if (global_fd_idx == (uint32_t)-1) {
         return (uint32_t)-1;
     }
@@ -267,7 +267,7 @@ int32_t sys_lseek(int32_t fd, int32_t offset, uint8_t whence) {
     if (fd < 3 || fd >= MAX_FILES_OPEN_PER_PROC) {
         return -1;
     }
-    uint32_t global_fd_idx = current_task->fd_table[fd];
+    uint32_t global_fd_idx = current->fd_table[fd];
     if (global_fd_idx == (uint32_t)-1) {
         return -1;
     }
@@ -460,7 +460,7 @@ static int get_child_dir_name(uint32_t p_inode_nr, uint32_t c_inode_nr,
 }
 
 char *sys_getcwd(char *buf, uint32_t size) {
-    uint32_t child = current_task->cwd_inode_nr;
+    uint32_t child = current->cwd_inode_nr;
     if (child == 0 || child == 2) {
         buf[0] = '/';
         buf[1] = 0;
@@ -490,7 +490,7 @@ int32_t sys_chdir(const char *path) {
     if (ext2_lookup(path, &ino, &is_dir) || !is_dir) {
         return -1;
     }
-    current_task->cwd_inode_nr = ino;
+    current->cwd_inode_nr = ino;
     return 0;
 }
 

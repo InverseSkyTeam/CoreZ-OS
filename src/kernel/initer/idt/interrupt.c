@@ -5,7 +5,10 @@
 #include "../../device/mouse.h"
 #include "../../include/asm/stub.h"
 #include "../../include/asmFunc.h"
+#include "../../lib/str/str.h"
+#include "../../memory/pool/pool.h"
 #include "../../thread/thread.h"
+#include "../../userprog/process.h"
 #include "../apic/apic.h"
 #include "../io/io.h"
 #include "../pit/pit.h"
@@ -47,8 +50,51 @@ static const char *g_exc_names[32] = {"Divide Error",
 
 #define INT_NO_UNREGISTERED 0xFFFFu
 
+static int handle_cow_fault(uint32_t fault_addr, uint32_t error_code) {
+    if (fault_addr < USER_VADDR_START || fault_addr >= 0xc0000000) {
+        return 0;
+    }
+    if (!(error_code & 0x2)) {  
+        return 0;
+    }
+    if (current_task == 0 || current_task->pgdir == 0) {
+        return 0;
+    }
+
+    uint32_t *pte = pte_ptr(fault_addr);
+    if (!(*pte & 1) || !(*pte & COW_FLAG)) {
+        return 0;
+    }
+    uint32_t phy = *pte & 0xfffff000;
+    if (!page_is_shared(phy)) {
+        *pte = (*pte & ~(uint32_t)COW_FLAG) | 2;
+        __asm__ volatile("invlpg (%0)" : : "r"(fault_addr) : "memory");
+        return 1;
+    }
+
+    uint32_t new_phy = (uint32_t)palloc(&kernel_pool);
+    if (new_phy == 0) {
+        return 0;  
+    }
+    memcpy((void *)new_phy, (void *)phy, PAGE_SIZE);
+
+    *pte = (new_phy & 0xfffff000) | 7;
+    __asm__ volatile("invlpg (%0)" : : "r"(fault_addr) : "memory");
+
+    page_free_or_decref(phy);
+    return 1;
+}
+
 void isr_handler(struct Registers *r) {
     uint32_t n = r->int_no;
+
+    if (n == 14) {
+        uint32_t cr2;
+        __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
+        if (handle_cow_fault(cr2, r->err_code)) {
+            return; 
+        }
+    }
 
     if ((r->cs & 3) == 3) {
         int sig = exception_to_signal((int)n);

@@ -13,41 +13,66 @@
 
 extern void intr_exit(void);
 
+static void mark_child_bitmap(struct task_struct *child, uint32_t vaddr) {
+    uint32_t bit = (vaddr - USER_VADDR_START) / PAGE_SIZE;
+    if (vaddr >= USER_VADDR_START &&
+        bit < child->userprog_v_addr.vaddr_bitmap.btmp_bytes_len * 8) {
+        bitmap_set(&child->userprog_v_addr.vaddr_bitmap, bit, 1);
+    }
+}
+
 static void copy_user_space(struct task_struct *parent,
                             struct task_struct *child) {
     uint32_t *pgdir = (uint32_t *)parent->pgdir;
+    uint32_t *child_pgdir = (uint32_t *)child->pgdir;
+
     for (uint32_t pde_idx = 0; pde_idx < 768; pde_idx++) {
         uint32_t pde = pgdir[pde_idx];
         if (!(pde & 1) || (pde & 0x80)) {
             continue;
         }
+
+        uint32_t child_tbl = (uint32_t)palloc(&kernel_pool);
+        if (child_tbl == 0) {
+            return;
+        }
+        memset((void *)child_tbl, 0, PAGE_SIZE);
+
         uint32_t *first_pte = pte_ptr(pde_idx * 0x400000);
         for (uint32_t pte_idx = 0; pte_idx < 1024; pte_idx++) {
-            if (!(first_pte[pte_idx] & 1)) {
+            uint32_t pte = first_pte[pte_idx];
+            if (!(pte & 1)) {
                 continue;
             }
+            uint32_t phy = pte & 0xfffff000;
             uint32_t vaddr = pde_idx * 0x400000 + pte_idx * 0x1000;
-            uint32_t parent_phy = first_pte[pte_idx] & 0xfffff000;
-            if (parent_phy == vaddr) {
+            if (vaddr == phy) { 
                 continue;
             }
-            uint32_t child_phy = (uint32_t)palloc(&kernel_pool);
-            if (child_phy == 0) {
-                return;
-            }
-            memcpy((void *)child_phy, (void *)parent_phy, PAGE_SIZE);
-            asm_write_cr3(child->pgdir);
-            page_table_add(vaddr, child_phy);
-            asm_write_cr3(parent->pgdir);
-            if (vaddr >= USER_VADDR_START) {
-                uint32_t bit = (vaddr - USER_VADDR_START) / PAGE_SIZE;
-                if (bit <
-                    child->userprog_v_addr.vaddr_bitmap.btmp_bytes_len * 8) {
-                    bitmap_set(&child->userprog_v_addr.vaddr_bitmap, bit, 1);
-                }
+            if (pte & COW_FLAG) {
+                page_incr_shared(phy);
+                mark_child_bitmap(child, vaddr);
+                ((uint32_t *)child_tbl)[pte_idx] = pte;  
+            } else if (pte & 2) { 
+                first_pte[pte_idx] = (pte & ~(uint32_t)2) | COW_FLAG; 
+
+                __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
+                mark_child_bitmap(child, vaddr);
+                page_incr_shared(phy);
+                ((uint32_t *)child_tbl)[pte_idx] =
+                    (pte & ~(uint32_t)2) | COW_FLAG;  
+            } else {
+                page_incr_shared(phy);
+                mark_child_bitmap(child, vaddr);
+                ((uint32_t *)child_tbl)[pte_idx] = pte;
             }
         }
+        child_pgdir[pde_idx] = child_tbl | (pde & 0xfff);
     }
+
+    memcpy(child_pgdir + 768, (void *)((uint32_t)pgdir + 768 * 4),
+           255 * sizeof(uint32_t));
+    child_pgdir[1023] = (uint32_t)child->pgdir | 7;
 }
 
 static void build_child_stack(struct task_struct *child,

@@ -17,6 +17,10 @@ static uint8_t kernel_vaddr_bitmap[0x1000000 / PAGE_SIZE / 8];
 struct pool kernel_pool;
 struct virtual_addr kernel_vaddr;
 
+#define FRAME_IDX(phy) (((phy) - MEMORY_BASE) / PAGE_SIZE)
+#define FRAME_IDX_MAX ((MAX_PHYS_MEM - MEMORY_BASE) / PAGE_SIZE)
+static uint8_t frame_owner[FRAME_IDX_MAX];
+
 #define KERNEL_VADDR_START 0xC1000000
 
 static uint32_t e820_mem_upper(void) {
@@ -294,12 +298,65 @@ void free_user_page(uint32_t vaddr) {
         uint32_t phy = *pte & 0xfffff000;
         *pte = 0;
         __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
-        pfree_raw(&kernel_pool, phy);
         uint32_t bit_idx =
             (vaddr - cur->userprog_v_addr.vaddr_start) / PAGE_SIZE;
         if (bit_idx < cur->userprog_v_addr.vaddr_bitmap.btmp_bytes_len * 8) {
             bitmap_set(&cur->userprog_v_addr.vaddr_bitmap, bit_idx, 0);
         }
+        lock_release(&mem_lock);
+
+        page_free_or_decref(phy);
+        return;
     }
     lock_release(&mem_lock);
+}
+
+void page_incr_shared(uint32_t phy_addr) {
+    if (phy_addr < MEMORY_BASE || phy_addr >= MAX_PHYS_MEM) {
+        return;
+    }
+    uint32_t idx = FRAME_IDX(phy_addr);
+    lock_acquire(&mem_lock);
+
+    if (frame_owner[idx] == 0) {
+        frame_owner[idx] = 2;
+    } else if (frame_owner[idx] < 0xFF) {
+        frame_owner[idx]++;
+    }
+    lock_release(&mem_lock);
+}
+
+void page_free_or_decref(uint32_t phy_addr) {
+    if (phy_addr < MEMORY_BASE || phy_addr >= MAX_PHYS_MEM) {
+        return;
+    }
+    uint32_t idx = FRAME_IDX(phy_addr);
+    lock_acquire(&mem_lock);
+    if (frame_owner[idx] >= 1) {
+        if (frame_owner[idx] > 1) {
+            frame_owner[idx]--;
+            lock_release(&mem_lock);
+            return;
+        }
+
+        frame_owner[idx] = 0;
+        lock_release(&mem_lock);
+
+        pfree(&kernel_pool, phy_addr);
+        return;
+    }
+
+    lock_release(&mem_lock);
+    pfree(&kernel_pool, phy_addr);
+}
+
+int page_is_shared(uint32_t phy_addr) {
+    if (phy_addr < MEMORY_BASE || phy_addr >= MAX_PHYS_MEM) {
+        return 0;
+    }
+    uint32_t idx = FRAME_IDX(phy_addr);
+    lock_acquire(&mem_lock);
+    int shared = (frame_owner[idx] >= 1) ? 1 : 0;
+    lock_release(&mem_lock);
+    return shared;
 }

@@ -40,11 +40,11 @@ static void release_prog_resource(struct task_struct *release_thread) {
                     remaining++;
                     continue;
                 }
-                pfree(&kernel_pool, first_pte[pte_idx] & 0xfffff000);
+                page_free_or_decref(first_pte[pte_idx] & 0xfffff000);
                 first_pte[pte_idx] = 0;
             }
             if (remaining == 0) {
-                pfree(&kernel_pool, pde & 0xfffff000);
+                page_free_or_decref(pde & 0xfffff000);
                 pgdir_vaddr[pde_idx] = 0;
             }
         }

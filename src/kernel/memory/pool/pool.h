@@ -28,6 +28,12 @@ void* palloc(struct pool* pool);
 void pfree(struct pool* pool, uint32_t phy_addr);
 uint32_t palloc_pages(struct pool* pool, uint32_t cnt);
 
+#define COW_FLAG (1u << 9)
+
+void page_incr_shared(uint32_t phy_addr);
+void page_free_or_decref(uint32_t phy_addr);
+int  page_is_shared(uint32_t phy_addr);
+
 uint32_t* pte_ptr(uint32_t vaddr);
 uint32_t* pde_ptr(uint32_t vaddr);
 void page_table_add(uint32_t vaddr, uint32_t phy_addr);

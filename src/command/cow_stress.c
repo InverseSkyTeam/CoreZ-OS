@@ -69,7 +69,8 @@ int main(void) {
             if (cow_pages[p][i] != 0xA5) {
                 bad++;
                 if (bad <= 4) {
-                    printf("cow_stress: PARENT PAGE %d byte %d corrupted\n", p, i);
+                    printf("cow_stress: PARENT PAGE %d byte %d corrupted\n", p,
+                           i);
                     printf("             (child write leaked past COW)\n");
                 }
             }

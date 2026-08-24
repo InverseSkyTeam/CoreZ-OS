@@ -23,6 +23,7 @@ struct virtual_addr {
 extern struct pool kernel_pool;
 extern struct virtual_addr kernel_vaddr;
 
+void pae_init(void);
 void mm_init(void);
 void* palloc(struct pool* pool);
 void pfree(struct pool* pool, uint32_t phy_addr);

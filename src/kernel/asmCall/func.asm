@@ -5,9 +5,6 @@ global asm_hlt
 asm_hlt: hlt
         ret
 
-
-
-
 global asm_xchg
 asm_xchg:
         mov     eax, [esp+4]    
@@ -15,7 +12,6 @@ asm_xchg:
         xchg    [eax], ecx      
         mov     eax, ecx
         ret
-
 
 global asm_pause
 asm_pause:
@@ -46,6 +42,31 @@ asm_write_cr0:
         mov     cr0, eax
         jmp     .flush
 .flush:
+        ret
+
+global asm_read_cr4
+asm_read_cr4:
+        mov     eax, cr4
+        ret
+
+global asm_write_cr4
+asm_write_cr4:
+        mov     eax, [esp+4]
+        mov     cr4, eax
+        ret
+
+global asm_rdmsr
+asm_rdmsr:
+        mov     ecx, [esp+4]
+        rdmsr
+        ret
+
+global asm_wrmsr
+asm_wrmsr:
+        mov     ecx, [esp+4]
+        mov     eax, [esp+8]
+        mov     edx, [esp+12]
+        wrmsr
         ret
 
 global asm_write_cr3
@@ -82,4 +103,40 @@ asm_ltr:
 global asm_str
 asm_str:
         str     eax
+        ret
+
+global detect_64bit
+detect_64bit:
+        pushfd
+
+        pop     eax
+        mov     ecx, eax
+        btc     eax, 21
+        push    eax
+        popfd
+        pushfd
+        pop     eax
+        cmp     eax, ecx
+        je      .no_cpuid
+
+        mov     eax, 0x80000000
+        cpuid 
+        cmp     eax, 0x80000001
+        jb      .no_long_mode
+
+        mov     eax, 0x80000001
+        cpuid 
+        bt      edx, 29
+        jc      .long_mode_supported
+
+.no_long_mode:
+        mov     eax, 0
+        ret 
+
+.long_mode_supported:
+        mov     eax, 1
+        ret
+
+.no_cpuid:
+        mov     eax, 0
         ret

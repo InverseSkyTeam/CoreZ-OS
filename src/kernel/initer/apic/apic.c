@@ -63,7 +63,7 @@ void lapic_eoi(void) { lapic_write(LAPIC_EOI, 0); }
 #define LAPIC_ID 0x020
 #define LAPIC_ICR 0x300
 #define LAPIC_ICR_HIGH 0x310
-#define ICR_IRR_MASK 0x00001000 
+#define ICR_IRR_MASK 0x00001000
 
 uint32_t lapic_get_id(void) { return lapic_read(LAPIC_ID) >> 24; }
 

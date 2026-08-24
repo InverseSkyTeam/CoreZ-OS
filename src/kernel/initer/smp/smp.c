@@ -12,10 +12,10 @@
 #include "../gdt/gdt.h"
 
 struct ap_boot_info {
-    uint32_t gdtr;      
-    uint32_t stack_top; 
-    uint32_t ap_main;   
-    uint32_t index;     
+    uint32_t gdtr;
+    uint32_t stack_top;
+    uint32_t ap_main;
+    uint32_t index;
 };
 
 static struct gdt_desc ap_gdt[NR_CPU][8];
@@ -111,21 +111,21 @@ void smp_init(void) {
     kprintf("[SMP] BSP LAPIC id=0x%x\n", (unsigned)bsp_id);
 
     uint8_t *src = _binary_ap_trampoline_bin_start;
-    uint32_t size =
-        (uint32_t)(_binary_ap_trampoline_bin_end - _binary_ap_trampoline_bin_start);
+    uint32_t size = (uint32_t)(_binary_ap_trampoline_bin_end -
+                               _binary_ap_trampoline_bin_start);
     if (size == 0 || size > 0x700) {
-        kprintf("[SMP] no valid trampoline(%u), APs disabled\n", (unsigned)size);
+        kprintf("[SMP] no valid trampoline(%u), APs disabled\n",
+                (unsigned)size);
         return;
     }
     memcpy((void *)AP_TRAMPOLINE_ADDR, src, size);
 
-    uint32_t online = 1; 
+    uint32_t online = 1;
     for (uint32_t i = 1; i < NR_CPU; i++) {
         wakeup_ap(i);
         if (ap_ready[i]) {
             online++;
-            kprintf("[SMP] cpu%d online (apic id=0x%x)\n", (int)i,
-                    (unsigned)i);
+            kprintf("[SMP] cpu%d online (apic id=0x%x)\n", (int)i, (unsigned)i);
         } else {
             kprintf("[SMP] cpu%d no response, skip\n", (int)i);
         }

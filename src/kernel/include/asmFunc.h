@@ -17,9 +17,16 @@ extern uint32_t asm_read_cr0(void);
 extern void asm_write_cr0(uint32_t cr0);
 extern void asm_write_cr3(uint32_t cr3);
 
+extern uint32_t asm_read_cr4(void);
+extern void asm_write_cr4(uint32_t cr4);
+extern uint64_t asm_rdmsr(uint32_t msr);
+extern void asm_wrmsr(uint32_t msr, uint64_t value);
+
 extern uint32_t asm_save_eflags(void);
 extern void asm_restore_eflags(uint32_t eflags);
 
 extern void asm_lgdt(uint32_t gdtr_ptr);
 extern void asm_ltr(uint16_t sel);
 extern uint16_t asm_str(void);
+
+extern int detect_64bit(void);

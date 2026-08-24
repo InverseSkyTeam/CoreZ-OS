@@ -72,7 +72,7 @@ int search_file(const char *pathname,
 }
 static int ext2_create_common(const char *pathname, uint32_t mode, int is_dir);
 int create_file(const char *pathname) {
-    return ext2_create_common(pathname, 0x8000u , 0);
+    return ext2_create_common(pathname, 0x8000u, 0);
 }
 static int split_parent_path(const char *pathname, char *parent,
                              char **base_out, uint32_t buf_len) {
@@ -314,7 +314,7 @@ int32_t sys_mkdir(const char *pathname) {
     if (pathname == NULL) {
         return -1;
     }
-    return ext2_create_common(pathname, 0x4000u , 1) ? 0 : -1;
+    return ext2_create_common(pathname, 0x4000u, 1) ? 0 : -1;
 }
 static int ext2_dir_is_empty(struct inode *dino) {
     uint32_t pos = 0;

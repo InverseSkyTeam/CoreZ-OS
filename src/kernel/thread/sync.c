@@ -81,9 +81,8 @@ void lock_release(struct lock *plock) {
         asm_cli();
         kprintf("\n[LOCK REL BUG] plock=0x%x holder=0x%x cur=0x%x rn=%d "
                 "caller=0x%x\n",
-                (uint32_t)plock, (uint32_t)plock->holder,
-                (uint32_t)current, plock->holder_repeat_nr,
-                (uint32_t)__builtin_return_address(0));
+                (uint32_t)plock, (uint32_t)plock->holder, (uint32_t)current,
+                plock->holder_repeat_nr, (uint32_t)__builtin_return_address(0));
         for (;;)
             asm_hlt();
     }

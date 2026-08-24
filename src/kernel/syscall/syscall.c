@@ -347,10 +347,10 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)sys_brk((uint32_t)r->ebx);
         break;
     case SYS_SIGACTION:
-        if ((r->ecx && !access_ok((const void *)r->ecx,
-                                  sizeof(struct sigaction), 0)) ||
-            (r->edx && !access_ok((const void *)r->edx,
-                                  sizeof(struct sigaction), 1)))
+        if ((r->ecx &&
+             !access_ok((const void *)r->ecx, sizeof(struct sigaction), 0)) ||
+            (r->edx &&
+             !access_ok((const void *)r->edx, sizeof(struct sigaction), 1)))
             break;
         ret = (uint32_t)sys_sigaction((int)r->ebx,
                                       (const struct sigaction *)r->ecx,

@@ -1,11 +1,4 @@
-; MBR 引导扇区 (LBA 0)
-; 扫描分区表找到活动 FAT 启动分区(P1), 用 int13h 扩展读其引导扇区(VBR)
-; 到 0x0600 后跳转(避开 MBR 自身所在的 0x7C00, 防止覆盖正执行的代码)。
-; 随后 VBR 负责从 FAT 里按文件名读取 LOADER.BIN。
-; 布局(与 make_ext2.py 保持一致):
-;   LBA 0    : MBR (本扇区, 含分区表)
-;   LBA 2048 : P1 FAT16 启动分区 (LOADER.BIN / KERNEL.BIN)
-;   LBA 18432: P2 ext2 根分区
+; MBR 引导扇区
         org     0x7C00
         cli
         xor     ax, ax

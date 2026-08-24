@@ -862,12 +862,14 @@ def do_clean(console: Console) -> None:
         console.info(f"{BUILD_DIR} already absent")
 def do_run(console: Console, stats: BuildStats,
            smp: int, gdb: bool, no_net: bool, boot_floppy: bool) -> None:
-    qemu = shutil.which("qemu-system-i386")
+    qemu = shutil.which("qemu-system-x86_64")
     if qemu is None:
         console.warn("qemu-system-i386 not found on PATH; build is up-to-date.")
         return
     cmd = [qemu, "-accel", "tcg,tb-size=256", "-m", "1G",
-           "-smp", str(max(1, smp))]
+           "-smp", str(max(1, smp)), 
+           "-d", "int", "-D", "qemu.log",
+           "-s", "-S"]
     if boot_floppy:
         cmd += ["-fda", str(BUILD_DIR / "floppy.img")]
     else:

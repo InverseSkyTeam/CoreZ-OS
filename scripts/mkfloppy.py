@@ -139,10 +139,10 @@ def create_floppy(boot_path, loader_path, kernel_path, output_path, extra_files=
     root_off = ROOT_DIR_START * SECTOR_SIZE
     img[root_off:root_off + len(root)] = root
 
-    loader_mem = 0x8000 + LOADER_OFFSET + ((loader_size + 511) & ~511)
-    loader = bytearray(loader)
-    struct.pack_into("<I", loader, 0, loader_mem)
-
+    # NOTE: 不要 patch loader.bin 的前 4 字节。
+    # 之前这里把 loader 的 kernel_addr 改成 0x8000+OFFSET+size,
+    # 会让 loader 的 memcpy 从错误地址拷贝, 内核被垃圾数据覆盖 -> 三重故障。
+    # loader.asm 里 kernel_addr 已经是 0x00010000, 直接用就好。
     loader_off = DATA_START * SECTOR_SIZE + (loader_start - 2) * SECTOR_SIZE
     img[loader_off:loader_off + len(loader)] = loader
 
@@ -167,7 +167,7 @@ def create_floppy(boot_path, loader_path, kernel_path, output_path, extra_files=
     print(f"  HELLO.TXT:     cluster {test_start}, {test_size} bytes")
     for (start_cluster, clusters), (name, ext, data) in zip(extra_starts, files):
         print(f"  {name}.{ext.upper()}:   cluster {start_cluster}, {len(data)} bytes ({clusters} clusters)")
-    print(f"  Kernel mem:    0x{loader_mem:08X}")
+    print(f"  Kernel load addr: 0x00010000 (loader 内核加载点)")
 
     with open(output_path, "wb") as f:
         f.write(img)

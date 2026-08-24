@@ -64,48 +64,48 @@ static void init(void) {
     }
 }
 void KMain(void) {
-    const struct BootInfo *bootInfo = (const struct BootInfo *)0x0FF0;
-    initPalette();
-    initIO((uint8_t *)bootInfo->vram, bootInfo->scrnx, bootInfo->scrny,
-           bootInfo->vram_bytes);
-    initIDT();
-    syscall_init();
-    futex_init();
-    mm_init();
-    gdt_init();
-    percpu_init();
-    tss_init();
-    setTextColor(10);
-    printf("[OK] TSS loaded, TR=0x%x esp0=0x%x\n", (uint32_t)asm_str(),
-           tss.esp0);
-    setCursor(0, 0);
-    setTextColor(14);
-    printf("NiTianOS Kernel Inited.\n");
-    setTextColor(10);
-    printf("[OK] Higher Half Kernel @ 0xC0000000+\n");
-    if (apic_init() == 0) {
-        printf("[OK] APIC (LAPIC timer + I/O APIC) inited\n");
-    } else {
-        setTextColor(12);
-        printf("[FAIL] APIC init error\n");
-    }
-    keyboard_init();
-    mouse_init();
-    thread_init();
-    setTextColor(10);
-    printf("[OK] thread mgr ready\n");
-    kernel_thread("k_a", 4, k_thread_a, 0);
-    kernel_thread("k_b", 4, k_thread_b, 0);
-    asm_sti();
-    ide_init();
-    filesys_init();
-    setTextColor(10);
-    printf("[OK] user programs on ext2\n");
-    smp_init();
-    net_init();
-    process_execute(init, "init");
+    // const struct BootInfo *bootInfo = (const struct BootInfo *)0x0FF0;
+    // initPalette();
+    // initIO((uint8_t *)bootInfo->vram, bootInfo->scrnx, bootInfo->scrny,
+    //        bootInfo->vram_bytes);
+    // initIDT();
+    // syscall_init();
+    // futex_init();
+    // mm_init();
+    // gdt_init();
+    // percpu_init();
+    // tss_init();
+    // setTextColor(10);
+    // printf("[OK] TSS loaded, TR=0x%x esp0=0x%x\n", (uint32_t)asm_str(),
+    //        tss.esp0);
+    // setCursor(0, 0);
+    // setTextColor(14);
+    // printf("NiTianOS Kernel Inited.\n");
+    // setTextColor(10);
+    // printf("[OK] Higher Half Kernel @ 0xC0000000+\n");
+    // if (apic_init() == 0) {
+    //     printf("[OK] APIC (LAPIC timer + I/O APIC) inited\n");
+    // } else {
+    //     setTextColor(12);
+    //     printf("[FAIL] APIC init error\n");
+    // }
+    // keyboard_init();
+    // mouse_init();
+    // thread_init();
+    // setTextColor(10);
+    // printf("[OK] thread mgr ready\n");
+    // kernel_thread("k_a", 4, k_thread_a, 0);
+    // kernel_thread("k_b", 4, k_thread_b, 0);
+    // asm_sti();
+    // ide_init();
+    // filesys_init();
+    // setTextColor(10);
+    // printf("[OK] user programs on ext2\n");
+    // smp_init();
+    // net_init();
+    // process_execute(init, "init");
     for (;;) {
-        thread_yield();
+        // thread_yield();
         asm_hlt();
     }
 }

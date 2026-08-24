@@ -252,19 +252,17 @@ vbe_done:
         and     eax, 0x7FFFFFFF
         or      eax, 0x00000001
         mov     cr0, eax
-        jmp     pipelineflush
+        jmp     DWORD 2*8:pipelineflush
 
 pipelineflush:
+        bits    32
+
         mov     ax, 1*8
         mov     ds, ax
         mov     es, ax
         mov     fs, ax
         mov     gs, ax
         mov     ss, ax
-
-        mov     eax, cr4
-        or      eax, 0x600
-        mov     cr4, eax
 
         mov     esi, [kernel_addr]
         mov     edi, KERNEL
@@ -273,14 +271,64 @@ pipelineflush:
 
         mov     esp, STACK_PHYS
 
-        jmp     DWORD 2*8:KERNEL
+        mov     edi, 0x90000
+        mov     ecx, 0x7000 / 4
+        xor     eax, eax
+        rep     stosd
 
+        mov     dword [0x90000],     0x91007
+        mov     dword [0x91000],     0x92007
+        mov     dword [0x91000 + 3*8], 0x87
+        mov     dword [0x92000 + 0*8], 0x000083
+        mov     dword [0x92000 + 1*8], 0x200083
+        mov     dword [0x92000 + 2*8], 0x400083
+        mov     dword [0x92000 + 3*8], 0x600083
+        mov     dword [0x92000 + 4*8], 0x800083
+        mov     dword [0x92000 + 5*8], 0xA00083
+
+        lgdt    [GDTR64]
+
+        mov     eax, cr4
+        or      eax, 0x20
+        mov     cr4, eax
+
+        mov     eax, 0x90000
+        mov     cr3, eax
+
+        mov     ecx, 0xC0000080
+        rdmsr
+        or      eax, 0x100
+        wrmsr
+
+        mov     eax, cr0
+        or      eax, 0x80000000
+        mov     cr0, eax
+
+        jmp     0x08:lg64
+
+        bits    64
+lg64:
+        mov     ax, 0x10
+        mov     ds, ax
+        mov     es, ax
+        mov     fs, ax
+        mov     gs, ax
+        mov     ss, ax
+
+        mov     ax, 0x18
+        push    rax
+        mov     rax, KERNEL
+        push    rax
+        retfq
+
+        bits    16
 waitkbdout:
         in      al, 0x64
         and     al, 0x02
         jnz     waitkbdout
         ret
 
+bits    32
 memcpy:
         mov     eax, [esi]
         add     esi, 4
@@ -304,7 +352,7 @@ dap:
 
 l_drive: db     0
 l_loadcur: dd   0
-l_rowcl:  dw    0     ; 根目录当前簇号 (FAT32)
+l_rowcl:  dw    0   
 l_cluster: dw   0
 l_fbyte:  dw    0
 l_buf:    dw    0
@@ -313,6 +361,7 @@ l_off:    dw    0
 l_seg:    dw    0
 l_kname:  db    "KERNEL  BIN"
 
+bits    16
 l_readsec:
         push    si
         mov     word [dap+0x02], 1
@@ -356,5 +405,17 @@ GDT0:
 GDTR0:
         dw      8*3-1
         dd      GDT0
+
+        align   8
+GDT64:
+    dq 0x0000000000000000       
+    dq 0x00209A0000000000      
+    dq 0x00CF92000000FFFF     
+    dq 0x00CF9A000000FFFF       
+GDT64_LEN equ $ - GDT64
+
+GDTR64:
+    dw GDT64_LEN - 1
+    dd GDT64
 
         alignb  16

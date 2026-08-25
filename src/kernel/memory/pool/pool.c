@@ -23,6 +23,7 @@ struct virtual_addr kernel_vaddr;
 #define FRAME_IDX_MAX ((MAX_PHYS_MEM - MEMORY_BASE) / PAGE_SIZE)
 static uint8_t frame_owner[FRAME_IDX_MAX];
 static uint64_t kernel_pml4;
+uint32_t kernel_kphys;
 
 #define KERNEL_VADDR_START 0x40400000
 
@@ -85,7 +86,7 @@ void mm_init(void) {
     kernel_pool.pool_bitmap.bits = kernel_pool_bitmap;
     kernel_pool.pool_bitmap.btmp_bytes_len = sizeof(kernel_pool_bitmap);
     bitmap_init(&kernel_pool.pool_bitmap);
-    mark_used(0x280000, 0x400000 - 0x280000);
+    mark_used(kernel_kphys, 0x200000);
     mark_used(0x400000, 0x460000 - 0x400000);
     mark_used(PER_CPU_BASE, NR_CPU * PAGE_SIZE);
     kernel_vaddr.vaddr_start = KERNEL_VADDR_START;

@@ -86,8 +86,9 @@ static void init(void) {
         }
     }
 }
-void kmain(uint32_t magic, void *mbi_ptr) {
+void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
     asm_write_cr4(asm_read_cr4() | 0x600);
+    kernel_kphys = kphys;
 
     struct mb2_tag_framebuffer fb = {0};
     mb2_parse(magic, mbi_ptr, &fb);

@@ -1,5 +1,7 @@
 KERNEL  equ     0x00280000
 KERNEL_VIRT equ 0xC0000000 + KERNEL
+KASLR_MIN  equ    0x00800000
+KASLR_SLOTS equ   124
 DSKCAC  equ     0x00100000
 DSKCAC0 equ     0x00008000
 VBEMODE equ     0x105
@@ -266,21 +268,24 @@ pipelineflush:
         mov     gs, ax
         mov     ss, ax
 
+        call    pick_kphys
+        mov     eax, [l_kphys]
+        add     eax, KERNEL - 0x200000
+        mov     edi, eax
         mov     esi, [kernel_addr]
-        mov     edi, KERNEL
         mov     ecx, 512*1024/4
         call    memcpy
 
         mov     esp, STACK_PHYS
 
         mov     edi, 0x90000
-        mov     ecx, 0x7000 / 4
+        mov     ecx, 0x9000 / 4
         xor     eax, eax
         rep     stosd
 
         mov     dword [0x90000],     0x91007
         mov     dword [0x91000],     0x92007
-        mov     dword [0x91000 + 3*8], 0x87
+        call    setup_hpd
         mov     dword [0x92000 + 0*8], 0x000083
         mov     dword [0x92000 + 1*8], 0x200083
         mov     dword [0x92000 + 2*8], 0x400083
@@ -363,6 +368,7 @@ lg64:
         mov     eax, 0x36D76289
         mov     ebx, MBI
         mov     rcx, KERNEL_VIRT
+        mov     edx, [l_kphys]
         jmp     rcx
 
         bits    16
@@ -382,6 +388,51 @@ memcpy:
         jnz     memcpy
         ret
 
+pick_kphys:
+        rdtsc
+        mov     ebx, eax
+        rdtsc
+        xor     ebx, eax
+        mov     eax, [0x6000]
+        xor     ebx, eax
+        mov     al, 0
+        out     0x70, al
+        in      al, 0x71
+        movzx   eax, al
+        xor     ebx, eax
+        imul    ebx, ebx, 1103515245
+        add     ebx, 12345
+        mov     eax, ebx
+        xor     edx, edx
+        mov     ecx, KASLR_SLOTS
+        div     ecx
+        mov     eax, edx
+        shl     eax, 21
+        add     eax, KASLR_MIN
+        mov     [l_kphys], eax
+        ret
+
+setup_hpd:
+        mov     edi, 0x98000
+        mov     ecx, 512
+        xor     eax, eax
+.h:
+        mov     edx, eax
+        shl     edx, 21
+        or      edx, 0x83
+        mov     [edi], edx
+        mov     dword [edi+4], 0
+        add     edi, 8
+        inc     eax
+        dec     ecx
+        jnz     .h
+        mov     eax, [l_kphys]
+        or      eax, 0x83
+        mov     dword [0x98000 + 1*8], eax
+        mov     dword [0x98000 + 1*8 + 4], 0
+        mov     dword [0x91000 + 3*8], 0x98007
+        ret
+
         alignb  16
 
         align   8
@@ -395,6 +446,7 @@ dap:
         dd      0
 
 l_drive: db     0
+l_kphys: dd     0
 l_loadcur: dd   0
 l_rowcl:  dw    0   
 l_cluster: dw   0

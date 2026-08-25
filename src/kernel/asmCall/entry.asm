@@ -9,7 +9,8 @@ global entry_start
 entry_start:
         ; 保存 Multiboot2
         mov     r8d, eax                ; 0x36D76289
-        mov     r9, rbx                
+        mov     r9, rbx
+        mov     r10d, edx               ; 物理基址
         mov     dx, 0x3F8 + 1         
         xor     al, al
         out     dx, al
@@ -46,7 +47,8 @@ entry_start:
 
         cli
         mov     edi, r8d              
-        mov     esi, r9d              
+        mov     esi, r9d
+        mov     edx, r10d             
         call    kmain
 .spin:  hlt
         jmp     .spin

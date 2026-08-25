@@ -74,8 +74,8 @@ static int ext2_create_common(const char *pathname, uint32_t mode, int is_dir);
 int create_file(const char *pathname) {
     return ext2_create_common(pathname, 0x8000u, 0);
 }
-static int split_parent_path(const char *pathname, char *parent,
-                             char **base_out, uint32_t buf_len) {
+static int split_parent_path(const char *pathname, char *parent, char *base,
+                             uint32_t buf_len) {
     uint32_t plen = (uint32_t)strlen(pathname);
     if (plen >= buf_len) {
         return -1;
@@ -92,15 +92,14 @@ static int split_parent_path(const char *pathname, char *parent,
     if (slash == NULL) {
         return -1;
     }
+    strcpy(base, slash + 1);
+    if (base[0] == 0) {
+        return -1;
+    }
     *slash = 0;
-    *base_out = slash + 1;
     if (slash == parent) {
         parent[0] = '/';
         parent[1] = 0;
-        *base_out = parent + 1;
-    }
-    if ((*base_out)[0] == 0) {
-        return -1;
     }
     return 0;
 }
@@ -115,9 +114,8 @@ static uint32_t get_parent_inode(const char *parent) {
 static void ext2_free_best_effort(struct inode *ino);
 static int ext2_create_common(const char *pathname, uint32_t mode, int is_dir) {
     char parent[MAX_PATH_LEN];
-    char *base;
-    if (split_parent_path(pathname, parent, &base, MAX_PATH_LEN) ||
-        base == NULL) {
+    char base[MAX_PATH_LEN];
+    if (split_parent_path(pathname, parent, base, MAX_PATH_LEN)) {
         return -1;
     }
     uint32_t pino = get_parent_inode(parent);
@@ -287,9 +285,8 @@ void block_bitmap_free(struct partition *part, uint32_t lba) {}
 void inode_bitmap_free(struct partition *part, uint32_t inode_no) {}
 int sys_unlink(const char *pathname) {
     char parent[MAX_PATH_LEN];
-    char *base;
-    if (split_parent_path(pathname, parent, &base, MAX_PATH_LEN) ||
-        base == NULL) {
+    char base[MAX_PATH_LEN];
+    if (split_parent_path(pathname, parent, base, MAX_PATH_LEN)) {
         return -1;
     }
     uint32_t pino = get_parent_inode(parent);
@@ -318,7 +315,8 @@ int32_t sys_mkdir(const char *pathname) {
     if (pathname == NULL) {
         return -1;
     }
-    return ext2_create_common(pathname, 0x4000u, 1) ? 0 : -1;
+    int r = ext2_create_common(pathname, 0x4000u, 1);
+    return r ? 0 : -1;
 }
 static int ext2_dir_is_empty(struct inode *dino) {
     uint32_t pos = 0;
@@ -368,9 +366,8 @@ int32_t sys_rmdir(const char *pathname) {
         return -1;
     }
     char parent[MAX_PATH_LEN];
-    char *base;
-    if (split_parent_path(pathname, parent, &base, MAX_PATH_LEN) ||
-        base == NULL) {
+    char base[MAX_PATH_LEN];
+    if (split_parent_path(pathname, parent, base, MAX_PATH_LEN)) {
         return -1;
     }
     uint32_t pino = get_parent_inode(parent);

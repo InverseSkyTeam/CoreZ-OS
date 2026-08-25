@@ -1,6 +1,6 @@
-// 单核模式下的APIC
-// - LAPIC: 使能, 初始化 LAPIC 定时器作为内核时钟
-// - I/O APIC: 键盘(IRQ1)/鼠标(IRQ12)/IDE(IRQ14) 重定向
+/* 单核模式下的APIC */
+/* - LAPIC: 使能, 初始化 LAPIC 定时器作为内核时钟 */
+/* - I/O APIC: 键盘(IRQ1)/鼠标(IRQ12)/IDE(IRQ14) 重定向 */
 
 #include "apic.h"
 
@@ -50,7 +50,9 @@ static volatile uint32_t *lapic;
 static volatile uint32_t *ioapic;
 static int s_apic_active;
 
-int apic_active(void) { return s_apic_active; }
+int apic_active(void) {
+    return s_apic_active;
+}
 
 static uint32_t rdmsr(uint32_t msr) {
     uint32_t lo, hi;
@@ -62,17 +64,25 @@ static void wrmsr(uint32_t msr, uint32_t lo) {
     __asm__ volatile("wrmsr" : : "a"(lo), "d"(0), "c"(msr) : "memory");
 }
 
-static void lapic_write(uint32_t off, uint32_t v) { lapic[off / 4] = v; }
-static uint32_t lapic_read(uint32_t off) { return lapic[off / 4]; }
+static void lapic_write(uint32_t off, uint32_t v) {
+    lapic[off / 4] = v;
+}
+static uint32_t lapic_read(uint32_t off) {
+    return lapic[off / 4];
+}
 
-void lapic_eoi(void) { lapic_write(LAPIC_EOI, 0); }
+void lapic_eoi(void) {
+    lapic_write(LAPIC_EOI, 0);
+}
 
 #define LAPIC_ID 0x020
 #define LAPIC_ICR 0x300
 #define LAPIC_ICR_HIGH 0x310
 #define ICR_IRR_MASK 0x00001000
 
-uint32_t lapic_get_id(void) { return lapic_read(LAPIC_ID) >> 24; }
+uint32_t lapic_get_id(void) {
+    return lapic_read(LAPIC_ID) >> 24;
+}
 
 static void lapic_send_icr(uint32_t apic_id, uint32_t low) {
     lapic_write(LAPIC_ICR_HIGH, apic_id << 24);

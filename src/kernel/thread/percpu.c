@@ -1,4 +1,4 @@
-// Per-CPU 初始化
+/* Per-CPU 初始化 */
 #include "./percpu.h"
 #include "../include/asmFunc.h"
 #include "../initer/gdt/gdt.h"

@@ -4,7 +4,7 @@
 #include "./initer/io/io.h"
 
 void assert_fail(const char *expr, const char *file, int line) {
-    setTextColor(12);
+    set_text_color(12);
     kprintf("\n*** ASSERT FAILED ***\n");
     kprintf("  expr: %s\n", expr);
     kprintf("  file: %s\n", file);

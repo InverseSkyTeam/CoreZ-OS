@@ -16,7 +16,9 @@ static int my_iceil(float x) {
     int i = (int)x;
     return ((float)i < x) ? i + 1 : i;
 }
-static float my_fabsf(float x) { return x < 0 ? -x : x; }
+static float my_fabsf(float x) {
+    return x < 0 ? -x : x;
+}
 static float my_sqrtf(float x) {
     if (x <= 0)
         return 0;

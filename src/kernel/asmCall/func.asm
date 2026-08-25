@@ -110,21 +110,18 @@ asm_str:                        ; uint16_t
         ret
 
 global detect_64bit
-detect_64bit:                   ; 已是 64 位, 恒返回 1
+detect_64bit:                  
         mov     eax, 1
         ret
 
-; 新内核线程首次被调度时的入口跳板。
-; switch.asm 在恢复线程栈时会把 r15/r14 改成线程栈中保存的值 →
-; 约定 r15 = 线程函数, r14 = 参数, 这里是它们的唯一使用处。
 global kernel_thread_entry
 kernel_thread_entry:
         mov     rdi, r15        ; thread_func function
         mov     rsi, r14        ; void *arg
-        xor     ebp, ebp        ; 新线程 rbp 清零
+        xor     ebp, ebp       
         extern  kernel_thread_entry_c
         call    kernel_thread_entry_c
-        ; 不应返回, 若返回则死循环
+
 .endless:
         cli
         hlt

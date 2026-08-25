@@ -7,7 +7,7 @@
 #include "../thread/thread.h"
 #include "../userprog/process.h"
 #include "../userprog/wait_exit.h"
-static const uint8_t g_sig_default[NSIG] = {
+static const uint8_t sig_default[NSIG] = {
     [SIGHUP] = SIG_ACT_TERM,  [SIGINT] = SIG_ACT_TERM,
     [SIGQUIT] = SIG_ACT_TERM, [SIGILL] = SIG_ACT_TERM,
     [SIGTRAP] = SIG_ACT_TERM, [SIGABRT] = SIG_ACT_TERM,
@@ -30,7 +30,9 @@ void init_signal_state(struct task_struct *t) {
         t->sigactions[i].sa_restorer = NULL;
     }
 }
-void signal_reset_user(struct task_struct *t) { init_signal_state(t); }
+void signal_reset_user(struct task_struct *t) {
+    init_signal_state(t);
+}
 int exception_to_signal(int int_no) {
     switch (int_no) {
     case 0:
@@ -55,7 +57,7 @@ void signal_terminate(struct task_struct *t, int sig) {
 static void signal_stop_current(void) {
     struct task_struct *cur = current;
     cur->status = TASK_STOPPED;
-    if (elem_find(&g_ready_list, &cur->general_tag)) {
+    if (elem_find(&ready_list, &cur->general_tag)) {
         list_remove(&cur->general_tag);
     }
     schedule();
@@ -125,7 +127,7 @@ void check_pending_signals(struct Registers *r) {
             continue;
         }
         if (handler == SIG_DFL) {
-            uint8_t act = g_sig_default[sig];
+            uint8_t act = sig_default[sig];
             if (act == SIG_ACT_IGN) {
                 continue;
             } else if (act == SIG_ACT_STOP) {
@@ -199,8 +201,8 @@ int sys_kill(int pid, int sig) {
     }
     if (sig == SIGCONT && t->status == TASK_STOPPED) {
         t->status = TASK_READY;
-        if (!elem_find(&g_ready_list, &t->general_tag)) {
-            list_push(&g_ready_list, &t->general_tag);
+        if (!elem_find(&ready_list, &t->general_tag)) {
+            list_push(&ready_list, &t->general_tag);
         }
         t->signal_pending &= ~(1u << SIGCONT);
         return 0;

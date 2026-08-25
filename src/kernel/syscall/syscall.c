@@ -25,16 +25,17 @@
 #include "./futex.h"
 #include "./linux_compat.h"
 #include "./mmap.h"
-static uint32_t sys_getpid(void) { return current->pid; }
+static uint32_t sys_getpid(void) {
+    return current->pid;
+}
 static int32_t sys_clock_gettime(int32_t clk_id, struct timespec *tp) {
     if (tp == NULL) {
         return -1;
     }
     (void)clk_id;
     memset(tp, 0, sizeof(*tp));
-    tp->tv_sec = (int32_t)(g_tick / PIT_HZ);
-    tp->tv_nsec =
-        (int32_t)((g_tick % PIT_HZ) * (1000u * 1000u * 1000u / PIT_HZ));
+    tp->tv_sec = (int32_t)(tick / PIT_HZ);
+    tp->tv_nsec = (int32_t)((tick % PIT_HZ) * (1000u * 1000u * 1000u / PIT_HZ));
     return 0;
 }
 static int32_t sys_gettimeofday(struct timeval *tv, void *tz) {
@@ -43,8 +44,8 @@ static int32_t sys_gettimeofday(struct timeval *tv, void *tz) {
     }
     (void)tz;
     memset(tv, 0, sizeof(*tv));
-    tv->tv_sec = (int32_t)(g_tick / PIT_HZ);
-    tv->tv_usec = (int32_t)((g_tick % PIT_HZ) * (1000u * 1000u / PIT_HZ));
+    tv->tv_sec = (int32_t)(tick / PIT_HZ);
+    tv->tv_usec = (int32_t)((tick % PIT_HZ) * (1000u * 1000u / PIT_HZ));
     return 0;
 }
 static int32_t sys_nanosleep(const struct timespec *req, struct timespec *rem) {
@@ -68,10 +69,18 @@ static int32_t sys_nanosleep(const struct timespec *req, struct timespec *rem) {
     }
     return 0;
 }
-static uint32_t sys_getuid(void) { return 0; }
-static uint32_t sys_getgid(void) { return 0; }
-static uint32_t sys_geteuid(void) { return 0; }
-static uint32_t sys_getegid(void) { return 0; }
+static uint32_t sys_getuid(void) {
+    return 0;
+}
+static uint32_t sys_getgid(void) {
+    return 0;
+}
+static uint32_t sys_geteuid(void) {
+    return 0;
+}
+static uint32_t sys_getegid(void) {
+    return 0;
+}
 static void sys_exit_group(int32_t status) {
     sys_exit(status);
     for (;;) {

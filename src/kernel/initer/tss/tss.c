@@ -24,7 +24,7 @@ void tss_init(void) {
     }
     tss.reserved3 = 0;
     tss.reserved4 = 0;
-    tss.iomap_base = (uint16_t)sizeof(tss); // 置为 TSS 大小 -> 空 IO 位图
+    tss.iomap_base = (uint16_t)sizeof(tss); /* 置为 TSS 大小 -> 空 IO 位图 */
 
     set_tss_desc((uint64_t)&tss, sizeof(tss) - 1);
     asm_ltr(SELECTOR_TSS);

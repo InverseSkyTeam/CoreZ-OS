@@ -14,14 +14,22 @@ extern void *memset(void *s, int c, size_t n);
 
 #define ALLOC_BIT ((size_t)0x1)
 
-static inline size_t get_u(void *p) { return *(size_t *)p; }
-static inline void put_u(void *p, size_t v) { *(size_t *)p = v; }
+static inline size_t get_u(void *p) {
+    return *(size_t *)p;
+}
+static inline void put_u(void *p, size_t v) {
+    *(size_t *)p = v;
+}
 static inline size_t blk_size(void *hdr) {
     return get_u(hdr) & ~(size_t)ALLOC_BIT;
 }
-static inline int blk_alloc(void *hdr) { return (int)(get_u(hdr) & ALLOC_BIT); }
+static inline int blk_alloc(void *hdr) {
+    return (int)(get_u(hdr) & ALLOC_BIT);
+}
 
-static inline void *hdr_of(void *bp) { return (char *)bp - WSIZE; }
+static inline void *hdr_of(void *bp) {
+    return (char *)bp - WSIZE;
+}
 static inline void *ftr_of(void *bp) {
     return (char *)bp + blk_size(hdr_of(bp)) - DSIZE;
 }
@@ -33,7 +41,7 @@ static inline void *prev_blk(void *bp) {
     return (char *)bp - psize;
 }
 
-static char *g_heap = NULL;
+static char *heap = NULL;
 
 static void *more_heap(size_t words) {
     size_t size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
@@ -88,7 +96,9 @@ static void place(void *bp, size_t asize) {
     }
 }
 
-static void *first_block(void) { return next_blk(g_heap); }
+static void *first_block(void) {
+    return next_blk(heap);
+}
 
 static void *find_fit(size_t asize) {
     for (void *bp = first_block();; bp = next_blk(bp)) {
@@ -112,7 +122,7 @@ static int heap_init(void) {
     put_u(p + 1 * WSIZE, (DSIZE | ALLOC_BIT));
     put_u(p + 2 * WSIZE, (DSIZE | ALLOC_BIT));
     put_u(p + 3 * WSIZE, (0 | ALLOC_BIT));
-    g_heap = (char *)(p + 2 * WSIZE);
+    heap = (char *)(p + 2 * WSIZE);
     if (more_heap(CHUNK) == NULL) {
         return -1;
     }
@@ -123,7 +133,7 @@ void *malloc(size_t size) {
     if (size == 0) {
         return NULL;
     }
-    if (g_heap == NULL) {
+    if (heap == NULL) {
         if (heap_init() != 0) {
             return NULL;
         }

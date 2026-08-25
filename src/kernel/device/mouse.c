@@ -6,9 +6,9 @@
 #define KBD_STATUS 0x64
 #define KBD_CMD 0x64
 
-static mouse_hook_t g_hook = 0;
-static uint8_t g_pkt[3];
-static int g_idx = 0;
+static mouse_hook_t hook = 0;
+static uint8_t pkt[3];
+static int idx = 0;
 
 static void ctrl_wait_write(void) {
     while (inb(KBD_STATUS) & 0x02) {
@@ -32,7 +32,9 @@ static uint8_t aux_read(void) {
     return inb(KBD_DATA);
 }
 
-void mouse_set_hook(mouse_hook_t hook) { g_hook = hook; }
+void mouse_set_hook(mouse_hook_t cb) {
+    hook = cb;
+}
 
 void mouse_init(void) {
     ctrl_wait_write();
@@ -58,17 +60,17 @@ void mouse_init(void) {
 void mouse_handler(void) {
     uint8_t b = inb(KBD_DATA);
 
-    if (g_idx == 0 && !(b & 0x08))
+    if (idx == 0 && !(b & 0x08))
         return;
-    g_pkt[g_idx++] = b;
-    if (g_idx < 3)
+    pkt[idx++] = b;
+    if (idx < 3)
         return;
-    g_idx = 0;
+    idx = 0;
 
-    int dx = (int)g_pkt[1] - ((int)(g_pkt[0] << 4) & 0x100);
-    int dy = (int)g_pkt[2] - ((int)(g_pkt[0] << 3) & 0x100);
-    uint8_t buttons = g_pkt[0] & 0x07;
+    int dx = (int)pkt[1] - ((int)(pkt[0] << 4) & 0x100);
+    int dy = (int)pkt[2] - ((int)(pkt[0] << 3) & 0x100);
+    uint8_t buttons = pkt[0] & 0x07;
 
-    if (g_hook)
-        g_hook(dx, -dy, buttons);
+    if (hook)
+        hook(dx, -dy, buttons);
 }

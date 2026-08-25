@@ -1,4 +1,3 @@
-
 #ifndef KEYBOARD_H
 #define KEYBOARD_H
 
@@ -6,12 +5,9 @@
 
 extern struct ioqueue keyboard_ioq;
 
-
 #define KBD_MOD_SHIFT 1
-#define KBD_MOD_CTRL  2
-#define KBD_MOD_ALT   4
-
-
+#define KBD_MOD_CTRL 2
+#define KBD_MOD_ALT 4
 
 typedef void (*kbd_gui_hook_t)(uint8_t scancode, int pressed, uint8_t mods);
 

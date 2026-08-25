@@ -9,9 +9,15 @@ void ioq_init(struct ioqueue *ioq) {
     ioq->head = 0;
     ioq->tail = 0;
 }
-static int32_t next_pos(int32_t pos) { return (pos + 1) % BUFSIZE; }
-int ioq_full(struct ioqueue *ioq) { return next_pos(ioq->head) == ioq->tail; }
-int ioq_empty(struct ioqueue *ioq) { return ioq->head == ioq->tail; }
+static int32_t next_pos(int32_t pos) {
+    return (pos + 1) % BUFSIZE;
+}
+int ioq_full(struct ioqueue *ioq) {
+    return next_pos(ioq->head) == ioq->tail;
+}
+int ioq_empty(struct ioqueue *ioq) {
+    return ioq->head == ioq->tail;
+}
 uint32_t ioq_length(struct ioqueue *ioq) {
     uint32_t len = 0;
     if (ioq->head >= ioq->tail) {

@@ -52,6 +52,10 @@ struct dir_entry *dir_read(struct dir *dir) {
     return dir_e;
 }
 
-int dir_is_empty(struct dir *dir) { return 0; }
+int dir_is_empty(struct dir *dir) {
+    return 0;
+}
 
-int32_t dir_remove(struct dir *parent_dir, struct dir *child_dir) { return -1; }
+int32_t dir_remove(struct dir *parent_dir, struct dir *child_dir) {
+    return -1;
+}

@@ -1,15 +1,14 @@
-
 #ifndef FS_DIR_H
 #define FS_DIR_H
 
-#include <stdint.h>
-#include "inode.h"
 #include "fs.h"
+#include "inode.h"
+#include <stdint.h>
 
 #define MAX_FILE_NAME_LEN 256
 
 struct dir {
-    struct inode* inode;
+    struct inode *inode;
     uint32_t dir_pos;
     uint8_t dir_buf[512];
 };
@@ -22,12 +21,12 @@ struct dir_entry {
 
 extern struct dir root_dir;
 
-void open_root_dir(struct partition* part);
-struct dir* dir_open(struct partition* part, uint32_t inode_no);
-void dir_close(struct dir* dir);
-int dir_lookup(struct dir* pdir, const char* name, struct dir_entry* dir_e);
-struct dir_entry* dir_read(struct dir* dir);
-int dir_is_empty(struct dir* dir);
-int32_t dir_remove(struct dir* parent_dir, struct dir* child_dir);
+void open_root_dir(struct partition *part);
+struct dir *dir_open(struct partition *part, uint32_t inode_no);
+void dir_close(struct dir *dir);
+int dir_lookup(struct dir *pdir, const char *name, struct dir_entry *dir_e);
+struct dir_entry *dir_read(struct dir *dir);
+int dir_is_empty(struct dir *dir);
+int32_t dir_remove(struct dir *parent_dir, struct dir *child_dir);
 
 #endif

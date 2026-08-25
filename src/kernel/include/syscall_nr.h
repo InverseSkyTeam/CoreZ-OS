@@ -1,5 +1,3 @@
-
-
 #ifndef SYSCALL_NR_H
 #define SYSCALL_NR_H
 

@@ -9,21 +9,21 @@ struct futex_bucket {
     struct list waiters;
     struct spinlock lock;
 };
-static struct futex_bucket g_futex_buckets[FUTEX_BUCKETS];
-static int g_futex_inited = 0;
+static struct futex_bucket futex_buckets[FUTEX_BUCKETS];
+static int futex_inited = 0;
 void futex_init(void) {
     for (int i = 0; i < FUTEX_BUCKETS; i++) {
-        list_init(&g_futex_buckets[i].waiters);
-        spinlock_init(&g_futex_buckets[i].lock);
+        list_init(&futex_buckets[i].waiters);
+        spinlock_init(&futex_buckets[i].lock);
     }
-    g_futex_inited = 1;
+    futex_inited = 1;
 }
 static struct futex_bucket *futex_bucket_for(uint32_t uaddr, uint32_t pgdir) {
-    if (!g_futex_inited) {
+    if (!futex_inited) {
         futex_init();
     }
     uint32_t h = (pgdir ^ (uaddr >> 2)) % FUTEX_BUCKETS;
-    return &g_futex_buckets[h];
+    return &futex_buckets[h];
 }
 static int32_t sys_futex_wait(uint32_t uaddr, uint32_t val, uint32_t timeout) {
     struct futex_bucket *b = futex_bucket_for(uaddr, current->pgdir);

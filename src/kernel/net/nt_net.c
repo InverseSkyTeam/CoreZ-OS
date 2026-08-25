@@ -115,4 +115,6 @@ static void net_thread(void *arg) {
     }
 }
 
-void net_init(void) { kernel_thread("net", 8, net_thread, NULL); }
+void net_init(void) {
+    kernel_thread("net", 8, net_thread, NULL);
+}

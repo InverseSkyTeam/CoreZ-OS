@@ -9,38 +9,38 @@
 #include "./shm.h"
 #include "./wm.h"
 
-static struct wl_client g_clients[WL_MAX_CLIENTS];
-static struct wl_surface g_surfaces[WL_MAX_SURFACES];
+static struct wl_client clients[WL_MAX_CLIENTS];
+static struct wl_surface surfaces[WL_MAX_SURFACES];
 
-static struct gfx_canvas g_screen;
-static struct gfx_canvas g_back;
-static struct gfx_canvas *g_dst = &g_screen;
-static int g_double_buffer = 0;
-static int g_scrnx, g_scrny;
+static struct gfx_canvas screen;
+static struct gfx_canvas back;
+static struct gfx_canvas *dst = &screen;
+static int double_buffer = 0;
+static int scrnx, scrny;
 
-static struct lock g_comp_lock;
-static int g_session_active = 0;
-static int g_cursor_visible = 1;
+static struct lock comp_lock;
+static int session_active = 0;
+static int cursor_visible = 1;
 
 struct gui_input {
     int type;
     int32_t a, b, c;
 };
 #define GUI_INQ_SIZE 32
-static volatile struct gui_input g_inq[GUI_INQ_SIZE];
-static volatile uint32_t g_inq_head = 0, g_inq_tail = 0;
+static volatile struct gui_input inq[GUI_INQ_SIZE];
+static volatile uint32_t inq_head = 0, inq_tail = 0;
 
 #define MAX_DAMAGE 48
-static struct gfx_rect g_damage[MAX_DAMAGE];
-static int g_damage_n = 0;
-static int g_damage_full = 0;
+static struct gfx_rect damage[MAX_DAMAGE];
+static int damage_n = 0;
+static int damage_full = 0;
 
-static int g_cur_x = 512, g_cur_y = 384;
-static uint8_t g_last_buttons = 0;
+static int cur_x = 512, cur_y = 384;
+static uint8_t last_buttons = 0;
 
 #define CURSOR_W 12
 #define CURSOR_H 18
-static const char *g_cursor_bmp[CURSOR_H] = {
+static const char *cursor_bmp[CURSOR_H] = {
     "#...........", "##..........", "#.#.........", "#..#........",
     "#...#.......", "#....#......", "#.....#.....", "#......#....",
     "#.......#...", "#........#..", "#.....#####.", "#..#..#.....",
@@ -65,49 +65,49 @@ static void client_post(struct wl_client *c, int type, int32_t a, int32_t b,
     lock_release(&c->lock);
 }
 
-void (*g_log_hook)(const char *s) = 0;
+void (*log_hook)(const char *s) = 0;
 void comp_log(const char *s) {
-    if (g_log_hook)
-        g_log_hook(s);
+    if (log_hook)
+        log_hook(s);
 }
 
 void comp_damage_rect(int x, int y, int w, int h) {
     if (w <= 0 || h <= 0)
         return;
-    struct gfx_rect r = {x, y, w, h}, scr = {0, 0, g_scrnx, g_scrny}, v;
+    struct gfx_rect r = {x, y, w, h}, scr = {0, 0, scrnx, scrny}, v;
     if (!gfx_rect_intersect(r, scr, &v))
         return;
-    lock_acquire(&g_comp_lock);
-    if (g_damage_full) {
-        lock_release(&g_comp_lock);
+    lock_acquire(&comp_lock);
+    if (damage_full) {
+        lock_release(&comp_lock);
         return;
     }
 
-    for (int i = 0; i < g_damage_n; i++) {
+    for (int i = 0; i < damage_n; i++) {
         struct gfx_rect u;
-        if (gfx_rect_intersect(v, g_damage[i], &u)) {
-            int x0 = v.x < g_damage[i].x ? v.x : g_damage[i].x;
-            int y0 = v.y < g_damage[i].y ? v.y : g_damage[i].y;
-            int x1 = (v.x + v.w) > (g_damage[i].x + g_damage[i].w)
+        if (gfx_rect_intersect(v, damage[i], &u)) {
+            int x0 = v.x < damage[i].x ? v.x : damage[i].x;
+            int y0 = v.y < damage[i].y ? v.y : damage[i].y;
+            int x1 = (v.x + v.w) > (damage[i].x + damage[i].w)
                          ? (v.x + v.w)
-                         : (g_damage[i].x + g_damage[i].w);
-            int y1 = (v.y + v.h) > (g_damage[i].y + g_damage[i].h)
+                         : (damage[i].x + damage[i].w);
+            int y1 = (v.y + v.h) > (damage[i].y + damage[i].h)
                          ? (v.y + v.h)
-                         : (g_damage[i].y + g_damage[i].h);
-            g_damage[i].x = x0;
-            g_damage[i].y = y0;
-            g_damage[i].w = x1 - x0;
-            g_damage[i].h = y1 - y0;
-            lock_release(&g_comp_lock);
+                         : (damage[i].y + damage[i].h);
+            damage[i].x = x0;
+            damage[i].y = y0;
+            damage[i].w = x1 - x0;
+            damage[i].h = y1 - y0;
+            lock_release(&comp_lock);
             return;
         }
     }
-    if (g_damage_n >= MAX_DAMAGE) {
-        g_damage_full = 1;
+    if (damage_n >= MAX_DAMAGE) {
+        damage_full = 1;
     } else {
-        g_damage[g_damage_n++] = v;
+        damage[damage_n++] = v;
     }
-    lock_release(&g_comp_lock);
+    lock_release(&comp_lock);
 }
 
 void comp_damage_surface(struct wl_surface *s) {
@@ -120,63 +120,63 @@ void comp_damage_surface(struct wl_surface *s) {
 }
 
 void comp_post_key(uint8_t scancode, int pressed, uint8_t mods) {
-    uint32_t next = (g_inq_head + 1) % GUI_INQ_SIZE;
-    if (next == g_inq_tail)
+    uint32_t next = (inq_head + 1) % GUI_INQ_SIZE;
+    if (next == inq_tail)
         return;
-    g_inq[g_inq_head].type = GUI_IN_KEY;
-    g_inq[g_inq_head].a = scancode;
-    g_inq[g_inq_head].b = pressed;
-    g_inq[g_inq_head].c = mods;
-    g_inq_head = next;
+    inq[inq_head].type = GUI_IN_KEY;
+    inq[inq_head].a = scancode;
+    inq[inq_head].b = pressed;
+    inq[inq_head].c = mods;
+    inq_head = next;
 }
 
 void comp_post_mouse(int dx, int dy, uint8_t buttons) {
-    uint32_t next = (g_inq_head + 1) % GUI_INQ_SIZE;
-    if (next == g_inq_tail)
+    uint32_t next = (inq_head + 1) % GUI_INQ_SIZE;
+    if (next == inq_tail)
         return;
-    g_inq[g_inq_head].type = GUI_IN_MOUSE;
-    g_inq[g_inq_head].a = dx;
-    g_inq[g_inq_head].b = dy;
-    g_inq[g_inq_head].c = buttons;
-    g_inq_head = next;
+    inq[inq_head].type = GUI_IN_MOUSE;
+    inq[inq_head].a = dx;
+    inq[inq_head].b = dy;
+    inq[inq_head].c = buttons;
+    inq_head = next;
 }
 
 struct wl_client *wl_display_connect(const char *name) {
-    lock_acquire(&g_comp_lock);
+    lock_acquire(&comp_lock);
     for (int i = 0; i < WL_MAX_CLIENTS; i++) {
-        if (g_clients[i].used)
+        if (clients[i].used)
             continue;
-        struct wl_client *c = &g_clients[i];
+        struct wl_client *c = &clients[i];
         memset(c, 0, sizeof(*c));
         c->used = 1;
         strncpy(c->name, name, 15);
         c->name[15] = 0;
         sema_init(&c->sema, 0);
         lock_init(&c->lock);
-        lock_release(&g_comp_lock);
+        lock_release(&comp_lock);
         return c;
     }
-    lock_release(&g_comp_lock);
+    lock_release(&comp_lock);
     return 0;
 }
 
 void wl_display_disconnect(struct wl_client *c) {
     if (!c)
         return;
-    lock_acquire(&g_comp_lock);
+    lock_acquire(&comp_lock);
     c->used = 0;
-    lock_release(&g_comp_lock);
+    lock_release(&comp_lock);
 }
 
 struct wl_surface *wl_compositor_create_surface(struct wl_client *c,
                                                 const char *title) {
     if (!c || !c->used)
         return 0;
-    lock_acquire(&g_comp_lock);
+    lock_acquire(&comp_lock);
     for (int i = 0; i < WL_MAX_SURFACES; i++) {
-        if (g_surfaces[i].used)
+        if (surfaces[i].used)
             continue;
-        struct wl_surface *s = &g_surfaces[i];
+        struct wl_surface *s = &surfaces[i];
         memset(s, 0, sizeof(*s));
         s->used = 1;
         s->client = c;
@@ -184,10 +184,10 @@ struct wl_surface *wl_compositor_create_surface(struct wl_client *c,
         strncpy(s->title, title, 23);
         s->title[23] = 0;
         c->surf = s;
-        lock_release(&g_comp_lock);
+        lock_release(&comp_lock);
         return s;
     }
-    lock_release(&g_comp_lock);
+    lock_release(&comp_lock);
     return 0;
 }
 
@@ -195,32 +195,32 @@ int wl_surface_attach(struct wl_surface *s, struct shm_pool *pool, int w,
                       int h) {
     if (!s || !s->used || !pool || !pool->in_use)
         return -1;
-    lock_acquire(&g_comp_lock);
+    lock_acquire(&comp_lock);
     s->buf = pool->data;
     s->buf_w = w;
     s->buf_h = h;
-    lock_release(&g_comp_lock);
+    lock_release(&comp_lock);
     return 0;
 }
 
 void wl_surface_commit(struct wl_surface *s) {
     if (!s || !s->used || !s->buf)
         return;
-    lock_acquire(&g_comp_lock);
+    lock_acquire(&comp_lock);
     s->frame_pending = 1;
-    lock_release(&g_comp_lock);
+    lock_release(&comp_lock);
     comp_damage_surface(s);
 }
 
 void wl_surface_destroy(struct wl_surface *s) {
     if (!s || !s->used)
         return;
-    lock_acquire(&g_comp_lock);
+    lock_acquire(&comp_lock);
     if (s->client)
         s->client->surf = 0;
     s->used = 0;
     s->buf = 0;
-    lock_release(&g_comp_lock);
+    lock_release(&comp_lock);
 }
 
 int wl_display_dispatch(struct wl_client *c, struct wl_event *ev) {
@@ -243,16 +243,24 @@ struct wl_surface **comp_surfaces(int *count) {
     static struct wl_surface *list[WL_MAX_SURFACES];
     int n = 0;
     for (int i = 0; i < WL_MAX_SURFACES; i++)
-        if (g_surfaces[i].used)
-            list[n++] = &g_surfaces[i];
+        if (surfaces[i].used)
+            list[n++] = &surfaces[i];
     *count = n;
     return list;
 }
 
-int comp_screen_w(void) { return g_scrnx; }
-int comp_screen_h(void) { return g_scrny; }
-void comp_set_cursor_visible(int v) { g_cursor_visible = v; }
-int comp_session_active(void) { return g_session_active; }
+int comp_screen_w(void) {
+    return scrnx;
+}
+int comp_screen_h(void) {
+    return scrny;
+}
+void comp_set_cursor_visible(int v) {
+    cursor_visible = v;
+}
+int comp_session_active(void) {
+    return session_active;
+}
 
 void comp_send_configure(struct wl_surface *s, int w, int h) {
     client_post(s->client, WL_EV_CONFIGURE, w, h, 0);
@@ -263,30 +271,32 @@ void comp_send_close(struct wl_surface *s) {
 void comp_send_key(struct wl_surface *s, int scancode, int pressed, int mods) {
     client_post(s->client, WL_EV_KEY, scancode, pressed, mods);
 }
-void comp_request_exit(void) { g_session_active = 0; }
+void comp_request_exit(void) {
+    session_active = 0;
+}
 
 void comp_destroy_surface_pool(struct wl_surface *s, struct shm_pool **pool) {
     if (!pool || !*pool)
         return;
-    lock_acquire(&g_comp_lock);
+    lock_acquire(&comp_lock);
     if (s) {
         s->buf = 0;
         s->buf_w = 0;
         s->buf_h = 0;
     }
-    lock_release(&g_comp_lock);
+    lock_release(&comp_lock);
     shm_pool_destroy(*pool);
     *pool = 0;
 }
 
 static uint8_t wallpaper_color(int y) {
-    int t = (y * 5) / g_scrny;
+    int t = (y * 5) / scrny;
     return gfx_rgb(0, t / 3, 1 + t / 2);
 }
 
 static void draw_wallpaper(struct gfx_rect *r) {
     for (int y = r->y; y < r->y + r->h; y++) {
-        gfx_hline(g_dst, r->x, y, r->w, wallpaper_color(y));
+        gfx_hline(dst, r->x, y, r->w, wallpaper_color(y));
     }
 }
 
@@ -305,23 +315,22 @@ static void draw_window(struct wl_surface *s, struct gfx_rect *clip) {
     uint8_t border_col = focused ? TH_FRAME_FOC : TH_FRAME_UNF;
     uint8_t title_col = focused ? TH_TITLE_FOC : TH_TITLE_UNF;
 
-    gfx_fill_round(g_dst, fx - WIN_SHADOW + 3, fy + 3, fw + 2 * WIN_SHADOW - 6,
+    gfx_fill_round(dst, fx - WIN_SHADOW + 3, fy + 3, fw + 2 * WIN_SHADOW - 6,
                    fh + 2 * WIN_SHADOW - 2, rad + WIN_SHADOW, TH_SHADOW);
-    gfx_fill_round(g_dst, fx - WIN_SHADOW + 5, fy + 5, fw + 2 * WIN_SHADOW - 10,
+    gfx_fill_round(dst, fx - WIN_SHADOW + 5, fy + 5, fw + 2 * WIN_SHADOW - 10,
                    fh + 2 * WIN_SHADOW - 6, rad + WIN_SHADOW - 2, TH_SHADOW2);
 
-    gfx_fill_round(g_dst, fx, fy, fw, fh, rad, border_col);
+    gfx_fill_round(dst, fx, fy, fw, fh, rad, border_col);
 
-    gfx_fill_round(g_dst, fx + COMP_BORDER, fy + COMP_BORDER,
+    gfx_fill_round(dst, fx + COMP_BORDER, fy + COMP_BORDER,
                    fw - 2 * COMP_BORDER, fh - 2 * COMP_BORDER,
                    rad - COMP_BORDER, title_col);
 
-    gfx_text(g_dst, fx + 8, fy + 1, s->title, focused ? TH_TEXT : TH_MUTED, -1);
+    gfx_text(dst, fx + 8, fy + 1, s->title, focused ? TH_TEXT : TH_MUTED, -1);
 
     int bs = 12, cbx = fx + fw - 14, cby = fy + 1;
-    gfx_fill_round(g_dst, cbx, cby, bs, bs, 5,
-                   focused ? TH_CLOSE : gfx_gray(7));
-    gfx_text(g_dst, cbx + 2, cby, "x", TH_TEXT, -1);
+    gfx_fill_round(dst, cbx, cby, bs, bs, 5, focused ? TH_CLOSE : gfx_gray(7));
+    gfx_text(dst, cbx + 2, cby, "x", TH_TEXT, -1);
 
     if (s->w > 0 && s->h > 0) {
         struct gfx_rect content = {s->x, s->y, s->w, s->h};
@@ -330,30 +339,30 @@ static void draw_window(struct wl_surface *s, struct gfx_rect *clip) {
             if (s->buf && s->buf_w == s->w && s->buf_h == s->h) {
                 struct gfx_canvas sc = {s->buf, s->w, s->w, s->h};
                 sc.bytes = (size_t)s->buf_w * (size_t)s->buf_h;
-                gfx_blit(g_dst, iv.x, iv.y, &sc, iv.x - s->x, iv.y - s->y, iv.w,
+                gfx_blit(dst, iv.x, iv.y, &sc, iv.x - s->x, iv.y - s->y, iv.w,
                          iv.h);
             } else {
-                gfx_fill(g_dst, iv.x, iv.y, iv.w, iv.h, gfx_gray(2));
+                gfx_fill(dst, iv.x, iv.y, iv.w, iv.h, gfx_gray(2));
             }
         }
     }
 
-    gfx_mask_round(g_dst, fx, fy, fw, fh, rad, wallpaper_color(fy + fh - 1),
+    gfx_mask_round(dst, fx, fy, fw, fh, rad, wallpaper_color(fy + fh - 1),
                    GFX_CORNER_BL | GFX_CORNER_BR);
 }
 
 static void draw_cursor(void) {
-    if (!g_cursor_visible)
+    if (!cursor_visible)
         return;
     for (int row = 0; row < CURSOR_H; row++) {
         for (int col = 0; col < CURSOR_W; col++) {
-            char p = g_cursor_bmp[row][col];
+            char p = cursor_bmp[row][col];
             if (p == '.')
                 continue;
-            int px = g_cur_x + col, py = g_cur_y + row;
-            if (px < 0 || px >= g_scrnx || py < 0 || py >= g_scrny)
+            int px = cur_x + col, py = cur_y + row;
+            if (px < 0 || px >= scrnx || py < 0 || py >= scrny)
                 continue;
-            g_dst->pixels[py * g_dst->pitch + px] = (p == '#') ? 0 : 15;
+            dst->pixels[py * dst->pitch + px] = (p == '#') ? 0 : 15;
         }
     }
 }
@@ -373,23 +382,23 @@ static int rect_covered_by_window(struct gfx_rect *r, struct wl_surface **vis,
 }
 
 static void repaint(void) {
-    lock_acquire(&g_comp_lock);
+    lock_acquire(&comp_lock);
 
     struct gfx_rect rects[MAX_DAMAGE + 1];
     int n = 0;
-    if (g_damage_full) {
+    if (damage_full) {
         rects[0].x = 0;
         rects[0].y = 0;
-        rects[0].w = g_scrnx;
-        rects[0].h = g_scrny;
+        rects[0].w = scrnx;
+        rects[0].h = scrny;
         n = 1;
     } else {
-        for (int i = 0; i < g_damage_n; i++)
-            rects[i] = g_damage[i];
-        n = g_damage_n;
+        for (int i = 0; i < damage_n; i++)
+            rects[i] = damage[i];
+        n = damage_n;
     }
-    g_damage_n = 0;
-    g_damage_full = 0;
+    damage_n = 0;
+    damage_full = 0;
 
     struct wl_surface *vis[WL_MAX_SURFACES];
     int vn = wm_collect_visible(vis, WL_MAX_SURFACES);
@@ -400,18 +409,17 @@ static void repaint(void) {
             draw_wallpaper(r);
         for (int j = 0; j < vn; j++)
             draw_window(vis[j], r);
-        wm_draw_bar(g_dst, r);
+        wm_draw_bar(dst, r);
     }
 
-    lock_release(&g_comp_lock);
+    lock_release(&comp_lock);
 
     draw_cursor();
 
-    if (g_double_buffer) {
+    if (double_buffer) {
         for (int i = 0; i < n; i++) {
             struct gfx_rect *dr = &rects[i];
-            gfx_blit(&g_screen, dr->x, dr->y, &g_back, dr->x, dr->y, dr->w,
-                     dr->h);
+            gfx_blit(&screen, dr->x, dr->y, &back, dr->x, dr->y, dr->w, dr->h);
         }
     }
 
@@ -425,89 +433,89 @@ static void repaint(void) {
 }
 
 void comp_init(void) {
-    g_scrnx = io_get_scrnx();
-    g_scrny = io_get_scrny();
-    g_screen.pixels = io_get_vram();
-    g_screen.pitch = g_scrnx;
-    g_screen.w = g_scrnx;
-    g_screen.h = g_scrny;
-    g_screen.bytes = io_get_vram_bytes();
+    scrnx = io_get_scrnx();
+    scrny = io_get_scrny();
+    screen.pixels = io_get_vram();
+    screen.pitch = scrnx;
+    screen.w = scrnx;
+    screen.h = scrny;
+    screen.bytes = io_get_vram_bytes();
 
-    size_t bsz = (size_t)g_scrnx * (size_t)g_scrny;
+    size_t bsz = (size_t)scrnx * (size_t)scrny;
     uint8_t *bp = get_kernel_pages(
         (uint32_t)((bsz + (size_t)PAGE_SIZE - 1) / (size_t)PAGE_SIZE));
     if (bp) {
-        g_back.pixels = bp;
-        g_back.pitch = g_scrnx;
-        g_back.w = g_scrnx;
-        g_back.h = g_scrny;
-        g_back.bytes = bsz;
-        g_double_buffer = 1;
-        g_dst = &g_back;
+        back.pixels = bp;
+        back.pitch = scrnx;
+        back.w = scrnx;
+        back.h = scrny;
+        back.bytes = bsz;
+        double_buffer = 1;
+        dst = &back;
     } else {
-        g_double_buffer = 0;
-        g_dst = &g_screen;
+        double_buffer = 0;
+        dst = &screen;
     }
 
-    lock_init(&g_comp_lock);
+    lock_init(&comp_lock);
     shm_init();
-    memset(g_clients, 0, sizeof(g_clients));
-    memset(g_surfaces, 0, sizeof(g_surfaces));
-    g_inq_head = g_inq_tail = 0;
-    g_damage_n = 0;
-    g_damage_full = 1;
-    g_cur_x = g_scrnx / 2;
-    g_cur_y = g_scrny / 2;
-    g_last_buttons = 0;
-    g_session_active = 1;
+    memset(clients, 0, sizeof(clients));
+    memset(surfaces, 0, sizeof(surfaces));
+    inq_head = inq_tail = 0;
+    damage_n = 0;
+    damage_full = 1;
+    cur_x = scrnx / 2;
+    cur_y = scrny / 2;
+    last_buttons = 0;
+    session_active = 1;
 }
 
 static void drain_input(void) {
-    while (g_inq_tail != g_inq_head) {
+    while (inq_tail != inq_head) {
         struct gui_input ev;
-        ev.type = g_inq[g_inq_tail].type;
-        ev.a = g_inq[g_inq_tail].a;
-        ev.b = g_inq[g_inq_tail].b;
-        ev.c = g_inq[g_inq_tail].c;
-        g_inq_tail = (g_inq_tail + 1) % GUI_INQ_SIZE;
+        ev.type = inq[inq_tail].type;
+        ev.a = inq[inq_tail].a;
+        ev.b = inq[inq_tail].b;
+        ev.c = inq[inq_tail].c;
+        inq_tail = (inq_tail + 1) % GUI_INQ_SIZE;
 
         if (ev.type == GUI_IN_KEY) {
             wm_handle_key((uint8_t)ev.a, (int)ev.b, (uint8_t)ev.c);
         } else if (ev.type == GUI_IN_MOUSE) {
-            int nx = g_cur_x + ev.a;
-            int ny = g_cur_y + ev.b;
+            int nx = cur_x + ev.a;
+            int ny = cur_y + ev.b;
             if (nx < 0)
                 nx = 0;
-            if (nx >= g_scrnx)
-                nx = g_scrnx - 1;
+            if (nx >= scrnx)
+                nx = scrnx - 1;
             if (ny < 0)
                 ny = 0;
-            if (ny >= g_scrny)
-                ny = g_scrny - 1;
-            if (nx != g_cur_x || ny != g_cur_y) {
-                comp_damage_rect(g_cur_x, g_cur_y, CURSOR_W, CURSOR_H);
+            if (ny >= scrny)
+                ny = scrny - 1;
+            if (nx != cur_x || ny != cur_y) {
+                comp_damage_rect(cur_x, cur_y, CURSOR_W, CURSOR_H);
                 comp_damage_rect(nx, ny, CURSOR_W, CURSOR_H);
                 wm_handle_motion(nx, ny);
-                g_cur_x = nx;
-                g_cur_y = ny;
+                cur_x = nx;
+                cur_y = ny;
             }
             uint8_t btn = (uint8_t)ev.c;
-            uint8_t edge = btn ^ g_last_buttons;
+            uint8_t edge = btn ^ last_buttons;
             if (edge) {
-                wm_handle_button(g_cur_x, g_cur_y, btn, edge);
-                g_last_buttons = btn;
+                wm_handle_button(cur_x, cur_y, btn, edge);
+                last_buttons = btn;
             }
         }
     }
 }
 
 void comp_run(void) {
-    while (g_session_active) {
+    while (session_active) {
         drain_input();
         if (wm_bar_check_dirty()) {
-            comp_damage_rect(0, 0, g_scrnx, COMP_BAR_H);
+            comp_damage_rect(0, 0, scrnx, COMP_BAR_H);
         }
-        if (g_damage_full || g_damage_n > 0) {
+        if (damage_full || damage_n > 0) {
             repaint();
         }
         mtime_sleep(20);

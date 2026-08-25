@@ -1,7 +1,5 @@
-
 #ifndef GUI_CLIENTS_H
 #define GUI_CLIENTS_H
-
 
 void clients_spawn_next(void);
 

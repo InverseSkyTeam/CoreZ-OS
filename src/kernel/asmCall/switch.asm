@@ -1,8 +1,6 @@
 bits 64
 section .text
 
-; void switch_to(uintptr_t* cur_kstack, uintptr_t* next_kstack)
-; 保存当前上下文到 [cur], 从 [next] 恢复。
 global switch_to
 switch_to:
         push    rbp

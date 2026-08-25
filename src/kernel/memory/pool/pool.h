@@ -1,9 +1,8 @@
-
 #ifndef POOL_H
 #define POOL_H
 
-#include <stdint.h>
 #include "../bitmap/bitmap.h"
+#include <stdint.h>
 
 #define PAGE_SIZE 0x1000
 #define MEMORY_BASE 0x100000
@@ -25,25 +24,25 @@ extern struct virtual_addr kernel_vaddr;
 
 void pae_init(void);
 void mm_init(void);
-void* palloc(struct pool* pool);
-void pfree(struct pool* pool, uint32_t phy_addr);
-uint32_t palloc_pages(struct pool* pool, uint32_t cnt);
+void *palloc(struct pool *pool);
+void pfree(struct pool *pool, uint32_t phy_addr);
+uint32_t palloc_pages(struct pool *pool, uint32_t cnt);
 
 #define COW_FLAG (1u << 9)
 
 void page_incr_shared(uint32_t phy_addr);
 void page_free_or_decref(uint32_t phy_addr);
-int  page_is_shared(uint32_t phy_addr);
+int page_is_shared(uint32_t phy_addr);
 
-uint32_t* pte_ptr(uint32_t vaddr);
-uint32_t* pde_ptr(uint32_t vaddr);
+uint32_t *pte_ptr(uint32_t vaddr);
+uint32_t *pde_ptr(uint32_t vaddr);
 void page_table_add(uint32_t vaddr, uint32_t phy_addr);
-void* get_a_page(uint32_t vaddr);
-void* get_kernel_pages(uint32_t pg_cnt);
+void *get_a_page(uint32_t vaddr);
+void *get_kernel_pages(uint32_t pg_cnt);
 
-void* ioremap(uint32_t phy_addr, uint32_t size);
+void *ioremap(uint32_t phy_addr, uint32_t size);
 void free_kernel_page(uint32_t vaddr);
 void free_user_page(uint32_t vaddr);
-uint64_t* phys_to_virt(uint64_t phys);
+uint64_t *phys_to_virt(uint64_t phys);
 
 #endif

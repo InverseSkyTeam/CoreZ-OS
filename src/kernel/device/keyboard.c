@@ -43,22 +43,26 @@ static const char keymap[2][128] = {
      0,   0,    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
      0,   0,    0,    0,   0,   0,   0,   0,   0,   0,   0}};
 
-static uint8_t g_shift = 0;
-static uint8_t g_caps = 0;
-static uint8_t g_ctrl = 0;
-static uint8_t g_alt = 0;
+static uint8_t shift = 0;
+static uint8_t caps = 0;
+static uint8_t ctrl = 0;
+static uint8_t alt = 0;
 
-static kbd_gui_hook_t g_gui_hook = 0;
+static kbd_gui_hook_t gui_hook = 0;
 
-void keyboard_init(void) { ioq_init(&keyboard_ioq); }
+void keyboard_init(void) {
+    ioq_init(&keyboard_ioq);
+}
 
-void keyboard_set_gui_hook(kbd_gui_hook_t hook) { g_gui_hook = hook; }
+void keyboard_set_gui_hook(kbd_gui_hook_t hook) {
+    gui_hook = hook;
+}
 
-char keyboard_translate(uint8_t scancode, int shift) {
+char keyboard_translate(uint8_t scancode, int shifted) {
     if (scancode >= 128)
         return 0;
-    char c = keymap[shift ? 1 : 0][scancode];
-    if (g_caps && c >= 'a' && c <= 'z')
+    char c = keymap[shifted ? 1 : 0][scancode];
+    if (caps && c >= 'a' && c <= 'z')
         c -= 32;
     return c;
 }
@@ -67,30 +71,30 @@ void keyboard_handler(void) {
     uint8_t sc = inb(KEYBOARD_DATA);
 
     if (sc == SC_SHIFT_L_DOWN || sc == SC_SHIFT_R_DOWN) {
-        g_shift = 1;
+        shift = 1;
     } else if (sc == SC_SHIFT_L_UP || sc == SC_SHIFT_R_UP) {
-        g_shift = 0;
+        shift = 0;
     } else if (sc == SC_CAPS_DOWN) {
-        g_caps = !g_caps;
+        caps = !caps;
     } else if (sc == SC_CTRL_L_DOWN) {
-        g_ctrl = 1;
+        ctrl = 1;
     } else if (sc == SC_CTRL_L_UP) {
-        g_ctrl = 0;
+        ctrl = 0;
     } else if (sc == SC_ALT_L_DOWN) {
-        g_alt = 1;
+        alt = 1;
     } else if (sc == SC_ALT_L_UP) {
-        g_alt = 0;
+        alt = 0;
     }
 
-    if (g_gui_hook) {
+    if (gui_hook) {
         uint8_t mods = 0;
-        if (g_shift)
+        if (shift)
             mods |= KBD_MOD_SHIFT;
-        if (g_ctrl)
+        if (ctrl)
             mods |= KBD_MOD_CTRL;
-        if (g_alt)
+        if (alt)
             mods |= KBD_MOD_ALT;
-        g_gui_hook((uint8_t)(sc & 0x7F), !(sc & 0x80), mods);
+        gui_hook((uint8_t)(sc & 0x7F), !(sc & 0x80), mods);
         return;
     }
 
@@ -111,12 +115,12 @@ void keyboard_handler(void) {
         return;
     }
 
-    if (g_ctrl && sc == SC_C_DOWN) {
-        thread_kill_pid(g_foreground_pid);
+    if (ctrl && sc == SC_C_DOWN) {
+        thread_kill_pid(foreground_pid);
         return;
     }
 
-    if (g_ctrl && sc < 0x3b) {
+    if (ctrl && sc < 0x3b) {
         char c = 0;
         if (sc == 0x16)
             c = (char)KBD_CHAR_CTRL_U;
@@ -129,8 +133,8 @@ void keyboard_handler(void) {
         }
     }
 
-    char c = keymap[g_shift ? 1 : 0][sc];
-    if (g_caps && c >= 'a' && c <= 'z')
+    char c = keymap[shift ? 1 : 0][sc];
+    if (caps && c >= 'a' && c <= 'z')
         c -= 32;
 
     if (c && !ioq_full(&keyboard_ioq)) {

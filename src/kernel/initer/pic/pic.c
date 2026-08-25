@@ -4,7 +4,7 @@
 
 #include "../../include/asmFunc.h"
 
-int initPic(void) {
+int pic_init(void) {
     uint8_t a1 = inb(PIC1_DATA);
     uint8_t a2 = inb(PIC2_DATA);
 

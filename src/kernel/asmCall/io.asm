@@ -16,7 +16,7 @@ outb:                           ; void outb(uint16_t port, uint8_t value)
 
 global insw
 insw:                           ; void insw(uint16_t port, void* buf, int words)
-    mov     ecx, edx            ; words 先保存到 ecx, 再改 rdx(否则 dx=port 会覆盖低16位)
+    mov     ecx, edx          
     mov     dx, di
     mov     rdi, rsi
     cld
@@ -25,7 +25,7 @@ insw:                           ; void insw(uint16_t port, void* buf, int words)
 
 global outsw
 outsw:                          ; void outsw(uint16_t port, const void* buf, int words)
-    mov     ecx, edx            ; words 先保存到 ecx, 再改 rdx
+    mov     ecx, edx   
     mov     dx, di
     cld
     rep     outsw

@@ -39,82 +39,82 @@ struct ext2_dirent {
     char name[0];
 } __attribute__((packed));
 
-static struct disk *g_disk = NULL;
-static struct partition *g_part = NULL;
-static uint32_t g_start = 0;
-static uint32_t g_bs = 1024;
-static uint32_t g_sect_per_block = 2;
-static uint32_t g_inodes_per_group = 0;
-static uint32_t g_inode_table_blk = 0;
-static uint32_t g_first_block = 0;
+static struct disk *disk = NULL;
+static struct partition *part = NULL;
+static uint32_t start = 0;
+static uint32_t bs = 1024;
+static uint32_t sect_per_block = 2;
+static uint32_t inodes_per_group = 0;
+static uint32_t inode_table_blk = 0;
+static uint32_t first_block = 0;
 
-static uint32_t g_block_bitmap_blk = 0;
-static uint32_t g_inode_bitmap_blk = 0;
-static uint32_t g_total_blocks = 0;
-static uint32_t g_data_start = 0;
-static uint32_t g_free_blocks = 0;
-static uint32_t g_free_inodes = 0;
+static uint32_t block_bitmap_blk = 0;
+static uint32_t inode_bitmap_blk = 0;
+static uint32_t total_blocks = 0;
+static uint32_t data_start = 0;
+static uint32_t free_blocks = 0;
+static uint32_t free_inodes = 0;
 
 static int ext2_read_block(uint32_t blk, void *buf) {
-    if (g_disk == NULL) {
+    if (disk == NULL) {
         return -1;
     }
-    ide_read(g_disk, g_start + blk * g_sect_per_block, buf, g_sect_per_block);
+    ide_read(disk, start + blk * sect_per_block, buf, sect_per_block);
     return 0;
 }
 
 static int ext2_write_block(uint32_t blk, const void *buf) {
-    if (g_disk == NULL) {
+    if (disk == NULL) {
         return -1;
     }
-    ide_write(g_disk, g_start + blk * g_sect_per_block, (void *)buf,
-              g_sect_per_block);
+    ide_write(disk, start + blk * sect_per_block, (void *)buf, sect_per_block);
     return 0;
 }
 
-struct partition *ext2_partition(void) { return g_part; }
+struct partition *ext2_partition(void) {
+    return part;
+}
 
 int ext2_init(void) {
     struct list_elem *e = partition_list.head.next;
     while (e != &partition_list.tail) {
-        struct partition *part = list_entry(e, struct partition, part_tag);
+        struct partition *p = list_entry(e, struct partition, part_tag);
         uint8_t *buf = (uint8_t *)get_kernel_pages(1);
         if (buf == NULL) {
             return -1;
         }
         memset(buf, 0, 4096);
-        ide_read(part->my_disk, part->start_lba, buf, 4);
+        ide_read(p->my_disk, p->start_lba, buf, 4);
         struct ext2_super *sb = (struct ext2_super *)(buf + 1024);
         if (sb->s_magic == EXT2_SUPER_MAGIC) {
-            g_disk = part->my_disk;
-            g_part = part;
-            g_start = part->start_lba;
-            g_bs = 1024u << sb->s_log_block_size;
-            g_sect_per_block = g_bs / 512u;
-            g_inodes_per_group = sb->s_inodes_per_group;
-            g_first_block = sb->s_first_data_block;
-            g_total_blocks = sb->s_blocks_count;
+            disk = p->my_disk;
+            part = p;
+            start = part->start_lba;
+            bs = 1024u << sb->s_log_block_size;
+            sect_per_block = bs / 512u;
+            inodes_per_group = sb->s_inodes_per_group;
+            first_block = sb->s_first_data_block;
+            total_blocks = sb->s_blocks_count;
             struct ext2_super *sb2 = (struct ext2_super *)buf;
-            g_free_blocks = sb2->s_free_blocks_count;
-            g_free_inodes = sb2->s_free_inodes_count;
+            free_blocks = sb2->s_free_blocks_count;
+            free_inodes = sb2->s_free_inodes_count;
             uint8_t *gb = (uint8_t *)get_kernel_pages(1);
             if (gb == NULL) {
                 free_kernel_page((uint32_t)buf);
                 return -1;
             }
-            ext2_read_block(g_first_block + 1, gb);
-            g_block_bitmap_blk = *(uint32_t *)(gb + 0);
-            g_inode_bitmap_blk = *(uint32_t *)(gb + 4);
-            g_inode_table_blk = *(uint32_t *)(gb + 8);
+            ext2_read_block(first_block + 1, gb);
+            block_bitmap_blk = *(uint32_t *)(gb + 0);
+            inode_bitmap_blk = *(uint32_t *)(gb + 4);
+            inode_table_blk = *(uint32_t *)(gb + 8);
             uint32_t itable_blocks =
-                (g_inodes_per_group * EXT2_INODE_SIZE + g_bs - 1) / g_bs;
-            g_data_start = g_inode_table_blk + itable_blocks;
+                (inodes_per_group * EXT2_INODE_SIZE + bs - 1) / bs;
+            data_start = inode_table_blk + itable_blocks;
             free_kernel_page((uint32_t)gb);
             free_kernel_page((uint32_t)buf);
             kprintf("ext2 mounted on %s, block_size=%d, inodes_per_group=%d, "
                     "data_start=%d\n",
-                    part->name, (int)g_bs, (int)g_inodes_per_group,
-                    (int)g_data_start);
+                    p->name, (int)bs, (int)inodes_per_group, (int)data_start);
             return 0;
         }
         free_kernel_page((uint32_t)buf);
@@ -125,7 +125,7 @@ int ext2_init(void) {
 }
 
 int ext2_read_inode(uint32_t ino, struct inode *out) {
-    if (g_disk == NULL || ino == 0) {
+    if (disk == NULL || ino == 0) {
         return -1;
     }
     uint8_t *buf = (uint8_t *)get_kernel_pages(1);
@@ -133,8 +133,8 @@ int ext2_read_inode(uint32_t ino, struct inode *out) {
         return -1;
     }
     memset(buf, 0, 4096);
-    uint32_t per_block = g_bs / EXT2_INODE_SIZE;
-    uint32_t blk = g_inode_table_blk + (ino - 1) / per_block;
+    uint32_t per_block = bs / EXT2_INODE_SIZE;
+    uint32_t blk = inode_table_blk + (ino - 1) / per_block;
     uint32_t off = ((ino - 1) % per_block) * EXT2_INODE_SIZE;
     ext2_read_block(blk, buf);
     uint8_t *p = buf + off;
@@ -155,10 +155,10 @@ static void ext2_super_flush(void) {
     if (buf == NULL) {
         return;
     }
-    ext2_read_block(g_first_block, buf);
-    *(uint32_t *)(buf + 12) = g_free_blocks;
-    *(uint32_t *)(buf + 16) = g_free_inodes;
-    ext2_write_block(g_first_block, buf);
+    ext2_read_block(first_block, buf);
+    *(uint32_t *)(buf + 12) = free_blocks;
+    *(uint32_t *)(buf + 16) = free_inodes;
+    ext2_write_block(first_block, buf);
     free_kernel_page((uint32_t)buf);
 }
 
@@ -167,22 +167,22 @@ static uint32_t ext2_alloc_block(void) {
     if (buf == NULL) {
         return 0;
     }
-    for (uint32_t bb = 0; bb * g_bs * 8 < g_total_blocks; bb++) {
-        uint32_t bbitblk = g_block_bitmap_blk + bb;
+    for (uint32_t bb = 0; bb * bs * 8 < total_blocks; bb++) {
+        uint32_t bbitblk = block_bitmap_blk + bb;
         memset(buf, 0, 4096);
         ext2_read_block(bbitblk, buf);
-        uint32_t base = bb * g_bs * 8;
-        for (uint32_t i = 0; i < g_bs; i++) {
+        uint32_t base = bb * bs * 8;
+        for (uint32_t i = 0; i < bs; i++) {
             for (uint32_t bit = 0; bit < 8; bit++) {
                 uint32_t blk = base + i * 8 + bit;
-                if (blk < g_data_start || blk >= g_total_blocks) {
+                if (blk < data_start || blk >= total_blocks) {
                     continue;
                 }
                 uint8_t mask = (uint8_t)(0x80u >> bit);
                 if ((buf[i] & mask) == 0) {
                     buf[i] |= mask;
                     ext2_write_block(bbitblk, buf);
-                    g_free_blocks--;
+                    free_blocks--;
                     free_kernel_page((uint32_t)buf);
                     return blk;
                 }
@@ -194,22 +194,22 @@ static uint32_t ext2_alloc_block(void) {
 }
 
 static void ext2_free_block(uint32_t blk) {
-    if (blk == 0 || blk >= g_total_blocks) {
+    if (blk == 0 || blk >= total_blocks) {
         return;
     }
     uint8_t *buf = (uint8_t *)get_kernel_pages(1);
     if (buf == NULL) {
         return;
     }
-    uint32_t bbitblk = g_block_bitmap_blk + (blk >> 3) / g_bs;
-    uint32_t byte = (blk >> 3) % g_bs;
+    uint32_t bbitblk = block_bitmap_blk + (blk >> 3) / bs;
+    uint32_t byte = (blk >> 3) % bs;
     uint8_t mask = (uint8_t)(0x80u >> (blk & 7));
     memset(buf, 0, 4096);
     ext2_read_block(bbitblk, buf);
     if (buf[byte] & mask) {
         buf[byte] &= (uint8_t)~mask;
         ext2_write_block(bbitblk, buf);
-        g_free_blocks++;
+        free_blocks++;
     }
     free_kernel_page((uint32_t)buf);
 }
@@ -220,14 +220,14 @@ static uint32_t ext2_alloc_inode(void) {
         return 0;
     }
     memset(buf, 0, 4096);
-    ext2_read_block(g_inode_bitmap_blk, buf);
-    for (uint32_t i = 1; i <= g_inodes_per_group; i++) {
+    ext2_read_block(inode_bitmap_blk, buf);
+    for (uint32_t i = 1; i <= inodes_per_group; i++) {
         uint32_t byte = (i - 1) >> 3;
         uint8_t mask = (uint8_t)(0x80u >> ((i - 1) & 7));
         if ((buf[byte] & mask) == 0) {
             buf[byte] |= mask;
-            ext2_write_block(g_inode_bitmap_blk, buf);
-            g_free_inodes--;
+            ext2_write_block(inode_bitmap_blk, buf);
+            free_inodes--;
             free_kernel_page((uint32_t)buf);
             return i;
         }
@@ -237,7 +237,7 @@ static uint32_t ext2_alloc_inode(void) {
 }
 
 void ext2_free_inode(uint32_t ino) {
-    if (ino == 0 || ino > g_inodes_per_group) {
+    if (ino == 0 || ino > inodes_per_group) {
         return;
     }
     uint8_t *buf = (uint8_t *)get_kernel_pages(1);
@@ -245,19 +245,19 @@ void ext2_free_inode(uint32_t ino) {
         return;
     }
     memset(buf, 0, 4096);
-    ext2_read_block(g_inode_bitmap_blk, buf);
+    ext2_read_block(inode_bitmap_blk, buf);
     uint32_t byte = (ino - 1) >> 3;
     uint8_t mask = (uint8_t)(0x80u >> ((ino - 1) & 7));
     if (buf[byte] & mask) {
         buf[byte] &= (uint8_t)~mask;
-        ext2_write_block(g_inode_bitmap_blk, buf);
-        g_free_inodes++;
+        ext2_write_block(inode_bitmap_blk, buf);
+        free_inodes++;
     }
     free_kernel_page((uint32_t)buf);
 }
 
 int ext2_write_inode(uint32_t ino, const struct inode *in) {
-    if (g_disk == NULL || ino == 0 || ino > g_inodes_per_group) {
+    if (disk == NULL || ino == 0 || ino > inodes_per_group) {
         return -1;
     }
     uint8_t *buf = (uint8_t *)get_kernel_pages(1);
@@ -265,8 +265,8 @@ int ext2_write_inode(uint32_t ino, const struct inode *in) {
         return -1;
     }
     memset(buf, 0, 4096);
-    uint32_t per_block = g_bs / EXT2_INODE_SIZE;
-    uint32_t blk = g_inode_table_blk + (ino - 1) / per_block;
+    uint32_t per_block = bs / EXT2_INODE_SIZE;
+    uint32_t blk = inode_table_blk + (ino - 1) / per_block;
     uint32_t off = ((ino - 1) % per_block) * EXT2_INODE_SIZE;
     ext2_read_block(blk, buf);
     uint8_t *p = buf + off;
@@ -281,7 +281,7 @@ int ext2_write_inode(uint32_t ino, const struct inode *in) {
 }
 
 static uint32_t ext2_ensure_block(struct inode *ino, uint32_t fblk) {
-    uint32_t addrs = g_bs / 4u;
+    uint32_t addrs = bs / 4u;
     if (fblk < 12) {
         if (ino->i_block[fblk] == 0) {
             ino->i_block[fblk] = ext2_alloc_block();
@@ -365,7 +365,7 @@ static uint32_t ext2_ensure_block(struct inode *ino, uint32_t fblk) {
 
 int ext2_write_to_inode(struct inode *ino, uint32_t off, const void *buf,
                         uint32_t count) {
-    if (g_disk == NULL || ino == 0 || ino->i_no == 0) {
+    if (disk == NULL || ino == 0 || ino->i_no == 0) {
         return 0;
     }
     uint8_t *blk = (uint8_t *)get_kernel_pages(1);
@@ -374,15 +374,15 @@ int ext2_write_to_inode(struct inode *ino, uint32_t off, const void *buf,
     }
     uint32_t done = 0;
     while (done < count) {
-        uint32_t fblk = (off + done) / g_bs;
-        uint32_t within = (off + done) % g_bs;
+        uint32_t fblk = (off + done) / bs;
+        uint32_t within = (off + done) % bs;
         uint32_t addr = ext2_ensure_block((struct inode *)ino, fblk);
         if (addr == 0) {
             break;
         }
         memset(blk, 0, 4096);
         ext2_read_block(addr, blk);
-        uint32_t chunk = g_bs - within;
+        uint32_t chunk = bs - within;
         if (chunk > count - done) {
             chunk = count - done;
         }
@@ -401,7 +401,7 @@ int ext2_write_to_inode(struct inode *ino, uint32_t off, const void *buf,
 }
 
 void ext2_truncate_inode(struct inode *ino) {
-    uint32_t addrs = g_bs / 4u;
+    uint32_t addrs = bs / 4u;
     uint8_t *buf = (uint8_t *)get_kernel_pages(1);
     if (buf == NULL) {
         return;
@@ -489,7 +489,7 @@ int ext2_add_entry(struct inode *dino, uint32_t ino, const char *name,
         return -1;
     }
 
-    for (uint32_t fblk = 0; fblk * g_bs < dino->i_size; fblk++) {
+    for (uint32_t fblk = 0; fblk * bs < dino->i_size; fblk++) {
         uint32_t addr = 0;
         if (ext2_map_block((struct inode *)dino, fblk, &addr)) {
             break;
@@ -499,13 +499,13 @@ int ext2_add_entry(struct inode *dino, uint32_t ino, const char *name,
         uint32_t off = 0;
         uint32_t target = 0xFFFFFFFFu;
         uint32_t slot_rec = 0;
-        while (off < g_bs) {
+        while (off < bs) {
             struct ext2_dirent *de = (struct ext2_dirent *)(blk + off);
             uint32_t rl = de->rec_len;
             if (rl < 8u) {
-                if (g_bs - off >= need) {
+                if (bs - off >= need) {
                     target = off;
-                    slot_rec = g_bs - off;
+                    slot_rec = bs - off;
                 }
                 break;
             }
@@ -529,7 +529,7 @@ int ext2_add_entry(struct inode *dino, uint32_t ino, const char *name,
         }
     }
 
-    uint32_t nfblk = dino->i_size / g_bs;
+    uint32_t nfblk = dino->i_size / bs;
     uint32_t naddr = ext2_ensure_block((struct inode *)dino, nfblk);
     if (naddr == 0) {
         free_kernel_page((uint32_t)blk);
@@ -538,12 +538,12 @@ int ext2_add_entry(struct inode *dino, uint32_t ino, const char *name,
     memset(blk, 0, 4096);
     struct ext2_dirent *de = (struct ext2_dirent *)blk;
     de->inode = ino;
-    de->rec_len = (uint16_t)g_bs;
+    de->rec_len = (uint16_t)bs;
     de->name_len = (uint8_t)nl;
     de->file_type = is_dir ? (uint8_t)EXT2_DT_DIR : 1u;
     memcpy(de->name, name, nl);
     ext2_write_block(naddr, blk);
-    dino->i_size += g_bs;
+    dino->i_size += bs;
     ext2_write_inode(dino->i_no, (struct inode *)dino);
     free_kernel_page((uint32_t)blk);
     return 0;
@@ -558,7 +558,7 @@ int ext2_remove_entry(struct inode *dino, const char *name) {
     if (blk == NULL) {
         return -1;
     }
-    for (uint32_t fblk = 0; fblk * g_bs < dino->i_size; fblk++) {
+    for (uint32_t fblk = 0; fblk * bs < dino->i_size; fblk++) {
         uint32_t addr = 0;
         if (ext2_map_block((struct inode *)dino, fblk, &addr)) {
             break;
@@ -566,7 +566,7 @@ int ext2_remove_entry(struct inode *dino, const char *name) {
         memset(blk, 0, 4096);
         ext2_read_block(addr, blk);
         uint32_t off = 0;
-        while (off < g_bs) {
+        while (off < bs) {
             struct ext2_dirent *de = (struct ext2_dirent *)(blk + off);
             uint32_t rl = de->rec_len;
             if (rl < 8u) {
@@ -590,7 +590,7 @@ int ext2_remove_entry(struct inode *dino, const char *name) {
 
 static int ext2_map_block(const struct inode *ino, uint32_t fblk,
                           uint32_t *out) {
-    uint32_t addrs = g_bs / 4u;
+    uint32_t addrs = bs / 4u;
     if (fblk < 12) {
         if (ino->i_block[fblk] == 0) {
             return -1;
@@ -649,15 +649,15 @@ int ext2_read_from_inode(const struct inode *ino, uint32_t off, void *buf,
     }
     uint32_t done = 0;
     while (done < count) {
-        uint32_t fblk = (off + done) / g_bs;
-        uint32_t within = (off + done) % g_bs;
+        uint32_t fblk = (off + done) / bs;
+        uint32_t within = (off + done) % bs;
         uint32_t addr = 0;
         if (ext2_map_block(ino, fblk, &addr)) {
             break;
         }
         memset(blk, 0, 4096);
         ext2_read_block(addr, blk);
-        uint32_t chunk = g_bs - within;
+        uint32_t chunk = bs - within;
         if (chunk > count - done) {
             chunk = count - done;
         }
@@ -671,10 +671,10 @@ int ext2_read_from_inode(const struct inode *ino, uint32_t off, void *buf,
 int ext2_dir_next(const struct inode *dino, uint32_t *pos,
                   struct dir_entry *out) {
     while (*pos < dino->i_size) {
-        uint32_t fblk = *pos / g_bs;
+        uint32_t fblk = *pos / bs;
         uint32_t addr = 0;
         if (ext2_map_block(dino, fblk, &addr)) {
-            *pos = (fblk + 1) * g_bs;
+            *pos = (fblk + 1) * bs;
             continue;
         }
         uint8_t *blk = (uint8_t *)get_kernel_pages(1);
@@ -684,13 +684,13 @@ int ext2_dir_next(const struct inode *dino, uint32_t *pos,
         memset(blk, 0, 4096);
         ext2_read_block(addr, blk);
         uint32_t off = 0;
-        while (off < g_bs) {
+        while (off < bs) {
             struct ext2_dirent *de = (struct ext2_dirent *)(blk + off);
             uint32_t rec_len = de->rec_len;
             if (rec_len < 8) {
                 break;
             }
-            uint32_t abs = fblk * g_bs + off;
+            uint32_t abs = fblk * bs + off;
             if (de->inode != 0 && de->name_len > 0 && de->name_len < 255 &&
                 abs >= *pos) {
                 uint32_t nl = de->name_len;
@@ -709,7 +709,7 @@ int ext2_dir_next(const struct inode *dino, uint32_t *pos,
             off += rec_len;
         }
         free_kernel_page((uint32_t)blk);
-        *pos = (fblk + 1) * g_bs;
+        *pos = (fblk + 1) * bs;
     }
     return -1;
 }
@@ -729,7 +729,7 @@ static int ext2_find_in_dir(const struct inode *dino, const char *name,
 }
 
 int ext2_lookup(const char *path, uint32_t *ino, int *is_dir) {
-    if (g_disk == NULL || path == NULL || path[0] != '/') {
+    if (disk == NULL || path == NULL || path[0] != '/') {
         return -1;
     }
     *ino = 2;

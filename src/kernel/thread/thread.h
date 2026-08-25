@@ -1,11 +1,10 @@
-
 #ifndef THREAD_H
 #define THREAD_H
-#include <stdint.h>
+#include "../include/signal.h"
 #include "../lib/list/list.h"
 #include "../memory/pool/pool.h"
-#include "../include/signal.h"
 #include "./percpu.h"
+#include <stdint.h>
 #define THREAD_STACK_SIZE 0x4000
 #define MAX_TASKS 64
 #define STACK_MAGIC 0x19860726
@@ -20,7 +19,7 @@ enum task_status {
     TASK_DIED,
     TASK_STOPPED
 };
-typedef void (*thread_func)(void*);
+typedef void (*thread_func)(void *);
 
 struct thread_stack {
     uint64_t rflags;
@@ -33,7 +32,7 @@ struct thread_stack {
     void (*rip)(void);
 };
 struct task_struct {
-    uint64_t* self_kstack;
+    uint64_t *self_kstack;
     enum task_status status;
     uint32_t pid;
     char name[16];
@@ -57,35 +56,37 @@ struct task_struct {
     uint32_t fd_table[MAX_FILES_OPEN_PER_PROC];
     uint32_t tls_base;
     uint32_t tls_selector;
-    int32_t  errno;
+    int32_t errno;
     uint32_t compat;
     uint32_t stack_magic;
 };
-extern struct task_struct* idle_thread;
-extern struct list g_thread_all_list;
-extern struct list g_ready_list;
-extern uint32_t g_foreground_pid;
-extern uint32_t g_init_pid;
+extern struct task_struct *idle_thread;
+extern struct list thread_all_list;
+extern struct list ready_list;
+extern uint32_t foreground_pid;
+extern uint32_t init_pid;
 void thread_init(void);
-void kernel_thread(char* name, uint8_t priority, thread_func function, void* arg);
-struct task_struct* thread_create(char* name, uint8_t priority, thread_func function, void* arg);
+void kernel_thread(char *name, uint8_t priority, thread_func function,
+                   void *arg);
+struct task_struct *thread_create(char *name, uint8_t priority,
+                                  thread_func function, void *arg);
 void schedule(void);
-void switch_to(uint64_t** cur_kstack, uint64_t** next_kstack);
+void switch_to(uint64_t **cur_kstack, uint64_t **next_kstack);
 void kernel_thread_entry(void);
 void thread_block(void);
-void thread_unblock(struct task_struct* t);
+void thread_unblock(struct task_struct *t);
 void thread_yield(void);
 void thread_block_with_status(enum task_status status);
-struct task_struct* pid2thread(int32_t pid);
-void thread_exit(struct task_struct* thread_over, int need_schedule);
-typedef int (*thread_all_action)(struct task_struct*, void*);
-int thread_traverse_all(thread_all_action action, void* arg);
-struct task_struct* thread_alloc_slot(const char* name, uint8_t priority);
-void thread_ready(struct task_struct* t);
+struct task_struct *pid2thread(int32_t pid);
+void thread_exit(struct task_struct *thread_over, int need_schedule);
+typedef int (*thread_all_action)(struct task_struct *, void *);
+int thread_traverse_all(thread_all_action action, void *arg);
+struct task_struct *thread_alloc_slot(const char *name, uint8_t priority);
+void thread_ready(struct task_struct *t);
 void thread_exit_current(void);
 void thread_kill_pid(uint32_t pid);
 int thread_is_died(uint32_t pid);
-typedef void (*fork_continuation)(void* arg, uint32_t child_pid, int is_child);
-int thread_fork_with_cb(const char* name, uint8_t priority,
-                        fork_continuation cb, void* arg);
+typedef void (*fork_continuation)(void *arg, uint32_t child_pid, int is_child);
+int thread_fork_with_cb(const char *name, uint8_t priority,
+                        fork_continuation cb, void *arg);
 #endif

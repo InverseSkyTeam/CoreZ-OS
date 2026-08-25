@@ -12,9 +12,13 @@ void __lc_tls_init(void) {
     __asm__ volatile("mov %w0, %%gs" : : "r"((uint16_t)LC_TLS_SELECTOR));
 }
 
-int *__lc_errno_ptr(void) { return (int *)__lc_tls_block; }
+int *__lc_errno_ptr(void) {
+    return (int *)__lc_tls_block;
+}
 
-long lc_getpid(void) { return (long)__lc_syscall6(LC_PID, 0, 0, 0, 0, 0, 0); }
+long lc_getpid(void) {
+    return (long)__lc_syscall6(LC_PID, 0, 0, 0, 0, 0, 0);
+}
 
 long lc_write(int fd, const void *buf, uint32_t n) {
     return (long)__lc_syscall6(LC_WRITE, (uint64_t)fd, (uintptr_t)buf,
@@ -77,9 +81,13 @@ int lc_strcmp(const char *a, const char *b) {
     return (int)(unsigned char)*a - (int)(unsigned char)*b;
 }
 
-void lc_puts(const char *s) { lc_write(1, s, lc_strlen(s)); }
+void lc_puts(const char *s) {
+    lc_write(1, s, lc_strlen(s));
+}
 
-void lc_putc(char c) { (void)lc_write(1, &c, 1); }
+void lc_putc(char c) {
+    (void)lc_write(1, &c, 1);
+}
 
 void lc_putuint(uint32_t v) {
     char buf[12];

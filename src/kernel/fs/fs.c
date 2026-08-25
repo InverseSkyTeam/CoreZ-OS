@@ -277,8 +277,12 @@ int32_t sys_lseek(int32_t fd, int32_t offset, uint8_t whence) {
     pf->fd_pos = (uint32_t)new_pos;
     return (int32_t)pf->fd_pos;
 }
-int32_t block_bitmap_alloc(struct partition *part) { return -1; }
-int32_t inode_bitmap_alloc(struct partition *part) { return -1; }
+int32_t block_bitmap_alloc(struct partition *part) {
+    return -1;
+}
+int32_t inode_bitmap_alloc(struct partition *part) {
+    return -1;
+}
 void block_bitmap_free(struct partition *part, uint32_t lba) {}
 void inode_bitmap_free(struct partition *part, uint32_t inode_no) {}
 int sys_unlink(const char *pathname) {
@@ -348,8 +352,12 @@ int32_t sys_closedir(struct dir *dir) {
     }
     return ret;
 }
-struct dir_entry *sys_readdir(struct dir *dir) { return dir_read(dir); }
-void sys_rewinddir(struct dir *dir) { dir->dir_pos = 0; }
+struct dir_entry *sys_readdir(struct dir *dir) {
+    return dir_read(dir);
+}
+void sys_rewinddir(struct dir *dir) {
+    dir->dir_pos = 0;
+}
 int32_t sys_rmdir(const char *pathname) {
     if (pathname == NULL) {
         return -1;

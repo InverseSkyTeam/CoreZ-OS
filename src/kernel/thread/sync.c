@@ -3,7 +3,9 @@
 #include "../include/assert.h"
 #include "../initer/io/io.h"
 #include "./thread.h"
-void spinlock_init(struct spinlock *s) { s->locked = 0; }
+void spinlock_init(struct spinlock *s) {
+    s->locked = 0;
+}
 void spinlock_acquire(struct spinlock *s) {
     while (asm_xchg(&s->locked, 1) != 0) {
         while (s->locked != 0) {

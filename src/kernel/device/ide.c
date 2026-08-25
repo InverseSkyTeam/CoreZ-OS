@@ -73,7 +73,7 @@ _Static_assert(offsetof(struct boot_sector, partition_table) == 446,
                "partition_table must start at offset 446 in boot_sector");
 
 static void ide_panic(const char *msg) {
-    setTextColor(12);
+    set_text_color(12);
     kprintf("IDE PANIC: %s\n", msg);
     asm_cli();
     for (;;) {

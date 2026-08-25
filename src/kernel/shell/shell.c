@@ -24,16 +24,18 @@ static char cwd_cache[64] = {0};
 char *argv[MAX_ARG_NR];
 static int32_t argc = -1;
 
-void print_prompt(void) { printf("[nitian@nitian-os %s]$ ", cwd_cache); }
+void print_prompt(void) {
+    printf("[nitian@nitian-os %s]$ ", cwd_cache);
+}
 
 static void shell_erase(void) {
-    int x = getCursorX();
-    int y = getCursorY();
+    int x = get_cursor_x();
+    int y = get_cursor_y();
     if (x <= 0)
         return;
-    setCursor(x - 8, y);
+    set_cursor(x - 8, y);
     console_putc(' ');
-    setCursor(x - 8, y);
+    set_cursor(x - 8, y);
 }
 
 static void readline(char *buf, int32_t count) {
@@ -133,10 +135,10 @@ static void cmd_execute(int32_t argc, char **argv) {
         }
         int32_t pid = fork();
         if (pid > 0) {
-            g_foreground_pid = (uint32_t)pid;
+            foreground_pid = (uint32_t)pid;
             int32_t status = 0;
             int32_t child_pid = wait(&status);
-            g_foreground_pid = (uint32_t)-1;
+            foreground_pid = (uint32_t)-1;
             printf("\n[prog %d exited, status %d]\n", (int)child_pid,
                    (int)status);
         } else if (pid == 0) {

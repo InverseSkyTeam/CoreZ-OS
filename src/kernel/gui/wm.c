@@ -28,15 +28,17 @@ struct workspace {
     enum layout_kind layout;
 };
 
-static struct workspace g_ws[WL_MAX_WS];
-static int g_cur_ws = 0;
-static int g_bar_dirty = 1;
-static uint32_t g_bar_clock = 0;
+static struct workspace workspaces[WL_MAX_WS];
+static int cur_ws = 0;
+static int bar_dirty = 1;
+static uint32_t bar_clock = 0;
 
-static struct wl_surface *g_drag = 0;
-static int g_drag_dx = 0, g_drag_dy = 0;
+static struct wl_surface *drag = 0;
+static int drag_dx = 0, drag_dy = 0;
 
-static void bar_invalidate(void) { g_bar_dirty = 1; }
+static void bar_invalidate(void) {
+    bar_dirty = 1;
+}
 
 static int ws_index_of(struct workspace *ws, struct wl_surface *s) {
     for (int i = 0; i < ws->n; i++)
@@ -47,29 +49,31 @@ static int ws_index_of(struct workspace *ws, struct wl_surface *s) {
 
 void wm_init_state(void) {
     for (int i = 0; i < WL_MAX_WS; i++) {
-        g_ws[i].n = 0;
-        g_ws[i].tcount = 0;
-        g_ws[i].focus = -1;
-        g_ws[i].mfact = 550;
-        g_ws[i].layout = LAYOUT_MASTER_STACK;
+        workspaces[i].n = 0;
+        workspaces[i].tcount = 0;
+        workspaces[i].focus = -1;
+        workspaces[i].mfact = 550;
+        workspaces[i].layout = LAYOUT_MASTER_STACK;
     }
-    g_cur_ws = 0;
-    g_drag = 0;
-    g_bar_dirty = 1;
-    g_bar_clock = 0;
+    cur_ws = 0;
+    drag = 0;
+    bar_dirty = 1;
+    bar_clock = 0;
 }
 
-int wm_current_ws(void) { return g_cur_ws; }
+int wm_current_ws(void) {
+    return cur_ws;
+}
 
 struct wl_surface *wm_focused_surface(void) {
-    struct workspace *ws = &g_ws[g_cur_ws];
+    struct workspace *ws = &workspaces[cur_ws];
     if (ws->focus < 0 || ws->focus >= ws->n)
         return 0;
     return ws->order[ws->focus];
 }
 
 static void arrange(void) {
-    struct workspace *ws = &g_ws[g_cur_ws];
+    struct workspace *ws = &workspaces[cur_ws];
     struct gfx_rect area = {0, COMP_BAR_H, comp_screen_w(),
                             comp_screen_h() - COMP_BAR_H};
 
@@ -104,10 +108,10 @@ static void arrange(void) {
 }
 
 void wm_manage(struct wl_surface *s) {
-    struct workspace *ws = &g_ws[g_cur_ws];
+    struct workspace *ws = &workspaces[cur_ws];
     if (ws->n >= WL_MAX_SURFACES)
         return;
-    s->ws = g_cur_ws;
+    s->ws = cur_ws;
     s->floating = 0;
 
     for (int i = ws->n; i > ws->tcount; i--)
@@ -121,13 +125,13 @@ void wm_manage(struct wl_surface *s) {
 }
 
 void wm_unmanage(struct wl_surface *s) {
-    struct workspace *ws = &g_ws[s->ws];
+    struct workspace *ws = &workspaces[s->ws];
     int idx = ws_index_of(ws, s);
     if (idx < 0)
         return;
     comp_damage_surface(s);
-    if (g_drag == s)
-        g_drag = 0;
+    if (drag == s)
+        drag = 0;
     for (int i = idx; i < ws->n - 1; i++)
         ws->order[i] = ws->order[i + 1];
     ws->n--;
@@ -140,12 +144,12 @@ void wm_unmanage(struct wl_surface *s) {
     else if (idx < ws->focus)
         ws->focus--;
     comp_log("wm: window closed");
-    if (s->ws == g_cur_ws)
+    if (s->ws == cur_ws)
         arrange();
 }
 
 static void focus_index(int idx) {
-    struct workspace *ws = &g_ws[g_cur_ws];
+    struct workspace *ws = &workspaces[cur_ws];
     if (ws->n == 0)
         return;
     if (idx < 0)
@@ -163,26 +167,26 @@ static void focus_index(int idx) {
 }
 
 static void ws_switch(int target) {
-    if (target == g_cur_ws || target < 0 || target >= WL_MAX_WS)
+    if (target == cur_ws || target < 0 || target >= WL_MAX_WS)
         return;
 
-    struct workspace *old = &g_ws[g_cur_ws];
+    struct workspace *old = &workspaces[cur_ws];
     for (int i = 0; i < old->n; i++)
         comp_damage_surface(old->order[i]);
-    g_cur_ws = target;
+    cur_ws = target;
     comp_damage_rect(0, 0, comp_screen_w(), comp_screen_h());
     comp_log("wm: switch workspace");
     arrange();
 }
 
 static void move_focused_to(int target) {
-    if (target == g_cur_ws || target < 0 || target >= WL_MAX_WS)
+    if (target == cur_ws || target < 0 || target >= WL_MAX_WS)
         return;
-    struct workspace *cur = &g_ws[g_cur_ws];
+    struct workspace *cur = &workspaces[cur_ws];
     struct wl_surface *s = wm_focused_surface();
     if (!s)
         return;
-    struct workspace *dst = &g_ws[target];
+    struct workspace *dst = &workspaces[target];
     if (dst->n >= WL_MAX_SURFACES)
         return;
 
@@ -214,7 +218,7 @@ static void move_focused_to(int target) {
 }
 
 static void toggle_float(void) {
-    struct workspace *ws = &g_ws[g_cur_ws];
+    struct workspace *ws = &workspaces[cur_ws];
     struct wl_surface *s = wm_focused_surface();
     if (!s)
         return;
@@ -246,7 +250,7 @@ static void toggle_float(void) {
 }
 
 static void swap_focused(int dir) {
-    struct workspace *ws = &g_ws[g_cur_ws];
+    struct workspace *ws = &workspaces[cur_ws];
     int idx = ws->focus;
     if (idx < 0 || idx >= ws->tcount)
         return;
@@ -293,29 +297,29 @@ void wm_handle_key(uint8_t scancode, int pressed, uint8_t mods) {
         if (shift)
             swap_focused(1);
         else
-            focus_index(g_ws[g_cur_ws].focus + 1);
+            focus_index(workspaces[cur_ws].focus + 1);
         break;
     case SC_K:
         if (shift)
             swap_focused(-1);
         else
-            focus_index(g_ws[g_cur_ws].focus - 1);
+            focus_index(workspaces[cur_ws].focus - 1);
         break;
     case SC_H:
-        g_ws[g_cur_ws].mfact -= 50;
-        if (g_ws[g_cur_ws].mfact < 100)
-            g_ws[g_cur_ws].mfact = 100;
+        workspaces[cur_ws].mfact -= 50;
+        if (workspaces[cur_ws].mfact < 100)
+            workspaces[cur_ws].mfact = 100;
         arrange();
         break;
     case SC_L:
-        g_ws[g_cur_ws].mfact += 50;
-        if (g_ws[g_cur_ws].mfact > 900)
-            g_ws[g_cur_ws].mfact = 900;
+        workspaces[cur_ws].mfact += 50;
+        if (workspaces[cur_ws].mfact > 900)
+            workspaces[cur_ws].mfact = 900;
         arrange();
         break;
     case SC_SPACE:
-        g_ws[g_cur_ws].layout =
-            (enum layout_kind)((g_ws[g_cur_ws].layout + 1) % LAYOUT_COUNT);
+        workspaces[cur_ws].layout =
+            (enum layout_kind)((workspaces[cur_ws].layout + 1) % LAYOUT_COUNT);
         comp_log("wm: layout changed");
         arrange();
         break;
@@ -341,7 +345,7 @@ void wm_handle_key(uint8_t scancode, int pressed, uint8_t mods) {
 }
 
 static struct wl_surface *hit_test(int x, int y, int *on_title, int *on_close) {
-    struct workspace *ws = &g_ws[g_cur_ws];
+    struct workspace *ws = &workspaces[cur_ws];
 
     for (int i = ws->n - 1; i >= 0; i--) {
         struct wl_surface *s = ws->order[i];
@@ -366,10 +370,10 @@ void wm_handle_button(int x, int y, uint8_t buttons, uint8_t edge) {
             int on_title = 0, on_close = 0;
             struct wl_surface *s = hit_test(x, y, &on_title, &on_close);
             if (!s) {
-                g_drag = 0;
+                drag = 0;
                 return;
             }
-            struct workspace *ws = &g_ws[g_cur_ws];
+            struct workspace *ws = &workspaces[cur_ws];
             int idx = ws_index_of(ws, s);
             if (idx >= 0)
                 focus_index(idx);
@@ -388,24 +392,24 @@ void wm_handle_button(int x, int y, uint8_t buttons, uint8_t edge) {
                                      comp_screen_h() - COMP_BAR_H);
                 }
                 if (on_title) {
-                    g_drag = s;
-                    g_drag_dx = x - s->x;
-                    g_drag_dy = y - s->y;
+                    drag = s;
+                    drag_dx = x - s->x;
+                    drag_dy = y - s->y;
                 }
             }
         } else {
-            g_drag = 0;
+            drag = 0;
         }
     }
 }
 
 void wm_handle_motion(int x, int y) {
-    if (!g_drag)
+    if (!drag)
         return;
-    struct wl_surface *s = g_drag;
+    struct wl_surface *s = drag;
     comp_damage_surface(s);
-    s->x = x - g_drag_dx;
-    s->y = y - g_drag_dy;
+    s->x = x - drag_dx;
+    s->y = y - drag_dy;
     if (s->x < -s->w + 32)
         s->x = -s->w + 32;
     if (s->x > comp_screen_w() - 32)
@@ -418,7 +422,7 @@ void wm_handle_motion(int x, int y) {
 }
 
 int wm_collect_visible(struct wl_surface **out, int max) {
-    struct workspace *ws = &g_ws[g_cur_ws];
+    struct workspace *ws = &workspaces[cur_ws];
     int n = ws->n < max ? ws->n : max;
     for (int i = 0; i < n; i++)
         out[i] = ws->order[i];
@@ -426,12 +430,12 @@ int wm_collect_visible(struct wl_surface **out, int max) {
 }
 
 int wm_bar_check_dirty(void) {
-    if (g_tick / PIT_HZ != g_bar_clock) {
-        g_bar_clock = g_tick / PIT_HZ;
-        g_bar_dirty = 1;
+    if (tick / PIT_HZ != bar_clock) {
+        bar_clock = tick / PIT_HZ;
+        bar_dirty = 1;
     }
-    int d = g_bar_dirty;
-    g_bar_dirty = 0;
+    int d = bar_dirty;
+    bar_dirty = 0;
     return d;
 }
 
@@ -462,8 +466,8 @@ void wm_draw_bar(struct gfx_canvas *c, struct gfx_rect *clip) {
 
     int x = 8;
     for (int i = 0; i < WL_MAX_WS; i++) {
-        int cur = (i == g_cur_ws);
-        int occ = g_ws[i].n > 0;
+        int cur = (i == cur_ws);
+        int occ = workspaces[i].n > 0;
         int px = x, py = 3, pw = 24, ph = 16;
         uint8_t pill = cur ? TH_ACCENT : (occ ? gfx_gray(6) : gfx_gray(4));
         gfx_fill_round(c, px, py, pw, ph, 7, pill);
@@ -473,7 +477,8 @@ void wm_draw_bar(struct gfx_canvas *c, struct gfx_rect *clip) {
         x += pw + 6;
     }
 
-    gfx_text(c, x + 6, 3, layout_name(g_ws[g_cur_ws].layout), TH_ACCENT, -1);
+    gfx_text(c, x + 6, 3, layout_name(workspaces[cur_ws].layout), TH_ACCENT,
+             -1);
 
     struct wl_surface *f = wm_focused_surface();
     if (f)
@@ -481,7 +486,7 @@ void wm_draw_bar(struct gfx_canvas *c, struct gfx_rect *clip) {
 
     char right[48];
     char num[12];
-    bar_itoa(g_tick / PIT_HZ, num);
+    bar_itoa(tick / PIT_HZ, num);
     right[0] = 0;
     strcat(right, "up ");
     strcat(right, num);

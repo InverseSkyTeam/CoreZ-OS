@@ -71,7 +71,9 @@ static inline uint64_t syscall6(uint64_t nr, uint64_t arg1, uint64_t arg2,
     return retval;
 }
 
-uint32_t getpid(void) { return syscall0(SYS_GETPID); }
+uint32_t getpid(void) {
+    return syscall0(SYS_GETPID);
+}
 int32_t write(int32_t fd, const void *buf, uint32_t count) {
     return (int32_t)syscall3(SYS_WRITE, (uint64_t)fd, (uint64_t)(uintptr_t)buf,
                              count);
@@ -80,14 +82,22 @@ int32_t read(int32_t fd, void *buf, uint32_t count) {
     return (int32_t)syscall3(SYS_READ, (uint64_t)fd, (uint64_t)(uintptr_t)buf,
                              count);
 }
-void putchar(char c) { write(1, &c, 1); }
-void clear(void) { syscall0(SYS_CLEAR); }
-int32_t fork(void) { return (int32_t)syscall0(SYS_FORK); }
+void putchar(char c) {
+    write(1, &c, 1);
+}
+void clear(void) {
+    syscall0(SYS_CLEAR);
+}
+int32_t fork(void) {
+    return (int32_t)syscall0(SYS_FORK);
+}
 int32_t open(const char *pathname, uint8_t flag) {
     return (int32_t)syscall2(SYS_OPEN, (uint64_t)(uintptr_t)pathname,
                              (uint64_t)flag);
 }
-int32_t close(int32_t fd) { return (int32_t)syscall1(SYS_CLOSE, (uint64_t)fd); }
+int32_t close(int32_t fd) {
+    return (int32_t)syscall1(SYS_CLOSE, (uint64_t)fd);
+}
 int32_t lseek(int32_t fd, int32_t offset, uint8_t whence) {
     return (int32_t)syscall3(SYS_LSEEK, (uint64_t)fd, (uint64_t)offset,
                              (uint64_t)whence);
@@ -124,7 +134,9 @@ struct dir_entry *readdir(struct dir *dir) {
 void rewinddir(struct dir *dir) {
     syscall1(SYS_REWINDDIR, (uint64_t)(uintptr_t)dir);
 }
-void ps(void) { syscall0(SYS_PS); }
+void ps(void) {
+    syscall0(SYS_PS);
+}
 int32_t execv(const char *path, const char *argv[]) {
     return (int32_t)syscall2(SYS_EXECV, (uint64_t)(uintptr_t)path,
                              (uint64_t)(uintptr_t)argv);
@@ -143,7 +155,9 @@ int32_t pipe(int32_t pipefd[2]) {
 void fd_redirect(uint32_t old_local_fd, uint32_t new_local_fd) {
     syscall2(SYS_FD_REDIRECT, (uint64_t)old_local_fd, (uint64_t)new_local_fd);
 }
-int32_t gui_start(void) { return (int32_t)syscall0(SYS_GUI); }
+int32_t gui_start(void) {
+    return (int32_t)syscall0(SYS_GUI);
+}
 void *brk(void *addr) {
     return (void *)syscall1(SYS_BRK, (uint64_t)(uintptr_t)addr);
 }
@@ -243,10 +257,18 @@ int32_t gettimeofday(struct timeval *tv, void *tz) {
 int32_t nanosleep(const struct timespec *req, struct timespec *rem) {
     return (int32_t)syscall2(SYS_NANOSLEEP, (uint32_t)req, (uint32_t)rem);
 }
-uint32_t getuid(void) { return syscall0(SYS_GETUID); }
-uint32_t getgid(void) { return syscall0(SYS_GETGID); }
-uint32_t geteuid(void) { return syscall0(SYS_GETEUID); }
-uint32_t getegid(void) { return syscall0(SYS_GETEGID); }
+uint32_t getuid(void) {
+    return syscall0(SYS_GETUID);
+}
+uint32_t getgid(void) {
+    return syscall0(SYS_GETGID);
+}
+uint32_t geteuid(void) {
+    return syscall0(SYS_GETEUID);
+}
+uint32_t getegid(void) {
+    return syscall0(SYS_GETEGID);
+}
 void exit_group(int32_t status) {
     syscall1(SYS_EXIT_GROUP, (uint32_t)status);
     for (;;) {

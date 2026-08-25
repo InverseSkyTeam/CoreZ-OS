@@ -22,7 +22,7 @@ struct virtual_addr kernel_vaddr;
 #define FRAME_IDX(phy) (((phy) - MEMORY_BASE) / PAGE_SIZE)
 #define FRAME_IDX_MAX ((MAX_PHYS_MEM - MEMORY_BASE) / PAGE_SIZE)
 static uint8_t frame_owner[FRAME_IDX_MAX];
-static uint64_t g_kernel_pml4;
+static uint64_t kernel_pml4;
 
 #define KERNEL_VADDR_START 0x40400000
 
@@ -103,7 +103,7 @@ void mm_init(void) {
     kernel_vaddr.vaddr_bitmap.btmp_bytes_len = sizeof(kernel_vaddr_bitmap);
     bitmap_init(&kernel_vaddr.vaddr_bitmap);
 
-    g_kernel_pml4 = asm_read_cr3();
+    kernel_pml4 = asm_read_cr3();
     lock_init(&mem_lock);
 }
 
@@ -191,23 +191,23 @@ static uint64_t *pte_make(uint64_t pml4_phys, uint64_t vaddr) {
     return &pt[PT_INDEX(vaddr)];
 }
 
-static uint64_t g_pte_zero, g_pde_zero;
+static uint64_t pte_zero, pde_zero;
 
 uint32_t *pde_ptr(uint32_t vaddr) {
     uint64_t pml4_phys = cur_pml4();
     uint64_t *pml4 = (uint64_t *)VIRT_OF(pml4_phys);
     uint64_t e = pml4[PML4_INDEX(vaddr)];
     if (!(e & 1))
-        return (uint32_t *)&g_pde_zero;
+        return (uint32_t *)&pde_zero;
     uint64_t *pdp = (uint64_t *)VIRT_OF(PTE_PHYS(e));
     e = pdp[PDPT_INDEX(vaddr)];
-    g_pde_zero = e;
-    return (uint32_t *)&g_pde_zero;
+    pde_zero = e;
+    return (uint32_t *)&pde_zero;
 }
 
 uint32_t *pte_ptr(uint32_t vaddr) {
     uint64_t *pte = pte_query(cur_pml4(), (uint64_t)vaddr);
-    return pte ? (uint32_t *)pte : (uint32_t *)&g_pte_zero;
+    return pte ? (uint32_t *)pte : (uint32_t *)&pte_zero;
 }
 
 static void page_table_add_raw(uint32_t vaddr, uint32_t phy_addr) {
@@ -219,7 +219,7 @@ static void page_table_add_raw(uint32_t vaddr, uint32_t phy_addr) {
 }
 
 static void page_table_add_no_cache(uint32_t vaddr, uint32_t phy_addr) {
-    uint64_t *pte = pte_make(g_kernel_pml4, (uint64_t)vaddr);
+    uint64_t *pte = pte_make(kernel_pml4, (uint64_t)vaddr);
     if (pte == 0) {
         return;
     }

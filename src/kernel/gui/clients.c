@@ -20,7 +20,7 @@ struct demo_client {
     void (*on_key)(struct demo_client *dc, int scancode, int mods);
 };
 
-extern void (*g_log_hook)(const char *s);
+extern void (*log_hook)(const char *s);
 
 static int buffer_resize(struct demo_client *dc, int w, int h) {
     if (w <= 0 || h <= 0)
@@ -58,8 +58,8 @@ static void client_main(struct demo_client *dc) {
             }
             break;
         case WL_EV_FRAME:
-            if (dc->pool && g_tick - dc->last_frame >= dc->frame_interval) {
-                dc->last_frame = g_tick;
+            if (dc->pool && tick - dc->last_frame >= dc->frame_interval) {
+                dc->last_frame = tick;
                 dc->render(dc);
                 wl_surface_commit(dc->surf);
             }
@@ -86,17 +86,17 @@ out:
 
 #define TERM_LINES 40
 #define TERM_COLS 96
-static char g_term_buf[TERM_LINES][TERM_COLS];
-static int g_term_head = 0;
-static int g_term_count = 0;
-static int g_term_col = 0;
+static char term_buf[TERM_LINES][TERM_COLS];
+static int term_head = 0;
+static int term_count = 0;
+static int term_col = 0;
 
 static void term_newline(void) {
-    g_term_head = (g_term_head + 1) % TERM_LINES;
-    if (g_term_count < TERM_LINES)
-        g_term_count++;
-    memset(g_term_buf[g_term_head], 0, TERM_COLS);
-    g_term_col = 0;
+    term_head = (term_head + 1) % TERM_LINES;
+    if (term_count < TERM_LINES)
+        term_count++;
+    memset(term_buf[term_head], 0, TERM_COLS);
+    term_col = 0;
 }
 
 static void term_putc(char ch) {
@@ -104,9 +104,9 @@ static void term_putc(char ch) {
         term_newline();
         return;
     }
-    if (g_term_col >= TERM_COLS - 1)
+    if (term_col >= TERM_COLS - 1)
         term_newline();
-    g_term_buf[g_term_head][g_term_col++] = ch;
+    term_buf[term_head][term_col++] = ch;
 }
 
 static void term_puts(const char *s) {
@@ -132,26 +132,26 @@ static void term_render(struct demo_client *dc) {
     if (cols > TERM_COLS - 1)
         cols = TERM_COLS - 1;
 
-    int start = g_term_head - g_term_count + 1;
+    int start = term_head - term_count + 1;
     if (start < 0)
         start += TERM_LINES;
-    int first = g_term_count - rows;
+    int first = term_count - rows;
     if (first < 0)
         first = 0;
-    for (int r = first; r < g_term_count; r++) {
+    for (int r = first; r < term_count; r++) {
         int li = (start + r) % TERM_LINES;
         char line[TERM_COLS];
         int n = 0;
-        while (n < cols && g_term_buf[li][n]) {
-            line[n] = g_term_buf[li][n];
+        while (n < cols && term_buf[li][n]) {
+            line[n] = term_buf[li][n];
             n++;
         }
         line[n] = 0;
         gfx_text(&cv, 4, (r - first) * 16 + 2, line, gfx_rgb(0, 4, 0), -1);
     }
-    if ((g_tick / 25) & 1) {
-        gfx_fill(&cv, 4 + g_term_col * 8, (g_term_count - first - 1) * 16 + 2,
-                 8, 16, gfx_rgb(0, 4, 0));
+    if ((tick / 25) & 1) {
+        gfx_fill(&cv, 4 + term_col * 8, (term_count - first - 1) * 16 + 2, 8,
+                 16, gfx_rgb(0, 4, 0));
     }
 }
 
@@ -161,8 +161,8 @@ static void term_on_key(struct demo_client *dc, int scancode, int mods) {
     if (!ch)
         return;
     if (ch == '\b') {
-        if (g_term_col > 0)
-            g_term_buf[g_term_head][--g_term_col] = 0;
+        if (term_col > 0)
+            term_buf[term_head][--term_col] = 0;
     } else {
         term_putc(ch);
     }
@@ -189,10 +189,10 @@ static void term_thread(void *arg) {
     dc.render = term_render;
     dc.on_key = term_on_key;
     dc.frame_interval = 25;
-    g_log_hook = term_log_hook;
+    log_hook = term_log_hook;
     wm_manage(dc.surf);
     client_main(&dc);
-    g_log_hook = 0;
+    log_hook = 0;
 }
 
 static void u32_to_str(uint32_t v, char *buf) {
@@ -216,7 +216,7 @@ static void clock_render(struct demo_client *dc) {
     struct gfx_canvas cv = {dc->pool->data, dc->w, dc->w, dc->h};
     gfx_fill(&cv, 0, 0, dc->w, dc->h, gfx_rgb(0, 0, 1));
 
-    uint32_t secs = g_tick / 100;
+    uint32_t secs = tick / 100;
     uint32_t hh = (secs / 3600) % 24;
     uint32_t mm = (secs / 60) % 60;
     uint32_t ss = secs % 60;
@@ -293,7 +293,7 @@ static void sysmon_render(struct demo_client *dc) {
 
     line[0] = 0;
     strcat(line, "tick: ");
-    u32_to_str(g_tick, num);
+    u32_to_str(tick, num);
     strcat(line, num);
     gfx_text(&cv, 8, 64, line, gfx_gray(18), -1);
 
@@ -302,7 +302,7 @@ static void sysmon_render(struct demo_client *dc) {
         gfx_rect(&cv, gx, gy, gw, gh, gfx_gray(10));
         int bars = (gw - 4) / 6;
         for (int i = 0; i < bars; i++) {
-            uint32_t v = (g_tick / 4 + (uint32_t)i * 7) % 40;
+            uint32_t v = (tick / 4 + (uint32_t)i * 7) % 40;
             int bh = (int)(v * (uint32_t)(gh - 6) / 40);
             uint8_t col = gfx_rgb(0, 2 + (int)(v % 4), 2);
             gfx_fill(&cv, gx + 2 + i * 6, gy + gh - 2 - bh, 4, bh, col);
@@ -333,7 +333,7 @@ static void sysmon_thread(void *arg) {
 
 static void plasma_render(struct demo_client *dc) {
     struct gfx_canvas cv = {dc->pool->data, dc->w, dc->w, dc->h};
-    int phase = (int)(g_tick / 3);
+    int phase = (int)(tick / 3);
     for (int y = 0; y < dc->h; y += 2) {
         uint8_t *row = dc->pool->data + y * dc->w;
         for (int x = 0; x < dc->w; x += 2) {
@@ -377,20 +377,20 @@ static void plasma_thread(void *arg) {
 
 typedef void (*client_thread_fn)(void *);
 
-static client_thread_fn g_types[] = {term_thread, clock_thread, sysmon_thread,
-                                     plasma_thread};
-static const char *g_type_names[] = {"gc_term", "gc_clock", "gc_sysmon",
-                                     "gc_plasma"};
-static int g_next_type = 0;
+static client_thread_fn types[] = {term_thread, clock_thread, sysmon_thread,
+                                   plasma_thread};
+static const char *type_names[] = {"gc_term", "gc_clock", "gc_sysmon",
+                                   "gc_plasma"};
+static int next_type = 0;
 
 void clients_spawn_next(void) {
-    int t = g_next_type % 4;
-    g_next_type++;
-    kernel_thread((char *)g_type_names[t], 6, g_types[t], 0);
+    int t = next_type % 4;
+    next_type++;
+    kernel_thread((char *)type_names[t], 6, types[t], 0);
 }
 
 void clients_spawn_initial(void) {
-    g_next_type = 0;
+    next_type = 0;
     clients_spawn_next();
     clients_spawn_next();
     clients_spawn_next();

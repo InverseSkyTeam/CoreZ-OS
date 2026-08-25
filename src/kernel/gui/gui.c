@@ -10,12 +10,12 @@
 #include "./server.h"
 #include "./wm.h"
 
-static int g_running = 0;
+static int running = 0;
 
 int gui_session_run(void) {
-    if (g_running)
+    if (running)
         return -1;
-    g_running = 1;
+    running = 1;
 
     asm_sti();
 
@@ -39,6 +39,6 @@ int gui_session_run(void) {
     io_set_gui_active(0);
     io_clear_screen();
 
-    g_running = 0;
+    running = 0;
     return 0;
 }

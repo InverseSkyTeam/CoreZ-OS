@@ -26,7 +26,9 @@ void list_remove(struct list_elem *elem) {
     elem->next->prev = elem->prev;
 }
 
-int list_empty(struct list *list) { return list->head.next == &list->tail; }
+int list_empty(struct list *list) {
+    return list->head.next == &list->tail;
+}
 
 struct list_elem *list_pop_front(struct list *list) {
     struct list_elem *first = list->head.next;

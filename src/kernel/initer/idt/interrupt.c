@@ -12,39 +12,39 @@
 #include "../io/io.h"
 #include "../pic/pic.h"
 #include "../pit/pit.h"
-volatile uint32_t g_tick = 0;
-static const char *g_exc_names[32] = {"Divide Error",
-                                      "Debug",
-                                      "Non-Maskable Interrupt",
-                                      "Breakpoint",
-                                      "Overflow",
-                                      "BOUND Range Exceeded",
-                                      "Invalid Opcode",
-                                      "Device Not Available",
-                                      "Double Fault",
-                                      "Coprocessor Seg Overrun",
-                                      "Invalid TSS",
-                                      "Segment Not Present",
-                                      "Stack-Segment Fault",
-                                      "General Protection",
-                                      "Page Fault",
-                                      "(Reserved)",
-                                      "x87 FP Error",
-                                      "Alignment Check",
-                                      "Machine Check",
-                                      "SIMD FP Exception",
-                                      "Virtualization Exception",
-                                      "Control Protection",
-                                      "(Reserved)",
-                                      "(Reserved)",
-                                      "(Reserved)",
-                                      "(Reserved)",
-                                      "(Reserved)",
-                                      "(Reserved)",
-                                      "(Reserved)",
-                                      "(Reserved)",
-                                      "(Reserved)",
-                                      "(Reserved)"};
+volatile uint32_t tick = 0;
+static const char *exc_names[32] = {"Divide Error",
+                                    "Debug",
+                                    "Non-Maskable Interrupt",
+                                    "Breakpoint",
+                                    "Overflow",
+                                    "BOUND Range Exceeded",
+                                    "Invalid Opcode",
+                                    "Device Not Available",
+                                    "Double Fault",
+                                    "Coprocessor Seg Overrun",
+                                    "Invalid TSS",
+                                    "Segment Not Present",
+                                    "Stack-Segment Fault",
+                                    "General Protection",
+                                    "Page Fault",
+                                    "(Reserved)",
+                                    "x87 FP Error",
+                                    "Alignment Check",
+                                    "Machine Check",
+                                    "SIMD FP Exception",
+                                    "Virtualization Exception",
+                                    "Control Protection",
+                                    "(Reserved)",
+                                    "(Reserved)",
+                                    "(Reserved)",
+                                    "(Reserved)",
+                                    "(Reserved)",
+                                    "(Reserved)",
+                                    "(Reserved)",
+                                    "(Reserved)",
+                                    "(Reserved)",
+                                    "(Reserved)"};
 #define INT_NO_UNREGISTERED 0xFFFFu
 static int handle_cow_fault(uint32_t fault_addr, uint32_t error_code) {
     if (fault_addr < USER_VADDR_START || fault_addr >= 0xc0000000) {
@@ -92,18 +92,18 @@ void isr_handler(struct Registers *r) {
             check_pending_signals(r);
             return;
         }
-        setTextColor(12);
+        set_text_color(12);
         kprintf("\n*** UNHANDLED USER EXCEPTION ***\n");
         if (n < 32) {
-            kprintf("  %s (vector %d)  eip = 0x%x\n", g_exc_names[n], (int)n,
+            kprintf("  %s (vector %d)  eip = 0x%x\n", exc_names[n], (int)n,
                     r->eip);
         }
         signal_terminate(current, SIGSEGV);
     }
-    setTextColor(12);
+    set_text_color(12);
     kprintf("\n*** EXCEPTION ***\n");
     if (n < 32) {
-        kprintf("  %s (vector %d)\n", g_exc_names[n], (int)n);
+        kprintf("  %s (vector %d)\n", exc_names[n], (int)n);
         kprintf("  err_code = 0x%x\n", r->err_code);
     } else {
         kprintf("  Unregistered interrupt (vector %d)\n", (int)n);
@@ -141,7 +141,7 @@ void irq_handler(struct Registers *r) {
     uint32_t irq = r->int_no - 32;
     if (irq == 0) {
         irq_eoi(irq);
-        g_tick++;
+        tick++;
         if (current != 0) {
             check_pending_signals(r);
             schedule();

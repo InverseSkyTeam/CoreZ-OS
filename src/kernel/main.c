@@ -36,7 +36,7 @@ struct BootInfo {
     uint32_t vram_bytes;
 };
 static void init(void) {
-    g_init_pid = getpid();
+    init_pid = getpid();
     uint32_t ret_pid = fork();
     if (ret_pid > 0) {
         for (;;) {
@@ -57,11 +57,11 @@ static void init(void) {
         }
     }
 }
-void KMain(void) {
+void kmain(void) {
     asm_write_cr4(asm_read_cr4() | 0x600);
     struct BootInfo *bi = (struct BootInfo *)0x0FF0;
-    initIO((uint8_t *)(uintptr_t)VRAM_VIRT, bi->scrnx, bi->scrny,
-           bi->vram_bytes);
+    io_init((uint8_t *)(uintptr_t)VRAM_VIRT, bi->scrnx, bi->scrny,
+            bi->vram_bytes);
     kprintf("[diag] vmode=%d scrnx=%d scrny=%d vram=0x%x bytes=%u\n",
             (int)bi->vmode, (int)bi->scrnx, (int)bi->scrny,
             (uint32_t)(uintptr_t)bi->vram, bi->vram_bytes);
@@ -80,7 +80,7 @@ void KMain(void) {
     tss_init();
 
     kprintf("[init] idt\n");
-    initIDT();
+    idt_init();
 
     kprintf("[init] syscall\n");
     syscall_init();
@@ -92,8 +92,8 @@ void KMain(void) {
     kprintf("[init] apic\n");
     if (apic_init() != 0) {
         kprintf("[WARN] apic_init failed, fallback PIC+PIT\n");
-        initPic();
-        initPIT(PIT_HZ);
+        pic_init();
+        pit_init(PIT_HZ);
     }
 
     kprintf("[init] keyboard\n");
@@ -104,7 +104,7 @@ void KMain(void) {
     thread_init();
     kprintf("[OK] kernel threads ready\n");
 
-    setTextColor(10);
+    set_text_color(10);
     kprintf("[OK] kernel init done, enable IRQs\n");
 
     ide_init();

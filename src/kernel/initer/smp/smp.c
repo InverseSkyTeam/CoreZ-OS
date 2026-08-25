@@ -1,4 +1,4 @@
-// SMP 启动
+/* SMP 启动 */
 #include "smp.h"
 
 #include <stdint.h>
@@ -30,7 +30,9 @@ static uint32_t ap_stack_top[NR_CPU];
 
 static volatile uint32_t ap_ready[NR_CPU];
 
-static void com1_putc(unsigned char c) { outb(0x3F8, c); }
+static void com1_putc(unsigned char c) {
+    outb(0x3F8, c);
+}
 static void com1_str(const char *s) {
     while (*s)
         com1_putc((unsigned char)*s++);

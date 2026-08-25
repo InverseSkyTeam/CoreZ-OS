@@ -1,9 +1,8 @@
-
 #ifndef FS_INODE_H
 #define FS_INODE_H
 
-#include <stdint.h>
 #include "../lib/list/list.h"
+#include <stdint.h>
 
 struct inode {
     uint32_t i_no;
@@ -17,7 +16,7 @@ struct inode {
 
 struct partition;
 
-struct inode* inode_open(struct partition* part, uint32_t inode_no);
-void inode_close(struct inode* inode);
+struct inode *inode_open(struct partition *part, uint32_t inode_no);
+void inode_close(struct inode *inode);
 
 #endif

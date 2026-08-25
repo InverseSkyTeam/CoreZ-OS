@@ -8,7 +8,7 @@
 
 #define MIL_SECOND_PER_INTR (1000 / PIT_HZ)
 
-void initPIT(uint32_t hz) {
+void pit_init(uint32_t hz) {
     uint32_t divisor = PIT_BASE_FREQ / hz;
 
     outb(PIT_CTRL, 0x34);
@@ -17,8 +17,8 @@ void initPIT(uint32_t hz) {
 }
 
 static void ticks_to_sleep(uint32_t sleep_ticks) {
-    uint32_t start_tick = g_tick;
-    while (g_tick - start_tick < sleep_ticks) {
+    uint32_t start_tick = tick;
+    while (tick - start_tick < sleep_ticks) {
         thread_yield();
     }
 }

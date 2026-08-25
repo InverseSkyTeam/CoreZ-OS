@@ -72,7 +72,7 @@ struct Registers {
     uint64_t rcx;
     uint64_t rbx;
     uint64_t rax;
-    uint64_t gs_saved;    
+    uint64_t gs_saved;
     uint64_t int_no;
     uint64_t err_code;
     uint64_t rip;
@@ -82,8 +82,8 @@ struct Registers {
     uint64_t ss;
 };
 
-#define eip     rip
-#define eflags  rflags
+#define eip rip
+#define eflags rflags
 #define user_esp user_rsp
 #define eax rax
 #define ebx rbx
@@ -94,7 +94,7 @@ struct Registers {
 #define ebp rbp
 #define esp user_rsp
 
-void isr_handler(struct Registers* r);
-void irq_handler(struct Registers* r);
+void isr_handler(struct Registers *r);
+void irq_handler(struct Registers *r);
 
 #endif

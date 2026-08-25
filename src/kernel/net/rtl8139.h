@@ -1,4 +1,3 @@
-
 #ifndef RTL8139_H
 #define RTL8139_H
 

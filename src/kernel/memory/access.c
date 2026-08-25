@@ -1,4 +1,5 @@
-// 用户指针校验实现: access_ok / copy_from_user / copy_to_user / user_strnlen.
+/* 用户指针校验实现: access_ok / copy_from_user / copy_to_user / user_strnlen.
+ */
 #include "./access.h"
 #include "../lib/str/str.h"
 #define USER_VADDR_BEGIN 0x8048000u

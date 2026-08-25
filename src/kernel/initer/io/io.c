@@ -4,60 +4,73 @@
 
 #include "../../include/asmFunc.h"
 
-static uint8_t *g_vram = (uint8_t *)0;
-static int g_scrnx = 0;
-static int g_scrny = 0;
-static int g_pitch = 0;
-static size_t g_vram_bytes = 0;
-static int g_cursor_x = 0;
-static int g_cursor_y = -20;
-static int g_text_color = 7;
-static int g_gui_active = 0;
+static uint8_t *vram = (uint8_t *)0;
+static int scrnx = 0;
+static int scrny = 0;
+static int pitch = 0;
+static size_t vram_bytes = 0;
+static int cursor_x = 0;
+static int cursor_y = -20;
+static int text_color = 7;
+static int gui_active = 0;
 
-uint8_t *io_get_vram(void) { return g_vram; }
-int io_get_scrnx(void) { return g_scrnx; }
-int io_get_scrny(void) { return g_scrny; }
-size_t io_get_vram_bytes(void) { return g_vram_bytes; }
+uint8_t *io_get_vram(void) {
+    return vram;
+}
+int io_get_scrnx(void) {
+    return scrnx;
+}
+int io_get_scrny(void) {
+    return scrny;
+}
+size_t io_get_vram_bytes(void) {
+    return vram_bytes;
+}
 
 void io_set_gui_active(int on) {
-    g_gui_active = on;
+    gui_active = on;
     if (!on) {
-        g_cursor_x = 0;
-        g_cursor_y = 0;
+        cursor_x = 0;
+        cursor_y = 0;
     }
 }
 
 #define PRINTF_LINE_GAP 20
 
-void initIO(uint8_t *vram, int scrnx, int scrny, uint32_t vram_bytes) {
-    g_vram = vram;
-    g_scrnx = scrnx;
-    g_scrny = scrny;
-    g_pitch = scrnx;
+void io_init(uint8_t *vram_base, int width, int height, uint32_t bytes) {
+    vram = vram_base;
+    scrnx = width;
+    scrny = height;
+    pitch = width;
 
-    g_vram_bytes =
-        (vram_bytes > 0) ? (size_t)vram_bytes : (size_t)scrnx * (size_t)scrny;
-    g_cursor_x = 0;
-    g_cursor_y = 0;
-    g_text_color = 7;
+    vram_bytes = (bytes > 0) ? (size_t)bytes : (size_t)width * (size_t)height;
+    cursor_x = 0;
+    cursor_y = 0;
+    text_color = 7;
 }
 
-void setTextColor(int color) { g_text_color = color & 0xFF; }
-
-void setCursor(int x, int y) {
-    g_cursor_x = x;
-    g_cursor_y = y;
+void set_text_color(int color) {
+    text_color = color & 0xFF;
 }
 
-int getCursorX(void) { return g_cursor_x; }
-int getCursorY(void) { return g_cursor_y; }
+void set_cursor(int x, int y) {
+    cursor_x = x;
+    cursor_y = y;
+}
+
+int get_cursor_x(void) {
+    return cursor_x;
+}
+int get_cursor_y(void) {
+    return cursor_y;
+}
 
 #define DEBUG_CONSOLE_PORT 0xE9
 
 static void vram_shift_up(int line_bytes) {
-    int total_bytes = g_scrny * g_pitch;
-    if ((g_pitch & 3) == 0 && ((uintptr_t)g_vram & 3) == 0) {
-        uint32_t *dw = (uint32_t *)g_vram;
+    int total_bytes = scrny * pitch;
+    if ((pitch & 3) == 0 && ((uintptr_t)vram & 3) == 0) {
+        uint32_t *dw = (uint32_t *)vram;
         int line_dw = line_bytes / 4;
         int total_dw = total_bytes / 4;
         for (int i = line_dw; i < total_dw; i++)
@@ -66,54 +79,54 @@ static void vram_shift_up(int line_bytes) {
             dw[i] = 0;
     } else {
         for (int i = line_bytes; i < total_bytes; i++)
-            g_vram[i - line_bytes] = g_vram[i];
+            vram[i - line_bytes] = vram[i];
         for (int i = total_bytes - line_bytes; i < total_bytes; i++)
-            g_vram[i] = 0;
+            vram[i] = 0;
     }
 }
 
 static void vram_zero_all(void) {
-    int total_bytes = g_scrny * g_pitch;
-    if ((g_pitch & 3) == 0 && ((uintptr_t)g_vram & 3) == 0) {
-        uint32_t *dw = (uint32_t *)g_vram;
+    int total_bytes = scrny * pitch;
+    if ((pitch & 3) == 0 && ((uintptr_t)vram & 3) == 0) {
+        uint32_t *dw = (uint32_t *)vram;
         int total_dw = total_bytes / 4;
         for (int i = 0; i < total_dw; i++)
             dw[i] = 0;
     } else {
         for (int i = 0; i < total_bytes; i++)
-            g_vram[i] = 0;
+            vram[i] = 0;
     }
 }
 
 static void scroll_screen(void) {
-    if (g_vram == 0 || g_scrnx <= 0 || g_scrny <= 0 || g_pitch <= 0)
+    if (vram == 0 || scrnx <= 0 || scrny <= 0 || pitch <= 0)
         return;
-    vram_shift_up(PRINTF_LINE_GAP * g_pitch);
-    g_cursor_y -= PRINTF_LINE_GAP;
+    vram_shift_up(PRINTF_LINE_GAP * pitch);
+    cursor_y -= PRINTF_LINE_GAP;
 }
 
 static void putc(char c) {
-    if (g_gui_active) {
+    if (gui_active) {
         outb(DEBUG_CONSOLE_PORT, (uint8_t)c);
         return;
     }
     if (c == '\r') {
-        g_cursor_x = 0;
+        cursor_x = 0;
     } else if (c == '\n') {
-        g_cursor_y += PRINTF_LINE_GAP;
-        g_cursor_x = 0;
-        if (g_cursor_y + PRINTF_LINE_GAP > g_scrny) {
+        cursor_y += PRINTF_LINE_GAP;
+        cursor_x = 0;
+        if (cursor_y + PRINTF_LINE_GAP > scrny) {
             scroll_screen();
         }
     } else {
-        showChar(g_vram, g_pitch, g_cursor_x, g_cursor_y, g_scrnx, g_scrny, c,
-                 g_text_color, 0);
-        g_cursor_x += 8;
+        show_char(vram, pitch, cursor_x, cursor_y, scrnx, scrny, c, text_color,
+                  0);
+        cursor_x += 8;
 
-        if (g_cursor_x + 8 > g_scrnx) {
-            g_cursor_y += PRINTF_LINE_GAP;
-            g_cursor_x = 0;
-            if (g_cursor_y + PRINTF_LINE_GAP > g_scrny) {
+        if (cursor_x + 8 > scrnx) {
+            cursor_y += PRINTF_LINE_GAP;
+            cursor_x = 0;
+            if (cursor_y + PRINTF_LINE_GAP > scrny) {
                 scroll_screen();
             }
         }
@@ -121,8 +134,8 @@ static void putc(char c) {
     outb(DEBUG_CONSOLE_PORT, (uint8_t)c);
 }
 
-static void printUnsigned(uint32_t v, int base, int upper, int width, int pad0,
-                          int hexPrefix) {
+static void print_unsigned(uint32_t v, int base, int upper, int width, int pad0,
+                           int hexPrefix) {
     static const char lo[] = "0123456789abcdef";
     static const char up[] = "0123456789ABCDEF";
     const char *digits = upper ? up : lo;
@@ -160,7 +173,7 @@ static void printUnsigned(uint32_t v, int base, int upper, int width, int pad0,
         putc(buf[n]);
 }
 
-static void printSigned(int v, int width, int pad0) {
+static void print_signed(int v, int width, int pad0) {
     unsigned int uv = (unsigned int)v;
     int neg = 0;
     char buf[12];
@@ -208,13 +221,13 @@ void kprintf(const char *fmt, ...) {
         }
         ++fmt;
 
-        int pad0 = 0, hexPre = 0, width = 0;
+        int pad0 = 0, hex_pre = 0, width = 0;
         for (;;) {
             if (*fmt == '0') {
                 pad0 = 1;
                 ++fmt;
             } else if (*fmt == '#') {
-                hexPre = 1;
+                hex_pre = 1;
                 ++fmt;
             } else
                 break;
@@ -228,19 +241,21 @@ void kprintf(const char *fmt, ...) {
 
         switch (*fmt) {
         case 'd':
-            printSigned(va_arg(ap, int), width, pad0);
+            print_signed(va_arg(ap, int), width, pad0);
             break;
         case 'u':
-            printUnsigned(va_arg(ap, unsigned int), 10, 0, width, pad0, 0);
+            print_unsigned(va_arg(ap, unsigned int), 10, 0, width, pad0, 0);
             break;
         case 'x':
-            printUnsigned(va_arg(ap, unsigned int), 16, 0, width, pad0, hexPre);
+            print_unsigned(va_arg(ap, unsigned int), 16, 0, width, pad0,
+                           hex_pre);
             break;
         case 'X':
-            printUnsigned(va_arg(ap, unsigned int), 16, 1, width, pad0, hexPre);
+            print_unsigned(va_arg(ap, unsigned int), 16, 1, width, pad0,
+                           hex_pre);
             break;
         case 'o':
-            printUnsigned(va_arg(ap, unsigned int), 8, 0, width, pad0, 0);
+            print_unsigned(va_arg(ap, unsigned int), 8, 0, width, pad0, 0);
             break;
         case 'c':
             putc((char)va_arg(ap, int));
@@ -268,7 +283,9 @@ void kprintf(const char *fmt, ...) {
     va_end(ap);
 }
 
-void console_putc(char c) { putc(c); }
+void console_putc(char c) {
+    putc(c);
+}
 
 void console_put_str(const char *s) {
     while (*s) {
@@ -278,13 +295,13 @@ void console_put_str(const char *s) {
 
 void io_clear_screen(void) {
     vram_zero_all();
-    g_cursor_x = 0;
-    g_cursor_y = 0;
-    g_text_color = 7;
+    cursor_x = 0;
+    cursor_y = 0;
+    text_color = 7;
 }
 
-void showChar(uint8_t *vram, int pitch, int x, int y, int scrnx, int scrny,
-              char c, int color, int bg) {
+void show_char(uint8_t *vram, int pitch, int x, int y, int scrnx, int scrny,
+               char c, int color, int bg) {
     const uint8_t *font = FONT_BASE + ((uint8_t)c) * 16;
 
     for (int row = 0; row < 16; row++) {
@@ -304,16 +321,16 @@ void showChar(uint8_t *vram, int pitch, int x, int y, int scrnx, int scrny,
     }
 }
 
-void showString(uint8_t *vram, int pitch, int x, int y, int scrnx, int scrny,
-                const char *s, int color, int bg) {
+void show_string(uint8_t *vram, int pitch, int x, int y, int scrnx, int scrny,
+                 const char *s, int color, int bg) {
     while (*s) {
-        showChar(vram, pitch, x, y, scrnx, scrny, *s, color, bg);
+        show_char(vram, pitch, x, y, scrnx, scrny, *s, color, bg);
         x += 8;
         s++;
     }
 }
 
-void initPalette(void) {
+void palette_init(void) {
     static const uint8_t colors[16][3] = {
         {0, 0, 0},     {0, 0, 170},    {0, 170, 0},    {0, 170, 170},
         {170, 0, 0},   {170, 0, 170},  {170, 85, 0},   {170, 170, 170},

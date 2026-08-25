@@ -1,4 +1,4 @@
-// kernel/memory/pool/pool.h
+/* kernel/memory/pool/pool.h */
 #include "../include/asmFunc.h"
 #include "../initer/idt/interrupt.h"
 #include "../initer/pit/pit.h"
@@ -6,12 +6,14 @@
 #include "../memory/pool/pool.h"
 #include "mongoose.h"
 
-uint64_t mg_millis(void) { return (uint64_t)g_tick * (1000u / PIT_HZ); }
+uint64_t mg_millis(void) {
+    return (uint64_t)tick * (1000u / PIT_HZ);
+}
 
 bool mg_random(void *buf, size_t len) {
     uint8_t *p = (uint8_t *)buf;
     for (size_t i = 0; i < len; i++) {
-        p[i] = (uint8_t)(g_tick ^ (uint32_t)i) ^ (uint8_t)(inb(0x60) + i);
+        p[i] = (uint8_t)(tick ^ (uint32_t)i) ^ (uint8_t)(inb(0x60) + i);
     }
     return true;
 }
@@ -34,7 +36,9 @@ int rand(void) {
     return (int)((seed >> 16) & 0x7FFF);
 }
 
-void srand(unsigned int s) { (void)s; }
+void srand(unsigned int s) {
+    (void)s;
+}
 
 typedef unsigned long long mu64;
 typedef long long ms64;
@@ -190,7 +194,9 @@ int sscanf(const char *s, const char *fmt, ...) {
     return n;
 }
 
-void free(void *ptr) { mg_free(ptr); }
+void free(void *ptr) {
+    mg_free(ptr);
+}
 
 void *memchr(const void *s, int c, size_t n) {
     const unsigned char *p = (const unsigned char *)s;
@@ -212,4 +218,6 @@ char *strdup(const char *s) {
     return r;
 }
 
-int atoi(const char *s) { return (int)strtol(s, NULL, 10); }
+int atoi(const char *s) {
+    return (int)strtol(s, NULL, 10);
+}

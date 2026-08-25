@@ -72,8 +72,8 @@ static int find_child(struct list_elem *pelem, int32_t ppid) {
 pid_t sys_wait(int32_t *status) {
     struct task_struct *parent = current;
     for (;;) {
-        struct list_elem *e = g_thread_all_list.head.next;
-        while (e != &g_thread_all_list.tail) {
+        struct list_elem *e = thread_all_list.head.next;
+        while (e != &thread_all_list.tail) {
             struct list_elem *next = e->next;
             if (find_hanging_child(e, (int32_t)parent->pid)) {
                 struct task_struct *child =
@@ -85,14 +85,14 @@ pid_t sys_wait(int32_t *status) {
             }
             e = next;
         }
-        struct list_elem *child = g_thread_all_list.head.next;
-        while (child != &g_thread_all_list.tail) {
+        struct list_elem *child = thread_all_list.head.next;
+        while (child != &thread_all_list.tail) {
             if (find_child(child, (int32_t)parent->pid)) {
                 break;
             }
             child = child->next;
         }
-        if (child == &g_thread_all_list.tail) {
+        if (child == &thread_all_list.tail) {
             return -1;
         }
         thread_block_with_status(TASK_WAITING);
@@ -100,11 +100,11 @@ pid_t sys_wait(int32_t *status) {
 }
 void proc_exit(struct task_struct *cur, int status) {
     cur->exit_status = (int8_t)status;
-    struct list_elem *e = g_thread_all_list.head.next;
-    while (e != &g_thread_all_list.tail) {
+    struct list_elem *e = thread_all_list.head.next;
+    while (e != &thread_all_list.tail) {
         struct task_struct *t = list_entry(e, struct task_struct, all_list_tag);
         if (t->parent_pid == (int32_t)cur->pid) {
-            t->parent_pid = (int32_t)g_init_pid;
+            t->parent_pid = (int32_t)init_pid;
         }
         e = e->next;
     }
@@ -115,4 +115,6 @@ void proc_exit(struct task_struct *cur, int status) {
     }
     thread_block_with_status(TASK_HANGING);
 }
-void sys_exit(int32_t status) { proc_exit(current, status); }
+void sys_exit(int32_t status) {
+    proc_exit(current, status);
+}

@@ -56,15 +56,7 @@ static void mark_used(uint32_t start, uint32_t size) {
 
 #define EFER_MSR 0xc0000080u
 #define EFER_NXE (1ull << 11)
-#define CR4_PAE (1u << 5)
-#define CPUID_FEAT_PAE (1u << 6)
 #define CPUID_NX (1u << 20)
-
-static int cpuid_has_pae(void) {
-    uint32_t a = 1, d;
-    __asm__ volatile("cpuid" : "+a"(a), "=d"(d) : : "ebx", "ecx");
-    return (d & CPUID_FEAT_PAE) != 0;
-}
 
 static int cpuid_has_nx(void) {
     uint32_t a = 0x80000001, d;
@@ -73,11 +65,9 @@ static int cpuid_has_nx(void) {
 }
 
 void pae_init(void) {
-    if (detect_64bit() != 0) {
-        return;
-    }
-    if (!cpuid_has_pae() || !cpuid_has_nx()) {
-        return;
+    if (detect_64bit() != 0 && cpuid_has_nx()) {
+        /* 64 位 + 硬件 NX: 开启 EFER.NXE, 让 PTE_NX(bit63) 真正由 CPU 强制 */
+        asm_wrmsr(EFER_MSR, asm_rdmsr(EFER_MSR) | EFER_NXE);
     }
 }
 
@@ -214,7 +204,7 @@ static void page_table_add_raw(uint32_t vaddr, uint32_t phy_addr) {
     uint64_t *pte = pte_make(cur_pml4(), (uint64_t)vaddr);
     if (pte == 0)
         return;
-    *pte = (uint64_t)phy_addr | 7;
+    *pte = (uint64_t)phy_addr | pte_wx(PTE_P | PTE_U, 1, 0);
     __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
 }
 
@@ -223,7 +213,8 @@ static void page_table_add_no_cache(uint32_t vaddr, uint32_t phy_addr) {
     if (pte == 0) {
         return;
     }
-    *pte = (uint64_t)phy_addr | 0x17;
+    /* MMIO: 可写、不可执行; PCD(bit4) 关闭缓存 */
+    *pte = (uint64_t)phy_addr | pte_wx(PTE_P | PTE_U | 0x10, 1, 0);
 }
 
 uint64_t *phys_to_virt(uint64_t phys) {

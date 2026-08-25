@@ -30,6 +30,26 @@ uint32_t palloc_pages(struct pool *pool, uint32_t cnt);
 
 #define COW_FLAG (1u << 9)
 
+/* 页面权限位 */
+#define PTE_P   (1ull << 0)   /* present */
+#define PTE_W   (1ull << 1)   /* writable */
+#define PTE_U   (1ull << 2)   /* user */
+#define PTE_NX  (1ull << 63)  /* no-execute */
+
+/* W^X: 可写则不可执行，可执行则不可写，否则只读。base保留固有标志。 */
+static inline uint64_t pte_wx(uint64_t base, int writable, int executable) {
+    base &= ~PTE_W;
+    if (writable) {
+        base |= PTE_W;
+    }
+    if (executable && !writable) {
+        base &= ~PTE_NX;
+    } else {
+        base |= PTE_NX;
+    }
+    return base;
+}
+
 void page_incr_shared(uint32_t phy_addr);
 void page_free_or_decref(uint32_t phy_addr);
 int page_is_shared(uint32_t phy_addr);

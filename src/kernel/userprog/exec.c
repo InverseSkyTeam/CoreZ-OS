@@ -11,6 +11,7 @@
 #include "../thread/thread.h"
 #include "../userprog/process.h"
 #define DIV_ROUND_UP(X, STEP) ((X + STEP - 1) / STEP)
+#define PF_X 0x1
 #define EFLAGS_MBS (1 << 1)
 #define EFLAGS_IF_1 (1 << 9)
 #define EFLAGS_IOPL_0 0
@@ -82,7 +83,7 @@ struct Elf64_Phdr {
     Elf64_Xword p_align;
 };
 static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
-                            uint32_t memsz, uint32_t vaddr) {
+                            uint32_t memsz, uint32_t vaddr, int executable) {
     uint32_t vaddr_first_page = vaddr & 0xfffff000;
     uint32_t size_in_first_page = PAGE_SIZE - (vaddr & 0x00000fff);
     uint32_t occupy_pages =
@@ -102,6 +103,18 @@ static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
     }
     sys_lseek(fd, offset, SEEK_SET);
     read_file(fd, (void *)vaddr, filesz);
+    if (executable) {
+        /* W^X: 可执行段 -> RX (清 W 与 NX), 不可再写入 */
+        for (uint32_t pg = vaddr_first_page;
+             pg < vaddr_first_page + occupy_pages * PAGE_SIZE;
+             pg += PAGE_SIZE) {
+            uint64_t *pte = (uint64_t *)pte_ptr(pg);
+            if (*pte & PTE_P) {
+                *pte = (*pte & 0x000ffffffffff000ull) | PTE_P | PTE_U;
+                __asm__ volatile("invlpg (%0)" : : "r"(pg) : "memory");
+            }
+        }
+    }
     return 0;
 }
 static int32_t load(const char *pathname, int *is64) {
@@ -149,7 +162,8 @@ static int32_t load(const char *pathname, int *is64) {
                 if (segment_load(fd, (uint32_t)prog64_header.p_offset,
                                  (uint32_t)prog64_header.p_filesz,
                                  (uint32_t)prog64_header.p_memsz,
-                                 (uint32_t)prog64_header.p_vaddr) == -1) {
+                                 (uint32_t)prog64_header.p_vaddr,
+                                 (prog64_header.p_flags & PF_X) != 0) == -1) {
                     goto done;
                 }
             }
@@ -182,8 +196,8 @@ static int32_t load(const char *pathname, int *is64) {
                 prog_header.p_vaddr >= USER_VADDR_START &&
                 prog_header.p_vaddr < USER_STACK3_VADDR) {
                 if (segment_load(fd, prog_header.p_offset, prog_header.p_filesz,
-                                 prog_header.p_memsz,
-                                 prog_header.p_vaddr) == -1) {
+                                 prog_header.p_memsz, prog_header.p_vaddr,
+                                 (prog_header.p_flags & PF_X) != 0) == -1) {
                     goto done;
                 }
             }

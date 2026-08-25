@@ -116,14 +116,11 @@ int32_t sys_mprotect(uint32_t addr, uint32_t len, uint32_t prot) {
         if (!page_is_mapped(v)) {
             continue;
         }
-        uint32_t *pte = pte_ptr(v);
-        uint32_t new_pte = *pte & 0xfffff000u;
+        uint64_t *pte = (uint64_t *)pte_ptr(v);
+        uint64_t new_pte = *pte & 0x000ffffffffff000ull;
         if (prot != 0) {
-            new_pte |= 1u;
-        }
-        new_pte |= 4u;
-        if (prot & PROT_WRITE) {
-            new_pte |= 2u;
+            new_pte |= pte_wx(PTE_P | PTE_U, !!(prot & PROT_WRITE),
+                              !!(prot & PROT_EXEC));
         }
         *pte = new_pte;
         __asm__ volatile("invlpg (%0)" : : "r"(v) : "memory");

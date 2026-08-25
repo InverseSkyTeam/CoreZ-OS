@@ -38,11 +38,11 @@ start32:
 
     mov ecx, 0xC0000080             ; EFER
     rdmsr
-    or  eax, 0x100                  ; LME
+    or  eax, 0x900                  ; LME | NXE 
     wrmsr
 
     mov eax, cr0
-    or  eax, 0x80000001             ; PG | PE (使能 LMA)
+    or  eax, 0x80000001             ; PG | PE 
     mov cr0, eax
     jmp 0x08:start64                ; 切到 64 位代码段
 

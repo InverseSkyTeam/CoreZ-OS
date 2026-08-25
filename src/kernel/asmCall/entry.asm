@@ -42,5 +42,6 @@ entry_start:
         rep     stosb
 
         cli
+        call    kmain
 .spin:  hlt
         jmp     .spin

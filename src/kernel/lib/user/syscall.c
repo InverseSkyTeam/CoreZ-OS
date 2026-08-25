@@ -1,5 +1,3 @@
-
-
 #include "./syscall.h"
 
 #include "../../include/syscall_nr.h"

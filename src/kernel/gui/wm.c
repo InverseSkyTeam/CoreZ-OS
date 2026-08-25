@@ -1,5 +1,3 @@
-
-
 #include "./wm.h"
 
 #include "../initer/idt/interrupt.h"

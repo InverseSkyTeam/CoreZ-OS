@@ -1,4 +1,3 @@
-
 #include "./linux_compat.h"
 #include "../device/ioqueue.h"
 #include "../device/keyboard.h"

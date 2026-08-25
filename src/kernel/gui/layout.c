@@ -1,4 +1,3 @@
-
 #include "./layout.h"
 
 const char *layout_name(enum layout_kind kind) {

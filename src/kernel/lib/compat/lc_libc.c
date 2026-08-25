@@ -1,4 +1,3 @@
-
 #include "./lc.h"
 
 static int __lc_ever_set = 0;

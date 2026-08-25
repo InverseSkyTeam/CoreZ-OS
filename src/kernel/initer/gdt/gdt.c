@@ -1,4 +1,3 @@
-
 #include "gdt.h"
 #include "../../include/asmFunc.h"
 #include "../../thread/percpu.h"

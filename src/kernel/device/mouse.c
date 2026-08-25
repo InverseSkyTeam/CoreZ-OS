@@ -1,5 +1,3 @@
-
-
 #include "./mouse.h"
 
 #include "../include/asmFunc.h"

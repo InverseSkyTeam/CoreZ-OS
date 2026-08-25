@@ -1,4 +1,3 @@
-
 #include "./bitmap.h"
 
 #include "../../lib/str/str.h"

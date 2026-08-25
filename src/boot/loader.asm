@@ -14,6 +14,7 @@ VRAM    equ     0x0FF8
 VRAMBYTES equ  0x0FFC
 
 STACK_PHYS equ  0x00090000
+MBI        equ  0x00005000   ; Multiboot2 物理地址
 
 %define PART_LBA        2048
 %define RESERVED_SECT   2
@@ -286,16 +287,48 @@ pipelineflush:
         mov     dword [0x92000 + 3*8], 0x600083
         mov     dword [0x92000 + 4*8], 0x800083
         mov     dword [0x92000 + 5*8], 0xA00083
-        ; --- VBE 帧缓冲映射到独立窗口 (VA 0x80000000, PDPT[2] -> PD @0x94000) ---
+
         mov     dword [0x91000 + 2*8],  0x94007     ; PDPT[2] -> PD @0x94000
         mov     dword [0x94000 + 0*8],  0xfd000083  ; VA 0x80000000 -> phys 0xfd000000 (LFB)
-        ; --- APIC MMIO 独立窗口 (VA 0x40000000, PDPT[1] -> PD @0x96000) ---
-        ; 物理 LAPIC/IOAPIC 在 4GB 高位, 落入高半 1GB 大页(PDPT[3]), 若直接用
-        ; 物理地址会被映射到别处, MMIO 写不进真设备。这里用 PDPT[1] 借 2MB 大页
-        ; 开一个 1GB~2GB 窗口, 内核以 0x40000000/0x40200000 访问 APIC。
+
         mov     dword [0x91000 + 1*8],  0x96007     ; PDPT[1] -> PD @0x96000
         mov     dword [0x96000 + 0*8],  0xfec00083  ; VA 0x40000000 -> phys 0xfec00000 (IOAPIC)
         mov     dword [0x96000 + 1*8],  0xfee00083  ; VA 0x40200000 -> phys 0xfee00000 (LAPIC)
+
+        mov     edi, MBI
+        mov     dword [edi+0], 0       
+        mov     dword [edi+4], 0        ; reserved
+        add     edi, 8
+
+        mov     dword [edi+0], 8        ; type
+        mov     dword [edi+4], 40       ; size
+        mov     eax, [VRAM]
+        mov     dword [edi+8],  eax     ; framebuffer_addr 低32
+        mov     dword [edi+12], 0       ; framebuffer_addr 高32
+        movzx   eax, word [SCRNX]
+        mov     dword [edi+16], eax     ; framebuffer_pitch
+        movzx   eax, word [SCRNX]
+        mov     dword [edi+20], eax     ; framebuffer_width
+        movzx   eax, word [SCRNY]
+        mov     dword [edi+24], eax     ; framebuffer_height
+        mov     byte  [edi+28], 8       ; framebuffer_bpp
+        mov     byte  [edi+29], 1       ; framebuffer_type = direct RGB
+        mov     byte  [edi+30], 0       ; reserved
+        mov     byte  [edi+31], 8       ; red_mask_size
+        mov     byte  [edi+32], 16      ; red_field_position
+        mov     byte  [edi+33], 8       ; green_mask_size
+        mov     byte  [edi+34], 8       ; green_field_position
+        mov     byte  [edi+35], 8       ; blue_mask_size
+        mov     byte  [edi+36], 0       ; blue_field_position
+        add     edi, 40
+
+        mov     dword [edi+0], 0
+        mov     dword [edi+4], 8
+        add     edi, 8
+
+        mov     eax, edi
+        sub     eax, MBI
+        mov     dword [MBI], eax
 
         lgdt    [GDTR64]
 
@@ -325,14 +358,12 @@ lg64:
         mov     fs, ax
         mov     gs, ax
         mov     ss, ax
-
-        ; 设置 64 位内核栈 (物理低端, 由恒等映射覆盖)
         mov     rsp, STACK_PHYS
 
-        ; 直接进 64 位内核入口 (0xC0000000 高半区, 由高半 1GB 大页映射)。
-        ; entry_start 内近调用都落在内核高半区。CS 已为 0x08, 近跳即可。
-        mov     rax, KERNEL_VIRT
-        jmp     rax
+        mov     eax, 0x36D76289
+        mov     ebx, MBI
+        mov     rcx, KERNEL_VIRT
+        jmp     rcx
 
         bits    16
 waitkbdout:

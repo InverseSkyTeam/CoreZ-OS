@@ -7,7 +7,10 @@ extern __bss_end
 
 global entry_start
 entry_start:
-        mov     dx, 0x3F8 + 1           ; 屏蔽中断
+        ; 保存 Multiboot2
+        mov     r8d, eax                ; 0x36D76289
+        mov     r9, rbx                
+        mov     dx, 0x3F8 + 1         
         xor     al, al
         out     dx, al
         inc     dx                      ; 0x3F9
@@ -42,6 +45,8 @@ entry_start:
         rep     stosb
 
         cli
+        mov     edi, r8d              
+        mov     esi, r9d              
         call    kmain
 .spin:  hlt
         jmp     .spin

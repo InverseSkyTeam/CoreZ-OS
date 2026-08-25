@@ -25,16 +25,45 @@
 #include "./userprog/process.h"
 
 #define VRAM_VIRT 0x80000000UL
-struct BootInfo {
-    uint8_t cyls;
-    uint8_t leds;
-    uint8_t vmode;
-    uint8_t _pad;
-    uint16_t scrnx;
-    uint16_t scrny;
-    uint32_t vram;
-    uint32_t vram_bytes;
+
+#define MULTIBOOT2_BOOTLOADER_MAGIC 0x36D76289UL
+#define MULTIBOOT2_TAG_FRAMEBUFFER 8
+#define MULTIBOOT2_TAG_END 0
+
+struct mb2_tag_header {
+    uint32_t type;
+    uint32_t size;
 };
+struct mb2_tag_framebuffer {
+    uint32_t type;
+    uint32_t size;
+    uint64_t framebuffer_addr;
+    uint32_t framebuffer_pitch;
+    uint32_t framebuffer_width;
+    uint32_t framebuffer_height;
+    uint8_t framebuffer_bpp;
+    uint8_t framebuffer_type;
+    uint8_t reserved;
+    uint8_t color_info[6];
+};
+
+static void mb2_parse(uint32_t magic, void *mbi_ptr,
+                      struct mb2_tag_framebuffer *fb) {
+    if (magic != MULTIBOOT2_BOOTLOADER_MAGIC || mbi_ptr == 0)
+        return;
+    uint8_t *p = (uint8_t *)mbi_ptr + 8; /* 跳过 8 字节头部 */
+    uint32_t total = *(const uint32_t *)mbi_ptr;
+    uint8_t *end = (uint8_t *)mbi_ptr + total;
+    while (p + 8 <= end) {
+        struct mb2_tag_header *tag = (struct mb2_tag_header *)p;
+        if (tag->type == MULTIBOOT2_TAG_END)
+            break;
+        if (tag->type == MULTIBOOT2_TAG_FRAMEBUFFER && tag->size >= 24)
+            *fb = *(struct mb2_tag_framebuffer *)p;
+        p += (tag->size + 7) & ~7U;
+    }
+}
+
 static void init(void) {
     init_pid = getpid();
     uint32_t ret_pid = fork();
@@ -57,14 +86,20 @@ static void init(void) {
         }
     }
 }
-void kmain(void) {
+void kmain(uint32_t magic, void *mbi_ptr) {
     asm_write_cr4(asm_read_cr4() | 0x600);
-    struct BootInfo *bi = (struct BootInfo *)0x0FF0;
-    io_init((uint8_t *)(uintptr_t)VRAM_VIRT, bi->scrnx, bi->scrny,
-            bi->vram_bytes);
-    kprintf("[diag] vmode=%d scrnx=%d scrny=%d vram=0x%x bytes=%u\n",
-            (int)bi->vmode, (int)bi->scrnx, (int)bi->scrny,
-            (uint32_t)(uintptr_t)bi->vram, bi->vram_bytes);
+
+    struct mb2_tag_framebuffer fb = {0};
+    mb2_parse(magic, mbi_ptr, &fb);
+
+    uint32_t bytes = (fb.framebuffer_pitch > 0)
+                         ? fb.framebuffer_pitch * fb.framebuffer_height
+                         : 0;
+    io_init((uint8_t *)(uintptr_t)VRAM_VIRT, (int)fb.framebuffer_width,
+            (int)fb.framebuffer_height, bytes);
+    kprintf("[diag] magic=%#x mbi=%p fb: %ux%u bpp=%u addr=%#llx bytes=%u\n",
+            magic, mbi_ptr, fb.framebuffer_width, fb.framebuffer_height,
+            fb.framebuffer_bpp, (unsigned long long)fb.framebuffer_addr, bytes);
 
     kprintf("[init] mm\n");
     mm_init();

@@ -66,6 +66,8 @@ extern struct list ready_list;
 extern uint32_t foreground_pid;
 extern uint32_t init_pid;
 void thread_init(void);
+void cpu_idle_init(void);
+void cpu_idle(void);
 void kernel_thread(char *name, uint8_t priority, thread_func function,
                    void *arg);
 struct task_struct *thread_create(char *name, uint8_t priority,

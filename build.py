@@ -376,7 +376,7 @@ def make_plan(tools: Tools):
                           BOOT_DIR / "vbr.asm", BUILD_DIR / "vbr.bin", tools))
     tasks.append(task_assemble_bin("loader.bin",
                           BOOT_DIR / "loader.asm", BUILD_DIR / "loader.bin", tools))
-    for stem in ("func", "io", "stub", "entry", "switch"):
+    for stem in ("func", "io", "stub", "entry", "switch", "idle"):
         tasks.append(task_assemble_elf64(
             f"{stem}.o",
             KERNEL_DIR / "asmCall" / f"{stem}.asm",
@@ -696,7 +696,7 @@ def make_plan(tools: Tools):
         "entry.o", "kernel.o", "func.o", "ioc.o", "io.o",
         "apic.o", "pit.o", "stub.o", "idt.o", "interrupt.o", "pic.o",
         "assert.o", "str.o", "bitmap.o", "pool.o", "access.o", "list.o",
-        "switch.o", "thread.o", "sync.o", "percpu.o", "smp.o",
+        "switch.o", "idle.o", "thread.o", "sync.o", "percpu.o", "smp.o",
         "ap_tramp.o", "ioqueue.o", "keyboard.o",
         "ide.o", "ext2.o", "fs.o", "inode.o", "dir.o", "file.o",
         "gdt.o", "tss.o", "process.o", "exec.o", "shell.o",

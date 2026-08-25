@@ -16,10 +16,28 @@ struct list thread_all_list;
 struct task_struct *idle_thread;
 uint32_t foreground_pid = (uint32_t)-1;
 uint32_t init_pid = 1;
+static volatile uint32_t idle_monitor;
+static int mwait_ok;
+
+void cpu_idle_init(void) {
+    mwait_ok = asm_mwait_supported();
+    if (mwait_ok)
+        kprintf("[idle] Enable MONITOR/MWAIT\n");
+    else
+        kprintf("[idle] Enable HLT\n");
+}
+
+void cpu_idle(void) {
+    if (mwait_ok)
+        asm_sti_mwait((uint64_t)(uintptr_t)&idle_monitor);
+    else
+        asm_stihlt();
+}
+
 static void idle(void *arg) {
     for (;;) {
         thread_block();
-        __asm__ volatile("sti; hlt" : : : "memory");
+        cpu_idle();
     }
 }
 
@@ -89,6 +107,7 @@ struct task_struct *thread_create(char *name, uint8_t priority,
     return t;
 }
 void thread_init(void) {
+    cpu_idle_init();
     list_init(&ready_list);
     list_init(&thread_all_list);
     set_current(&task_table[0]);

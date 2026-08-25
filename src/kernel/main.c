@@ -149,8 +149,7 @@ void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
     net_init();
     kernel_thread("shell", 4, my_shell, 0);
     for (;;) {
-        asm_sti();
-        asm_hlt();
+        cpu_idle();
         thread_yield();
     }
 }

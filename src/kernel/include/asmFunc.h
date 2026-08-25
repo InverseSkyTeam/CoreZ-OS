@@ -32,3 +32,6 @@ extern void asm_ltr(uint16_t sel);
 extern uint16_t asm_str(void);
 
 extern int detect_64bit(void);
+
+extern int asm_mwait_supported(void);
+extern void asm_sti_mwait(uint64_t addr);

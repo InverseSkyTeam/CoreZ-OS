@@ -1,4 +1,4 @@
-// 参考: https://wiki.osdev.org/Assertions
+
 #include "./include/assert.h"
 
 #include "./include/asmFunc.h"

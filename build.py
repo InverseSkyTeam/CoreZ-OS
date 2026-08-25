@@ -47,21 +47,46 @@ CFLAGS_BASE = [
     "-fmodules-cache-path=" + str(ROOT / ".zig-cache" / "modules"),
 ]
 CFLAGS = CFLAGS_BASE
+KERNEL_CFLAGS = [
+    "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
+    "-target", "x86_64-freestanding",
+    "-mcmodel=large",
+    "-mno-red-zone",
+    "-fmodules-cache-path=" + str(ROOT / ".zig-cache" / "modules"),
+]
 UP_CFLAGS = CFLAGS_BASE + [
     "-I", str(KERNEL_DIR / "lib" / "user"),
     "-I", str(KERNEL_DIR / "lib" / "str"),
     "-I", str(KERNEL_DIR / "lib"),
 ]
 UP_LDFLAGS = ["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_start"]
-MUSL_CFLAGS = CFLAGS_BASE + [
-    "-I", str(MUSL_SRC / "arch" / "i386"),
+# 64 位用户程序构建链: x86_64-freestanding 编译 + elf_x86_64 链接,
+# 仍放低地址(0x8048000)以便指针落在 32 位范围内, 与内核 syscall 寄存器映射兼容。
+UP_CFLAGS_64 = [
+    "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
+    "-target", "x86_64-freestanding",
+    "-fmodules-cache-path=" + str(ROOT / ".zig-cache" / "modules"),
+    "-I", str(KERNEL_DIR / "lib" / "user"),
+    "-I", str(KERNEL_DIR / "lib" / "str"),
+    "-I", str(KERNEL_DIR / "lib"),
+]
+UP_LDFLAGS_64 = ["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_start"]
+# 64 位用户库(musl/lc)编译链: x86_64-freestanding; 仍放低地址以便指针落 32 位内,
+# 与内核 syscall 寄存器映射兼容
+MUSL64_BASE = [
+    "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
+    "-target", "x86_64-freestanding",
+    "-fmodules-cache-path=" + str(ROOT / ".zig-cache" / "modules"),
+]
+MUSL_CFLAGS = MUSL64_BASE + [
+    "-I", str(MUSL_SRC / "arch" / "x86_64"),
     "-I", str(MUSL_SRC / "arch" / "generic"),
     "-I", str(MUSL_SRC / "src" / "internal"),
     "-I", str(MUSL_SRC / "include"),
     "-I", str(MUSL_SRC / "nitian"),
     "-include", str(MUSL_SRC / "nitian" / "nt_libc_macros.h"),
 ]
-LC_CFLAGS = CFLAGS_BASE + ["-I", str(KERNEL_DIR / "lib" / "compat")]
+LC_CFLAGS = MUSL64_BASE + ["-I", str(KERNEL_DIR / "lib" / "compat")]
 class Ansi:
     RESET   = "\x1b[0m"
     BOLD    = "\x1b[1m"
@@ -273,10 +298,16 @@ class Task:
                     return True
         return False
     def dep_paths(self) -> Iterable[Path]:
+        # 相对路径须按任务自身的 cwd 解析, 否则(任务 cwd 与仓库根不一致, 如
+        # objcopy 以 build/ 为 cwd、文件名用相对名)会解析到不存在的文件, 导致
+        # 输入比输出新时任务仍被判为 cache hit 而跳过, 产物永远不刷新。
+        base = self.cwd or Path.cwd()
         for tok in self.cmd:
             if tok.startswith("-"):
                 continue
             p = Path(tok)
+            if not p.is_absolute():
+                p = base / p
             if p.exists() and p.is_file():
                 yield p
 @dataclass
@@ -297,6 +328,12 @@ def task_assemble_elf(name: str, src: Path, out: Path, tools: Tools) -> Task:
         out=out, deps=[], description=str(src.relative_to(ROOT)),
         group="asm",
     )
+def task_assemble_elf64(name: str, src: Path, out: Path, tools: Tools) -> Task:
+    return Task(
+        name=name, cmd=[tools.nasm, "-f", "elf64", str(src), "-o", str(out)],
+        out=out, deps=[], description=str(src.relative_to(ROOT)),
+        group="asm",
+    )
 def task_cc(name: str, src: Path, out: Path, tools: Tools, flags: List[str]) -> Task:
     return Task(
         name=name,
@@ -314,10 +351,11 @@ def task_link(name: str, out: Path, tools: Tools,
     return Task(name=name, cmd=cmd, cwd=BUILD_DIR, out=out,
                 deps=[], description=f"link → {out.name}", group="link")
 def task_objcopy_binary(name: str, src_elf: Path, out: Path, tools: Tools,
-                        symbol: str) -> Task:
+                        symbol: str, elf_arch: str = "i386",
+                        out_fmt: str = "elf32-i386", out_arch: str = "i386") -> Task:
     return Task(
         name=name,
-        cmd=[tools.objcopy, "-I", "binary", "-O", "elf32-i386", "-B", "i386",
+        cmd=[tools.objcopy, "-I", "binary", "-O", out_fmt, "-B", out_arch,
              src_elf.name, out.name],
         cwd=BUILD_DIR, out=out, deps=[],
         description=f"objcopy {symbol}", group="objcopy",
@@ -339,7 +377,7 @@ def make_plan(tools: Tools):
     tasks.append(task_assemble_bin("loader.bin",
                           BOOT_DIR / "loader.asm", BUILD_DIR / "loader.bin", tools))
     for stem in ("func", "io", "stub", "entry", "switch"):
-        tasks.append(task_assemble_elf(
+        tasks.append(task_assemble_elf64(
             f"{stem}.o",
             KERNEL_DIR / "asmCall" / f"{stem}.asm",
             BUILD_DIR / f"{stem}.o", tools,
@@ -351,13 +389,15 @@ def make_plan(tools: Tools):
     tasks.append(task_objcopy_binary(
         "ap_tramp.o", BUILD_DIR / "ap_trampoline.bin",
         BUILD_DIR / "ap_tramp.o", tools,
-        "_binary_ap_trampoline_bin_start"))
-    tasks.append(task_assemble_elf(
+        "_binary_ap_trampoline_bin_start",
+        out_fmt="elf64-x86-64", out_arch="i386:x86-64"))
+    tasks.append(task_assemble_elf64(
         "up_start.o", CMD_DIR / "start.asm", BUILD_DIR / "up_start.o", tools,
     ))
     kernel_c_sources = [
         ("ioc.o",        KERNEL_DIR / "initer" / "io" / "io.c"),
         ("pit.o",        KERNEL_DIR / "initer" / "pit" / "pit.c"),
+        ("pic.o",        KERNEL_DIR / "initer" / "pic" / "pic.c"),
         ("apic.o",       KERNEL_DIR / "initer" / "apic" / "apic.c"),
         ("idt.o",        KERNEL_DIR / "initer" / "idt" / "idt.c"),
         ("interrupt.o",  KERNEL_DIR / "initer" / "idt" / "interrupt.c"),
@@ -408,7 +448,7 @@ def make_plan(tools: Tools):
         ("gui.o",        KERNEL_DIR / "gui" / "gui.c"),
     ]
     for stem, src in kernel_c_sources:
-        tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, CFLAGS))
+        tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, KERNEL_CFLAGS))
     user_programs = [
         ("prog_no_arg", "prog_no_arg.c", "main",   []),
         ("prog_arg",    "prog_arg.c",    "_start", []),
@@ -437,7 +477,7 @@ def make_plan(tools: Tools):
         for _dir, fname, oname in user_lib_sources:
             src = _dir / fname
             obj = out_dir / oname
-            tasks.append(task_cc(oname, src, obj, tools, UP_CFLAGS))
+            tasks.append(task_cc(oname, src, obj, tools, UP_CFLAGS_64))
             outs.append(obj)
         return outs
     lib_objs = compile_user_lib(BUILD_DIR)
@@ -452,8 +492,8 @@ def make_plan(tools: Tools):
         nick = nick_map.get(prog_name, f"up_{prog_name}")
         prog_obj = BUILD_DIR / f"{nick}.o"
         tasks.append(task_cc(nick, CMD_DIR / src_c, prog_obj, tools,
-                             UP_CFLAGS + opt_flags))
-        elf_flags = list(UP_LDFLAGS)
+                             UP_CFLAGS_64 + opt_flags))
+        elf_flags = list(UP_LDFLAGS_64)
         if entry_flag:
             elf_flags[elf_flags.index("-e") + 1] = entry_flag
         elf = BUILD_DIR / f"{prog_name}.elf"
@@ -464,7 +504,7 @@ def make_plan(tools: Tools):
         )
         tasks.append(elf_task)
         user_elves.append(elf_task)
-    tasks.append(task_assemble_elf(
+    tasks.append(task_assemble_elf64(
         "lc_start.o", CMD_DIR / "lc_crt0.asm", BUILD_DIR / "lc_start.o", tools,
     ))
     lc_libc = task_cc("lc_libc.o", KERNEL_DIR / "lib" / "compat" / "lc_libc.c",
@@ -476,14 +516,14 @@ def make_plan(tools: Tools):
     lc_elf = task_link("lc_demo.elf", BUILD_DIR / "lc_demo.elf", tools,
                        [BUILD_DIR / "lc_start.o", BUILD_DIR / "lc_demo.o",
                         BUILD_DIR / "lc_libc.o"],
-                       flags=["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_lc_start"])
+                       flags=["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_lc_start"])
     tasks.append(lc_elf)
     user_elves.append(lc_elf)
-    musl_start = task_assemble_elf("musl_start.o", MUSL_SRC / "nitian" / "musl_crt0.asm",
-                                   BUILD_DIR / "musl_start.o", tools)
+    musl_start = task_assemble_elf64("musl_start.o", MUSL_SRC / "nitian" / "musl_crt0.asm",
+                                     BUILD_DIR / "musl_start.o", tools)
     tasks.append(musl_start)
-    musl_syscall = task_assemble_elf("musl_syscall.o", MUSL_SRC / "nitian" / "musl_syscall.asm",
-                                     BUILD_DIR / "musl_syscall.o", tools)
+    musl_syscall = task_assemble_elf64("musl_syscall.o", MUSL_SRC / "nitian" / "musl_syscall.asm",
+                                       BUILD_DIR / "musl_syscall.o", tools)
     tasks.append(musl_syscall)
     musl_c_sources = [
         ("nt_errno.o", MUSL_SRC / "nitian" / "nt_errno.c"),
@@ -555,7 +595,7 @@ def make_plan(tools: Tools):
          BUILD_DIR / "musl_stpcpy.o", BUILD_DIR / "musl_strchrnul.o",
          BUILD_DIR / "musl_ret.o", BUILD_DIR / "nt_errno.o",
          BUILD_DIR / "musl_syscall.o"],
-        flags=["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_musl_start"])
+        flags=["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_musl_start"])
     tasks.append(musl_demo_elf)
     user_elves.append(musl_demo_elf)
     libc_tests_main = task_cc("libc_tests_main.o", CMD_DIR / "libc_tests_main.c",
@@ -602,10 +642,10 @@ def make_plan(tools: Tools):
          BUILD_DIR / "musl_intscan.o", BUILD_DIR / "musl_shgetc.o",
          BUILD_DIR / "musl_basename.o", BUILD_DIR / "musl_dirname.o",
          BUILD_DIR / "nt_libc_stubs.o", BUILD_DIR / "nt_fnmatch.o"],
-        flags=["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_musl_start"])
+        flags=["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_musl_start"])
     tasks.append(libc_tests_elf)
     user_elves.append(libc_tests_elf)
-    shell_cflags = MUSL_CFLAGS + [
+    shell_cflags = UP_CFLAGS_64 + [
         "-I", str(SHELL_SRC / "inc"),
         "-I", str(NRSHELL),
     ]
@@ -616,34 +656,22 @@ def make_plan(tools: Tools):
     ]
     for stem, src in shell_objs:
         tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, shell_cflags))
-    nr_shell_lib_objs = [
-        BUILD_DIR / "musl_ret.o", BUILD_DIR / "nt_errno.o",
-        BUILD_DIR / "musl_vfprintf.o", BUILD_DIR / "musl_vsnprintf.o",
-        BUILD_DIR / "musl_snprintf.o", BUILD_DIR / "musl_sprintf.o",
-        BUILD_DIR / "musl_printf.o", BUILD_DIR / "musl_fprintf.o",
-        BUILD_DIR / "musl_stdout.o", BUILD_DIR / "musl_towrite.o",
-        BUILD_DIR / "musl_stdiowrite.o", BUILD_DIR / "musl_fwrite.o",
-        BUILD_DIR / "musl_overflow.o", BUILD_DIR / "musl_uflow.o",
-        BUILD_DIR / "musl_toread.o", BUILD_DIR / "musl_stdioclose.o",
-        BUILD_DIR / "musl_strlen.o", BUILD_DIR / "musl_strcpy.o",
-        BUILD_DIR / "musl_strcmp.o", BUILD_DIR / "musl_strchr.o",
-        BUILD_DIR / "musl_strncpy.o", BUILD_DIR / "musl_strncmp.o",
-        BUILD_DIR / "musl_strncat.o", BUILD_DIR / "musl_strrchr.o",
-        BUILD_DIR / "musl_strnlen.o", BUILD_DIR / "musl_memcpy.o",
-        BUILD_DIR / "musl_memset.o", BUILD_DIR / "musl_memcmp.o",
-        BUILD_DIR / "musl_memmove.o", BUILD_DIR / "musl_read.o",
-        BUILD_DIR / "musl_write.o", BUILD_DIR / "nt_libc_stubs.o",
-    ]
+    # 64 位用户 shell: 复用 64 位 crt0(start.asm) + 64 位用户 lib(stdio/syscall/str/stdlib)。
+    # 不再走 32 位 musl stubs, 保证 nr_shell.elf 为 elf_x86_64, exec.c 按 is64 加载。
     nr_shell_elf = task_link("nr_shell.elf", BUILD_DIR / "nr_shell.elf", tools,
-        [BUILD_DIR / "musl_start.o", BUILD_DIR / "musl_syscall.o",
+        [BUILD_DIR / "up_start.o",
          BUILD_DIR / "shell_core.o", BUILD_DIR / "shell_cmds.o",
-         BUILD_DIR / "nr_shell_main.o", *nr_shell_lib_objs],
-        flags=["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_musl_start"])
+         BUILD_DIR / "nr_shell_main.o", *lib_objs],
+        flags=["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_start"])
     tasks.append(nr_shell_elf)
     user_elves.append(nr_shell_elf)
     mongoose_src = SRC_DIR / "app" / "mongoose"
     net_dir = KERNEL_DIR / "net"
-    mongoose_cflags = MUSL_CFLAGS + [
+    mongoose_cflags = KERNEL_CFLAGS + [
+        "-I", str(MUSL_SRC / "arch" / "i386"),
+        "-I", str(MUSL_SRC / "arch" / "generic"),
+        "-I", str(MUSL_SRC / "src" / "internal"),
+        "-I", str(MUSL_SRC / "include"),
         "-I", str(mongoose_src),
         "-I", str(net_dir),
     ]
@@ -666,7 +694,7 @@ def make_plan(tools: Tools):
     ))
     kernel_objs_names = [
         "entry.o", "kernel.o", "func.o", "ioc.o", "io.o",
-        "apic.o", "pit.o", "stub.o", "idt.o", "interrupt.o",
+        "apic.o", "pit.o", "stub.o", "idt.o", "interrupt.o", "pic.o",
         "assert.o", "str.o", "bitmap.o", "pool.o", "access.o", "list.o",
         "switch.o", "thread.o", "sync.o", "percpu.o", "smp.o",
         "ap_tramp.o", "ioqueue.o", "keyboard.o",
@@ -867,9 +895,7 @@ def do_run(console: Console, stats: BuildStats,
         console.warn("qemu-system-i386 not found on PATH; build is up-to-date.")
         return
     cmd = [qemu, "-accel", "tcg,tb-size=256", "-m", "1G",
-           "-smp", str(max(1, smp)), 
-           "-d", "int", "-D", "qemu.log",
-           "-s", "-S"]
+           "-smp", str(max(1, smp))]
     if boot_floppy:
         cmd += ["-fda", str(BUILD_DIR / "floppy.img")]
     else:
@@ -971,7 +997,7 @@ def main(argv: Sequence[str]) -> int:
                     f"✔  build complete{console._c(Ansi.RESET)}")
     console.writeln()
     if args.target == "run":
-        do_run(console, stats, 2, args.gdb, args.no_net, args.boot_floppy)
+        do_run(console, stats, 4, args.gdb, args.no_net, args.boot_floppy)
     return 0
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

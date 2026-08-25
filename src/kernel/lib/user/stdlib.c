@@ -1,4 +1,4 @@
-// 参考: Bryant & O'Hallaron, "Computer Systems: A Programmer's Perspective"
+
 
 #include "./stdlib.h"
 

@@ -1,4 +1,4 @@
-// 参考: LDT/SetThreadArea (Linux fs/binfmt_elf.c, glibc nptl)
+
 //      "unterschied/licenses/GPL-2.0" (仅参考流程)
 #ifndef NITIAN_LINUX_COMPAT_H
 #define NITIAN_LINUX_COMPAT_H

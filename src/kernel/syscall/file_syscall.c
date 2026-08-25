@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第14章 文件系统
+
 #include "file_syscall.h"
 #include "../device/ide.h"
 #include "../fs/dir.h"

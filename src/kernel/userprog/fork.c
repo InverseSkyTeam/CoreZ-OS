@@ -1,15 +1,30 @@
-// 参考: 《操作系统真相还原》(于渊) 第15章 fork
+
 #include "./fork.h"
 #include "../fs/file.h"
 #include "../include/asmFunc.h"
 #include "../include/assert.h"
+#include "../initer/io/io.h"
 #include "../lib/str/str.h"
 #include "../memory/bitmap/bitmap.h"
 #include "../memory/pool/pool.h"
 #include "../shell/pipe.h"
+#include "../shell/shell.h"
 #include "../thread/thread.h"
+#include "../userprog/exec.h"
 #include "../userprog/process.h"
+#include "../userprog/wait_exit.h"
 extern void intr_exit(void);
+extern char *argv[];
+
+static void kthread_fork_exec(void *unused) {
+    (void)unused;
+    if (sys_execv(final_path, (const char **)argv, NULL) == -1) {
+        kprintf("execv %s failed.\n", final_path);
+        sys_exit(-1);
+    }
+    for (;;) {
+    }
+}
 static void mark_child_bitmap(struct task_struct *child, uint32_t vaddr) {
     uint32_t bit = (vaddr - USER_VADDR_START) / PAGE_SIZE;
     if (vaddr >= USER_VADDR_START &&
@@ -19,6 +34,9 @@ static void mark_child_bitmap(struct task_struct *child, uint32_t vaddr) {
 }
 static void copy_user_space(struct task_struct *parent,
                             struct task_struct *child) {
+    if (parent->pgdir == 0) {
+        return;
+    }
     uint32_t *pgdir = (uint32_t *)parent->pgdir;
     uint32_t *child_pgdir = (uint32_t *)child->pgdir;
     for (uint32_t pde_idx = 0; pde_idx < 768; pde_idx++) {
@@ -67,17 +85,18 @@ static void copy_user_space(struct task_struct *parent,
 }
 static void build_child_stack(struct task_struct *child,
                               struct Registers *parent_frame) {
-    uint32_t stack_top = child->kernel_stack_top;
+    uint32_t stack_top = (uint32_t)child->kernel_stack_top;
     struct Registers *child_frame =
         (struct Registers *)(stack_top - sizeof(struct Registers));
     memcpy(child_frame, parent_frame, sizeof(struct Registers));
     child_frame->eax = 0;
     struct thread_stack *ts =
-        (struct thread_stack *)((uint32_t)child_frame - 24);
-    memset(ts, 0, 24);
-    ts->eflags = 0x202;
-    ts->eip = (void (*)(void))intr_exit;
-    child->self_kstack = (uint32_t *)ts;
+        (struct thread_stack *)((uint8_t *)child_frame -
+                                sizeof(struct thread_stack));
+    memset(ts, 0, sizeof(struct thread_stack));
+    ts->rflags = 0x202;
+    ts->rip = (void (*)(void))intr_exit;
+    child->self_kstack = (uint64_t *)ts;
 }
 pid_t sys_fork(struct Registers *r) {
     struct task_struct *parent = current;
@@ -109,7 +128,19 @@ pid_t sys_fork(struct Registers *r) {
         return -1;
     }
     copy_user_space(parent, child);
-    build_child_stack(child, r);
+    if (parent->pgdir == 0) {
+        struct thread_stack *ts =
+            (struct thread_stack *)((uint8_t *)child->kernel_stack_top -
+                                    sizeof(struct thread_stack));
+        memset(ts, 0, sizeof(struct thread_stack));
+        ts->rflags = 0x202;
+        ts->r15 = (uint64_t)kthread_fork_exec;
+        ts->r14 = 0;
+        ts->rip = kernel_thread_entry;
+        child->self_kstack = (uint64_t *)ts;
+    } else {
+        build_child_stack(child, r);
+    }
     child->status = TASK_BLOCKED;
     thread_ready(child);
     return (pid_t)child->pid;

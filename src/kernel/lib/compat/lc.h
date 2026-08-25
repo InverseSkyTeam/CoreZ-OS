@@ -1,4 +1,4 @@
-// 参考: Wine 的 syscall 翻译层 (gitlab.winehq.org/wine) + Linux i386 ABI (linux/arch/x86/entry/entry_32.S)
+
 // 本 OS 的 0x80 号使用高基数 COMPAT_SYSCALL_BASE, 兼容 Linux Syscall的功能由内核 linux_compat shim 负责
 #ifndef NT_LC_H
 #define NT_LC_H
@@ -17,7 +17,7 @@
 #define LC_SET_THREAD_AREA (LC_SYSCALL_BASE + 8)
 #define LC_WRITEV        (LC_SYSCALL_BASE + 9)
 
-#define LC_TLS_SELECTOR  0x33
+#define LC_TLS_SELECTOR  0x38
 
 #define AT_NULL    0
 #define AT_PHDR    3
@@ -36,10 +36,11 @@
 
 struct lc_iovec { uint32_t base; uint32_t len; };
 
-extern uint32_t* __lc_auxv;
+extern uint64_t *__lc_auxv;
 
-uint32_t __lc_syscall6(uint32_t nr, uint32_t a, uint32_t b, uint32_t c,
-                       uint32_t d, uint32_t e, uint32_t f);
+unsigned long __lc_syscall6(unsigned long nr, unsigned long a, unsigned long b,
+                            unsigned long c, unsigned long d, unsigned long e,
+                            unsigned long f);
 
 int* __lc_errno_ptr(void);
 #define errno (*(__lc_errno_ptr()))

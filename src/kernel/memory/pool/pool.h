@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第8章 内存管理
+
 #ifndef POOL_H
 #define POOL_H
 
@@ -44,5 +44,6 @@ void* get_kernel_pages(uint32_t pg_cnt);
 void* ioremap(uint32_t phy_addr, uint32_t size);
 void free_kernel_page(uint32_t vaddr);
 void free_user_page(uint32_t vaddr);
+uint64_t* phys_to_virt(uint64_t phys);
 
 #endif

@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第9章 线程
+
 #include "./list.h"
 
 void list_init(struct list *list) {

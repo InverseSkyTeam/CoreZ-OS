@@ -1,4 +1,4 @@
-// 参考: Wine 兼容层演示 (Linux i386 0x80 六参 ABI + errno + TLS + auxv)
+
 #include "lc.h"
 
 int main(int argc, char **argv, char **envp) {

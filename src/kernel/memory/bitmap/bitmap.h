@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第5章 位图内存管理
+
 #ifndef BITMAP_H
 #define BITMAP_H
 

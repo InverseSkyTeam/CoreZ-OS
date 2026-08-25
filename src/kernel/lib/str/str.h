@@ -1,4 +1,4 @@
-// 参考: https://wiki.osdev.org/C_Library
+
 #ifndef STR_H
 #define STR_H
 

@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 int apic_init(void);
+int apic_active(void);
 
 void lapic_eoi(void);
 

@@ -1,4 +1,4 @@
-// 参考: libc-testsuite/testsuite.c
+
 #include <stdio.h>
 
 #define RUN_TEST(a)                                                            \

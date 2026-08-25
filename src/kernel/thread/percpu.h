@@ -7,14 +7,14 @@ struct task_struct;
 struct percpu_data {
     struct task_struct *current_task;
 };
-#define SELECTOR_PER_CPU 0x38
+#define SELECTOR_PER_CPU 0x40
 static inline struct task_struct *get_current(void) {
     struct task_struct *cur;
-    __asm__ volatile("movl %%gs:0, %0" : "=r"(cur) : : "memory");
+    __asm__ volatile("movq %%gs:0, %0" : "=r"(cur) : : "memory");
     return cur;
 }
 static inline void set_current(struct task_struct *t) {
-    __asm__ volatile("movl %0, %%gs:0" : : "r"(t) : "memory");
+    __asm__ volatile("movq %0, %%gs:0" : : "r"(t) : "memory");
 }
 #define current get_current()
 void percpu_init(void);

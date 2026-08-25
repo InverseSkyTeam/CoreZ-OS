@@ -1,4 +1,4 @@
-// 参考: mongoose/src/config.h, mongoose/src/arch.h
+
 #pragma once
 
 #include <ctype.h>

@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第14章 文件系统
+
 #ifndef FS_DIR_H
 #define FS_DIR_H
 
@@ -6,7 +6,7 @@
 #include "inode.h"
 #include "fs.h"
 
-#define MAX_FILE_NAME_LEN 16
+#define MAX_FILE_NAME_LEN 256
 
 struct dir {
     struct inode* inode;

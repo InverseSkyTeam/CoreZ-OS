@@ -1,4 +1,4 @@
-// 参考: musl 官方例子 (musl-libc.org/doc/1)
+
 // 引导核心子集字段: 以真实 musl 的 getpid/write/strlen/strcpy/_exit 运行, 验证
 // syscall shim 与 crt0
 #include <string.h>

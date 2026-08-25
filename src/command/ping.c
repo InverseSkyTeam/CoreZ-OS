@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
 
     uint32_t dst_host = htonl(dst);
     char ipstr[16];
-    ip_to_ipv4_str(dst_host, ipstr);
+    ip_to_ipv4_str(dst, ipstr);
     printf("PING %s: 56 data bytes\n", ipstr);
 
     uint32_t min_ms = 0xffffffffu, max_ms = 0, sum_ms = 0;
@@ -93,8 +93,8 @@ int main(int argc, char **argv) {
             if (rtt > max_ms)
                 max_ms = rtt;
             sum_ms += rtt;
-            printf("64 bytes from %s: icmp_seq=%d rtt=%d ms\n", dst_host,
-                   (int)seq, (int)rtt);
+            printf("64 bytes from %s: icmp_seq=%d rtt=%d ms\n", ipstr, (int)seq,
+                   (int)rtt);
         } else {
             printf("Request timeout for icmp_seq=%d\n", (int)seq);
         }

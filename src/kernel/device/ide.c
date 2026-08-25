@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第13章 硬盘驱动
+
 #include "ide.h"
 
 #include <stddef.h>

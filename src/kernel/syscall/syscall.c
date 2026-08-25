@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第12章 系统调用
+
 #include "./syscall.h"
 #include "../device/ioqueue.h"
 #include "../device/keyboard.h"
@@ -218,7 +218,6 @@ static uint32_t sys_set_thread_area(struct Registers *r, uint32_t base) {
     current->tls_base = base;
     current->tls_selector = SELECTOR_TLS;
     tls_desc_set_base(base);
-    r->gs = SELECTOR_TLS;
     current->errno = 0;
     *(volatile int32_t *)base = 0;
     return 0;
@@ -320,7 +319,8 @@ uint32_t syscall_handler(struct Registers *r) {
         if (!access_ok((const void *)r->ebx, 1, 0) ||
             !access_ok((const void *)r->ecx, sizeof(void *), 0))
             break;
-        ret = (uint32_t)sys_execv((const char *)r->ebx, (const char **)r->ecx);
+        ret =
+            (uint32_t)sys_execv((const char *)r->ebx, (const char **)r->ecx, r);
         break;
     case SYS_EXIT:
         sys_exit((int32_t)r->ebx);
@@ -385,7 +385,7 @@ uint32_t syscall_handler(struct Registers *r) {
         break;
     case SYS_MMAP2:
         ret = sys_mmap2((uint32_t)r->ebx, (uint32_t)r->ecx, (uint32_t)r->edx,
-                        (uint32_t)r->esi, (uint32_t)r->edi, (uint32_t)r->ebp);
+                        (uint32_t)r->esi, (uint32_t)r->edi, (uint32_t)r->r10);
         break;
     case SYS_MPROTECT:
         ret = (uint32_t)sys_mprotect((uint32_t)r->ebx, (uint32_t)r->ecx,

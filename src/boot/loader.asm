@@ -1,4 +1,5 @@
 KERNEL  equ     0x00280000
+KERNEL_VIRT equ 0xC0000000 + KERNEL
 DSKCAC  equ     0x00100000
 DSKCAC0 equ     0x00008000
 VBEMODE equ     0x105
@@ -285,6 +286,16 @@ pipelineflush:
         mov     dword [0x92000 + 3*8], 0x600083
         mov     dword [0x92000 + 4*8], 0x800083
         mov     dword [0x92000 + 5*8], 0xA00083
+        ; --- VBE 帧缓冲映射到独立窗口 (VA 0x80000000, PDPT[2] -> PD @0x94000) ---
+        mov     dword [0x91000 + 2*8],  0x94007     ; PDPT[2] -> PD @0x94000
+        mov     dword [0x94000 + 0*8],  0xfd000083  ; VA 0x80000000 -> phys 0xfd000000 (LFB)
+        ; --- APIC MMIO 独立窗口 (VA 0x40000000, PDPT[1] -> PD @0x96000) ---
+        ; 物理 LAPIC/IOAPIC 在 4GB 高位, 落入高半 1GB 大页(PDPT[3]), 若直接用
+        ; 物理地址会被映射到别处, MMIO 写不进真设备。这里用 PDPT[1] 借 2MB 大页
+        ; 开一个 1GB~2GB 窗口, 内核以 0x40000000/0x40200000 访问 APIC。
+        mov     dword [0x91000 + 1*8],  0x96007     ; PDPT[1] -> PD @0x96000
+        mov     dword [0x96000 + 0*8],  0xfec00083  ; VA 0x40000000 -> phys 0xfec00000 (IOAPIC)
+        mov     dword [0x96000 + 1*8],  0xfee00083  ; VA 0x40200000 -> phys 0xfee00000 (LAPIC)
 
         lgdt    [GDTR64]
 
@@ -315,11 +326,13 @@ lg64:
         mov     gs, ax
         mov     ss, ax
 
-        mov     ax, 0x18
-        push    rax
-        mov     rax, KERNEL
-        push    rax
-        retfq
+        ; 设置 64 位内核栈 (物理低端, 由恒等映射覆盖)
+        mov     rsp, STACK_PHYS
+
+        ; 直接进 64 位内核入口 (0xC0000000 高半区, 由高半 1GB 大页映射)。
+        ; entry_start 内近调用都落在内核高半区。CS 已为 0x08, 近跳即可。
+        mov     rax, KERNEL_VIRT
+        jmp     rax
 
         bits    16
 waitkbdout:

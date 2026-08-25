@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第15章 管道
+
 #ifndef SHELL_PIPE_H
 #define SHELL_PIPE_H
 

@@ -1,5 +1,5 @@
-; 参考: Wine ntdll 的进程入口 (ldt 初始化) + Linux i386 ABI 的 _start (crt1.o) 栈解析
-[bits 32]
+; 参考: Wine ntdll 的进程入口 (ldt 初始化) + Linux x86_64 SysV ABI 的 _start (crt1.o) 栈解析
+[bits 64]
 extern main
 extern __lc_tls_init
 extern __lc_terminate
@@ -8,52 +8,44 @@ section .text
 
 global _lc_start
 _lc_start:
-    mov     ecx, [esp]              ; ecx = argc
-    mov     esi, ecx                ; esi = argc (callee-saved)
-    lea     edx, [esp + 4]          ; edx = argv
-    mov     edi, edx                ; edi = argv
-    lea     ebx, [edx + ecx*4 + 4]  ; ebx = envp (argv + argc*4 + NULL)
+    and     rsp, -16            ; 16 字节对齐, 满足函数调用前 rsp%16==0
+    xor     ebp, ebp            ; 清栈帧指针
+    ; 内核 exec 按 SysV ABI 传参: rdi=argc, rsi=argv
+    lea     rdx, [rsi + rdi*8 + 8]  ; rdx = envp = argv + (argc+1)*8
 
-    ; 由 envp 向后扫描空串, 定位 auxv 数组
-    mov     ecx, ebx
+    ; 由 envp 向后扫描空 qword, 定位 auxv (标准布局: auxv 紧邻 envp NULL 之后)
+    mov     rcx, rdx
 .lc_auxv_scan:
-    cmp     dword [ecx], 0
+    cmp     qword [rcx], 0
     je      .lc_auxv_found
-    add     ecx, 4
+    add     rcx, 8
     jmp     .lc_auxv_scan
 .lc_auxv_found:
-    add     ecx, 4                  ; ecx = auxv 起始
-    mov     [__lc_auxv], ecx
+    add     rcx, 8                  ; rcx = auxv 起始
+    mov     [__lc_auxv], rcx
 
     call    __lc_tls_init
 
-    push    ebx                     ; 3rd: envp
-    push    edi                     ; 2nd: argv
-    push    esi                     ; 1st: argc
+    ; SysV: rdi=argc, rsi=argv, rdx=envp
     call    main
-    add     esp, 12
-
-    push    eax
+    mov     rdi, rax                ; status = main 返回值
     call    __lc_terminate
 .lc_halt:
     jmp     .lc_halt
 
-; __lc_syscall6: 七参 cdecl, 全部经寄存器送 goto int 0x80 (six-register ABI)
-; 入栈(从低到高): retaddr, nr, a, b, c, d, e, f
+; __lc_syscall6: 七参 (nr,a,b,c,d,e,f) SysV ABI, 重排映射到内核 six-register ABI
+; 入参: rdi=nr, rsi=a, rdx=b, rcx=c, r8=d, r9=e, [rsp+8]=f
 global __lc_syscall6
 __lc_syscall6:
-    push    ebp
-    mov     eax, [esp + 8]
-    mov     ebx, [esp + 12]
-    mov     ecx, [esp + 16]
-    mov     edx, [esp + 20]
-    mov     esi, [esp + 24]
-    mov     edi, [esp + 28]
-    mov     ebp, [esp + 32]
+    mov     rax, rdi            ; rax = nr
+    mov     rbx, rsi            ; rbx = a
+    xchg    rcx, rdx            ; rcx = b, rdx = c (xchg 避免 rcx 被先覆盖)
+    mov     rsi, r8             ; rsi = d
+    mov     rdi, r9             ; rdi = e
+    mov     rbp, [rsp + 8]      ; rbp = f
     int     0x80
-    pop     ebp
     ret
 
 section .data
 global __lc_auxv
-__lc_auxv: dd 0
+__lc_auxv: dq 0

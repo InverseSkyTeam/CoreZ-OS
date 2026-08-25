@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第13章 硬盘驱动
+
 #ifndef IDE_H
 #define IDE_H
 

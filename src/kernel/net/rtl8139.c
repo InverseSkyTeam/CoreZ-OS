@@ -1,4 +1,4 @@
-// 参考: https://wiki.osdev.org/RTL8139
+
 #include "rtl8139.h"
 
 #include "../include/asmFunc.h"
@@ -18,7 +18,9 @@
 #define REG_TSAD0 0x20
 
 #define V2P(x)                                                                 \
-    ((*pte_ptr((uint32_t)(x)) & 0xfffff000) | ((uint32_t)(x) & 0xfff))
+    ((uint32_t)(x) >= 0xC0000000u                                              \
+         ? ((uint32_t)(x) - 0xC0000000u)                                       \
+         : ((*pte_ptr((uint32_t)(x)) & 0xfffff000) | ((uint32_t)(x) & 0xfff)))
 
 static uint16_t ioaddr;
 static uint8_t *rx_buffer;

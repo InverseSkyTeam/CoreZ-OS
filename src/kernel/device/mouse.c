@@ -1,5 +1,5 @@
 
-// 参考: OSDev Wiki "Mouse Input" / "PS/2 Mouse"
+
 #include "./mouse.h"
 
 #include "../include/asmFunc.h"

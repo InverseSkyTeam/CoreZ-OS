@@ -694,10 +694,10 @@ int ext2_dir_next(const struct inode *dino, uint32_t *pos,
             if (de->inode != 0 && de->name_len > 0 && de->name_len < 255 &&
                 abs >= *pos) {
                 uint32_t nl = de->name_len;
-                if (nl > 15) {
-                    nl = 15;
+                if (nl >= MAX_FILE_NAME_LEN) {
+                    nl = MAX_FILE_NAME_LEN - 1;
                 }
-                memset(out->filename, 0, 16);
+                memset(out->filename, 0, MAX_FILE_NAME_LEN);
                 memcpy(out->filename, de->name, nl);
                 out->i_no = de->inode;
                 out->f_type =
@@ -746,15 +746,16 @@ int ext2_lookup(const char *path, uint32_t *ino, int *is_dir) {
         return -1;
     }
     for (;;) {
-        char comp[16];
+        char comp[MAX_FILE_NAME_LEN];
         uint32_t ci = 0;
-        while (*p && *p != '/' && ci < 15) {
+        while (*p && *p != '/' && ci < MAX_FILE_NAME_LEN - 1) {
             comp[ci++] = *p++;
         }
         comp[ci] = 0;
         if (ci == 0) {
             break;
         }
+
         uint32_t child = 0;
         int cd = 0;
         if (ext2_find_in_dir(&cur, comp, &child, &cd)) {

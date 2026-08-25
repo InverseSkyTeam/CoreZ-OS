@@ -1,4 +1,4 @@
-// 参考: https://wiki.osdev.org/Assertions
+
 #ifndef ASSERT_H
 #define ASSERT_H
 

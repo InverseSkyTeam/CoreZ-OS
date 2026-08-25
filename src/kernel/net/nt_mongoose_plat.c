@@ -1,4 +1,4 @@
-// 参考: mongoose/src/util.h, kernel/initer/idt/interrupt.h,
+
 // kernel/memory/pool/pool.h
 #include "../include/asmFunc.h"
 #include "../initer/idt/interrupt.h"

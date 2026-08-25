@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第15章 系统交互
+
 #include "./shell.h"
 
 #include "../fs/fs.h"
@@ -123,6 +123,15 @@ static void cmd_execute(int32_t argc, char **argv) {
     } else if (!strcmp("gui", argv[0])) {
         gui_start();
     } else {
+        make_clear_abs_path(argv[0], final_path);
+        char *prog_path = final_path;
+        struct stat file_stat;
+        memset(&file_stat, 0, sizeof(struct stat));
+        if (stat(prog_path, &file_stat) == -1) {
+            printf("my_shell: cannot access %s: No such file or directory\n",
+                   argv[0]);
+            return;
+        }
         int32_t pid = fork();
         if (pid > 0) {
             g_foreground_pid = (uint32_t)pid;
@@ -132,18 +141,8 @@ static void cmd_execute(int32_t argc, char **argv) {
             printf("\n[prog %d exited, status %d]\n", (int)child_pid,
                    (int)status);
         } else if (pid == 0) {
-            make_clear_abs_path(argv[0], final_path);
-            argv[0] = final_path;
-            struct stat file_stat;
-            memset(&file_stat, 0, sizeof(struct stat));
-            if (stat(argv[0], &file_stat) == -1) {
-                printf(
-                    "my_shell: cannot access %s: No such file or directory\n",
-                    argv[0]);
-                exit(-1);
-            }
-            execv(argv[0], (const char **)argv);
-            printf("execv %s failed.\n", argv[0]);
+            execv(prog_path, (const char **)argv);
+            printf("execv %s failed.\n", prog_path);
             exit(-1);
         } else {
             printf("fork failed.\n");
@@ -153,6 +152,7 @@ static void cmd_execute(int32_t argc, char **argv) {
 
 void my_shell(void *arg) {
     (void)arg;
+    kprintf("[shell] my_shell start\n");
     clear();
     cwd_cache[0] = '/';
     cwd_cache[1] = 0;

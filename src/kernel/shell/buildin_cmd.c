@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第15章 系统交互
+
 #include "./buildin_cmd.h"
 
 #include "../fs/dir.h"

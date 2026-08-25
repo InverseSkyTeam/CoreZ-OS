@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第9章 线程
+
 #ifndef LIST_H
 #define LIST_H
 

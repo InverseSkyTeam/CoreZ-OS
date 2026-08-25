@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "../../include/asmFunc.h"
+#include "../../initer/io/io.h"
 #include "../../memory/pool/pool.h"
 #include "../pit/pit.h"
 
@@ -32,6 +33,9 @@
 #define IOREG_TABLE 0x10
 #define IOAPIC_MAX_PINS 23
 
+#define APIC_VADDR_IOAPIC 0x40000000u
+#define APIC_VADDR_LAPIC 0x40200000u
+
 #define IO_IR_MASK (1u << 16)
 #define IO_IR_TRIGGER (1u << 15)
 #define IO_IR_POLARITY (1u << 13)
@@ -44,6 +48,9 @@
 
 static volatile uint32_t *lapic;
 static volatile uint32_t *ioapic;
+static int s_apic_active;
+
+int apic_active(void) { return s_apic_active; }
 
 static uint32_t rdmsr(uint32_t msr) {
     uint32_t lo, hi;
@@ -124,7 +131,7 @@ static uint32_t lapic_timer_calibrate(void) {
 static void ioapic_route(uint32_t pin, uint32_t vector) {
     uint32_t reg = IOREG_TABLE + 2 * pin;
 
-    ioapic_write(reg, vector | IO_IR_TRIGGER);
+    ioapic_write(reg, vector);
     ioapic_write(reg + 1, 0);
 }
 
@@ -155,18 +162,14 @@ static void disable_pic(void) {
 
 int apic_init(void) {
     uint32_t base = rdmsr(MSR_APIC_BASE);
-    uint32_t lphys = base & 0xFFFFF000u;
-    if (lphys == 0) {
-        lphys = 0xFEE00000u;
-    }
 
     if (!(base & APIC_BASE_ENABLE)) {
         base |= APIC_BASE_ENABLE;
         wrmsr(MSR_APIC_BASE, base);
     }
 
-    lapic = (volatile uint32_t *)ioremap(lphys, 0x1000);
-    ioapic = (volatile uint32_t *)ioremap(IOAPIC_BASE, 0x1000);
+    lapic = (volatile uint32_t *)APIC_VADDR_LAPIC;
+    ioapic = (volatile uint32_t *)APIC_VADDR_IOAPIC;
     if (lapic == 0 || ioapic == 0) {
         return -1;
     }
@@ -185,9 +188,13 @@ int apic_init(void) {
     lapic_write(LAPIC_LVT_T, VECTOR_BASE | LAPIC_TIMER_PERIODIC);
     lapic_write(LAPIC_TIMER_DIV, LAPIC_DIV1);
     lapic_write(LAPIC_TIMER_INIT, per_tick);
+    kprintf("[APIC] id=%u lvt=0x%x cur=0x%x per_tick=%u\n",
+            (unsigned)lapic_get_id(), (unsigned)lapic_read(LAPIC_LVT_T),
+            (unsigned)lapic_read(LAPIC_TIMER_CUR), (unsigned)per_tick);
 
     ioapic_init();
     disable_pic();
 
+    s_apic_active = 1;
     return 0;
 }

@@ -1,4 +1,3 @@
-"""连接 qemu telnet monitor，读指定地址内存 / 寄存器，打印结果。"""
 import socket
 import sys
 import time

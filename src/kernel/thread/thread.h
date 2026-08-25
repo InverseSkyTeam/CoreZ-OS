@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第9章 线程与调度
+
 #ifndef THREAD_H
 #define THREAD_H
 #include <stdint.h>
@@ -6,7 +6,7 @@
 #include "../memory/pool/pool.h"
 #include "../include/signal.h"
 #include "./percpu.h"
-#define THREAD_STACK_SIZE 0x2000
+#define THREAD_STACK_SIZE 0x4000
 #define MAX_TASKS 64
 #define STACK_MAGIC 0x19860726
 #define MAX_FILES_OPEN_PER_PROC 8
@@ -21,19 +21,19 @@ enum task_status {
     TASK_STOPPED
 };
 typedef void (*thread_func)(void*);
+
 struct thread_stack {
-    uint32_t eflags;
-    uint32_t esi;
-    uint32_t edi;
-    uint32_t ebx;
-    uint32_t ebp;
-    void (*eip)(void);
-    void (*unused_retaddr);
-    thread_func function;
-    void* func_arg;
+    uint64_t rflags;
+    uint64_t r15;
+    uint64_t r14;
+    uint64_t r13;
+    uint64_t r12;
+    uint64_t rbx;
+    uint64_t rbp;
+    void (*rip)(void);
 };
 struct task_struct {
-    uint32_t* self_kstack;
+    uint64_t* self_kstack;
     enum task_status status;
     uint32_t pid;
     char name[16];
@@ -46,7 +46,7 @@ struct task_struct {
     uint32_t futex_ready;
     int32_t parent_pid;
     int8_t exit_status;
-    uint32_t kernel_stack_top;
+    uint64_t kernel_stack_top;
     uint32_t pgdir;
     struct virtual_addr userprog_v_addr;
     uint32_t user_brk;
@@ -70,7 +70,8 @@ void thread_init(void);
 void kernel_thread(char* name, uint8_t priority, thread_func function, void* arg);
 struct task_struct* thread_create(char* name, uint8_t priority, thread_func function, void* arg);
 void schedule(void);
-void switch_to(uint32_t** cur_kstack, uint32_t** next_kstack);
+void switch_to(uint64_t** cur_kstack, uint64_t** next_kstack);
+void kernel_thread_entry(void);
 void thread_block(void);
 void thread_unblock(struct task_struct* t);
 void thread_yield(void);

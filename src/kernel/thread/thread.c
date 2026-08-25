@@ -1,12 +1,14 @@
-// 参考: 《操作系统真相还原》(于渊) 第9章 线程与调度
+
 #include "./thread.h"
 #include "../device/keyboard.h"
 #include "../include/asmFunc.h"
 #include "../include/assert.h"
+#include "../initer/io/io.h"
 #include "../lib/list/list.h"
 #include "../lib/str/str.h"
 #include "../memory/pool/pool.h"
 #include "../userprog/process.h"
+
 struct list g_ready_list;
 static struct task_struct g_task_table[MAX_TASKS];
 static uint32_t g_task_count = 0;
@@ -21,7 +23,8 @@ static void idle(void *arg) {
         __asm__ volatile("sti; hlt" : : : "memory");
     }
 }
-static void kernel_thread_entry(thread_func function, void *arg) {
+
+void kernel_thread_entry_c(thread_func function, void *arg) {
     function(arg);
     current->status = TASK_DIED;
     uint32_t old = asm_save_eflags();
@@ -64,20 +67,19 @@ static void init_task_struct_basic(struct task_struct *t, int32_t parent_pid) {
 struct task_struct *thread_create(char *name, uint8_t priority,
                                   thread_func function, void *arg) {
     struct task_struct *t = &g_task_table[g_task_count++];
-    uint32_t stack = (uint32_t)get_kernel_pages(THREAD_STACK_SIZE / PAGE_SIZE);
+    uint64_t stack = (uint64_t)get_kernel_pages(THREAD_STACK_SIZE / PAGE_SIZE);
     struct thread_stack *ts =
         (struct thread_stack *)(stack + THREAD_STACK_SIZE -
                                 sizeof(struct thread_stack));
-    ts->eflags = 0x202;
-    ts->esi = 0;
-    ts->edi = 0;
-    ts->ebx = 0;
-    ts->ebp = 0;
-    ts->eip = (void (*)(void))kernel_thread_entry;
-    ts->unused_retaddr = 0;
-    ts->function = function;
-    ts->func_arg = arg;
-    t->self_kstack = (uint32_t *)ts;
+    ts->rflags = 0x202;
+    ts->r15 = (uint64_t)function;
+    ts->r14 = (uint64_t)arg;
+    ts->r13 = 0;
+    ts->r12 = 0;
+    ts->rbx = 0;
+    ts->rbp = 0;
+    ts->rip = kernel_thread_entry;
+    t->self_kstack = (uint64_t *)ts;
     init_task_struct_basic(t, -1);
     strcpy(t->name, name);
     t->priority = priority;
@@ -120,17 +122,19 @@ struct task_struct *thread_alloc_slot(const char *name, uint8_t priority) {
         return NULL;
     }
     struct task_struct *t = &g_task_table[g_task_count++];
-    uint32_t stack = (uint32_t)get_kernel_pages(THREAD_STACK_SIZE / PAGE_SIZE);
+    uint64_t stack = (uint64_t)get_kernel_pages(THREAD_STACK_SIZE / PAGE_SIZE);
     struct thread_stack *ts =
         (struct thread_stack *)(stack + THREAD_STACK_SIZE -
                                 sizeof(struct thread_stack));
-    ts->eflags = 0x202;
-    ts->esi = ts->edi = ts->ebx = ts->ebp = 0;
-    ts->eip = 0;
-    ts->unused_retaddr = 0;
-    ts->function = 0;
-    ts->func_arg = 0;
-    t->self_kstack = (uint32_t *)ts;
+    ts->rflags = 0x202;
+    ts->r15 = 0;
+    ts->r14 = 0;
+    ts->r13 = 0;
+    ts->r12 = 0;
+    ts->rbx = 0;
+    ts->rbp = 0;
+    ts->rip = 0;
+    t->self_kstack = (uint64_t *)ts;
     init_task_struct_basic(t, -1);
     strcpy(t->name, name);
     t->priority = priority;
@@ -205,7 +209,9 @@ void schedule(void) {
     struct task_struct *prev = current;
     set_current(next);
     process_activate(next);
+    outb(0x3F8, '<');
     switch_to(&prev->self_kstack, &next->self_kstack);
+    outb(0x3F8, '>');
 }
 struct fork_args {
     fork_continuation cb;
@@ -222,13 +228,15 @@ static void build_fork_thread_stack(struct task_struct *t,
     struct thread_stack *ts =
         (struct thread_stack *)(t->kernel_stack_top -
                                 sizeof(struct thread_stack));
-    ts->eflags = 0x202;
-    ts->esi = ts->edi = ts->ebx = ts->ebp = 0;
-    ts->eip = (void (*)(void))kernel_thread_entry;
-    ts->unused_retaddr = 0;
-    ts->function = fork_thread_entry;
-    ts->func_arg = fa;
-    t->self_kstack = (uint32_t *)ts;
+    ts->rflags = 0x202;
+    ts->r15 = (uint64_t)fork_thread_entry;
+    ts->r14 = (uint64_t)fa;
+    ts->r13 = 0;
+    ts->r12 = 0;
+    ts->rbx = 0;
+    ts->rbp = 0;
+    ts->rip = kernel_thread_entry;
+    t->self_kstack = (uint64_t *)ts;
 }
 int thread_fork_with_cb(const char *name, uint8_t priority,
                         fork_continuation cb, void *arg) {

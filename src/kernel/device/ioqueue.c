@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第11章 输入输出系统
+
 #include "./ioqueue.h"
 #include "../include/asmFunc.h"
 #include "../include/assert.h"

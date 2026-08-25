@@ -10,6 +10,7 @@
 #include "../../userprog/process.h"
 #include "../apic/apic.h"
 #include "../io/io.h"
+#include "../pic/pic.h"
 #include "../pit/pit.h"
 volatile uint32_t g_tick = 0;
 static const char *g_exc_names[32] = {"Divide Error",
@@ -78,9 +79,9 @@ static int handle_cow_fault(uint32_t fault_addr, uint32_t error_code) {
 void isr_handler(struct Registers *r) {
     uint32_t n = r->int_no;
     if (n == 14) {
-        uint32_t cr2;
+        uint64_t cr2;
         __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
-        if (handle_cow_fault(cr2, r->err_code)) {
+        if (handle_cow_fault((uint32_t)cr2, r->err_code)) {
             return;
         }
     }
@@ -111,11 +112,11 @@ void isr_handler(struct Registers *r) {
             r->eflags);
     kprintf("  eax = 0x%x  ebx = 0x%x  ecx = 0x%x  edx = 0x%x\n", r->eax,
             r->ebx, r->ecx, r->edx);
-    kprintf("  esi = 0x%x  edi = 0x%x  ebp = 0x%x  ds = 0x%x\n", r->esi, r->edi,
-            r->ebp, r->ds);
-    uint32_t cr2;
+    kprintf("  esi = 0x%x  edi = 0x%x  ebp = 0x%x  rflags = 0x%x\n", r->esi,
+            r->edi, r->ebp, r->rflags);
+    uint64_t cr2;
     asm volatile("mov %%cr2, %0" : "=r"(cr2));
-    kprintf("  cr2 (fault addr) = 0x%x\n", cr2);
+    kprintf("  cr2 (fault addr) = 0x%x\n", (uint32_t)cr2);
     if (cr2 >= 0xC1000000 && cr2 < 0xC1400000) {
         kprintf("  (note: fault is inside kernel virtual pool "
                 "0xC1000000..0xC1400000)\n");
@@ -127,14 +128,20 @@ void isr_handler(struct Registers *r) {
         asm_hlt();
     }
 }
+
+static void irq_eoi(uint32_t irq) {
+    if (apic_active()) {
+        lapic_eoi();
+    } else {
+        pic_send_eoi((uint8_t)irq);
+    }
+}
+
 void irq_handler(struct Registers *r) {
     uint32_t irq = r->int_no - 32;
     if (irq == 0) {
-        lapic_eoi();
+        irq_eoi(irq);
         g_tick++;
-        if (g_tick % PIT_HZ == 0) {
-            setTextColor(10);
-        }
         if (current != 0) {
             check_pending_signals(r);
             schedule();
@@ -150,5 +157,5 @@ void irq_handler(struct Registers *r) {
     if (irq == 14) {
         intr_hd_handler((uint8_t)r->int_no);
     }
-    lapic_eoi();
+    irq_eoi(irq);
 }

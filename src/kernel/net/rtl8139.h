@@ -1,4 +1,4 @@
-// 参考: https://wiki.osdev.org/RTL8139
+
 #ifndef RTL8139_H
 #define RTL8139_H
 

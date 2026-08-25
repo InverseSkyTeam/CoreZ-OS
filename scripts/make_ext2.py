@@ -26,7 +26,8 @@ DATA_START = ITABLE_BLK + ITABLE_BLOCKS
 FILES = [
     "prog_no_arg.elf", "prog_arg.elf", "cat.elf", "fork_demo.elf",
     "prog_pipe.elf", "font_demo.elf", "heap_demo.elf", "signal_demo.elf",
-    "font_subset.ttf", "libc_testsuite.elf", "nr_shell.elf", "ping.elf"
+    "font_subset.ttf", "libc_testsuite.elf", "nr_shell.elf", "ping.elf",
+    "lc_demo.elf", "musl_demo.elf"
 ]
 ALIASES = {"forktest.elf": "fork_demo.elf"}
 

@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第15章 wait与exit系统调用
+
 #include "./wait_exit.h"
 #include "../fs/file.h"
 #include "../include/assert.h"

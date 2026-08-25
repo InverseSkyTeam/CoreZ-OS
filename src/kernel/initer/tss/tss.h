@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第11章 用户进程
+
 #ifndef TSS_H
 #define TSS_H
 
@@ -6,34 +6,17 @@
 
 struct task_struct;
 
+// 64 位 TSS (共 104 字节 / 0x68)
 struct tss {
-    uint32_t backlink;
-    uint32_t esp0;
-    uint32_t ss0;
-    uint32_t esp1;
-    uint32_t ss1;
-    uint32_t esp2;
-    uint32_t ss2;
-    uint32_t cr3;
-    uint32_t eip;
-    uint32_t eflags;
-    uint32_t eax;
-    uint32_t ecx;
-    uint32_t edx;
-    uint32_t ebx;
-    uint32_t esp;
-    uint32_t ebp;
-    uint32_t esi;
-    uint32_t edi;
-    uint32_t es;
-    uint32_t cs;
-    uint32_t ss;
-    uint32_t ds;
-    uint32_t fs;
-    uint32_t gs;
-    uint32_t ldt;
-    uint16_t trap;
-    uint16_t iomap_base;
+    uint32_t reserved1;        // 0x00
+    uint64_t rsp0;             // 0x04
+    uint64_t rsp1;             // 0x0C
+    uint64_t rsp2;             // 0x14
+    uint64_t reserved2;        // 0x1C
+    uint64_t ist[7];           // 0x24 - 中断栈表
+    uint64_t reserved3;        // 0x5C
+    uint16_t reserved4;        // 0x64
+    uint16_t iomap_base;       // 0x66
 } __attribute__((packed));
 
 void tss_init(void);

@@ -1,33 +1,32 @@
-[bits 32]
+bits 64
 section .text
 
 global inb
-inb:
-    mov dx, [esp + 4]
-    in al, dx
+inb:                            ; uint8_t inb(uint16_t port)
+    mov     dx, di
+    in      al, dx
     ret
 
 global outb
-outb:
-    mov dx, [esp + 4]
-    mov al, [esp + 8]
-    out dx, al
+outb:                           ; void outb(uint16_t port, uint8_t value)
+    mov     dx, di
+    mov     al, sil
+    out     dx, al
     ret
 
 global insw
-insw:
-    mov dx, [esp + 4]
-    mov edi, [esp + 8]
-    mov ecx, [esp + 12]
+insw:                           ; void insw(uint16_t port, void* buf, int words)
+    mov     ecx, edx            ; words 先保存到 ecx, 再改 rdx(否则 dx=port 会覆盖低16位)
+    mov     dx, di
+    mov     rdi, rsi
     cld
-    rep insw
+    rep     insw
     ret
 
 global outsw
-outsw:
-    mov dx, [esp + 4]
-    mov esi, [esp + 8]
-    mov ecx, [esp + 12]
+outsw:                          ; void outsw(uint16_t port, const void* buf, int words)
+    mov     ecx, edx            ; words 先保存到 ecx, 再改 rdx
+    mov     dx, di
     cld
-    rep outsw
+    rep     outsw
     ret

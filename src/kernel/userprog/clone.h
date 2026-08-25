@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第15章 fork + Linux clone(CLONE_VM)
+
 #ifndef CLONE_H
 #define CLONE_H
 

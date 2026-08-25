@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第12章 系统调用
+
 #include "stdio.h"
 #include "syscall.h"
 

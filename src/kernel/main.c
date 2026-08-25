@@ -7,7 +7,9 @@
 #include "./initer/apic/apic.h"
 #include "./initer/gdt/gdt.h"
 #include "./initer/idt/idt.h"
+#include "./initer/idt/interrupt.h"
 #include "./initer/io/io.h"
+#include "./initer/pic/pic.h"
 #include "./initer/pit/pit.h"
 #include "./initer/smp/smp.h"
 #include "./initer/tss/tss.h"
@@ -21,6 +23,8 @@
 #include "./thread/thread.h"
 #include "./userprog/exec.h"
 #include "./userprog/process.h"
+
+#define VRAM_VIRT 0x80000000UL
 struct BootInfo {
     uint8_t cyls;
     uint8_t leds;
@@ -31,16 +35,6 @@ struct BootInfo {
     uint32_t vram;
     uint32_t vram_bytes;
 };
-static void k_thread_a(void *arg) {
-    for (;;) {
-        thread_yield();
-    }
-}
-static void k_thread_b(void *arg) {
-    for (;;) {
-        thread_yield();
-    }
-}
 static void init(void) {
     g_init_pid = getpid();
     uint32_t ret_pid = fork();
@@ -49,8 +43,8 @@ static void init(void) {
             int32_t status = 0;
             int32_t child_pid = wait(&status);
             if (child_pid != -1) {
-                printf("init: reaped child %d, status %d\n", (int)child_pid,
-                       (int)status);
+                kprintf("init: reaped child %d, status %d\n", (int)child_pid,
+                        (int)status);
             } else {
                 thread_yield();
             }
@@ -58,54 +52,69 @@ static void init(void) {
     } else if (ret_pid == 0) {
         my_shell(NULL);
     } else {
-        printf("init: fork failed\n");
+        kprintf("init: fork failed\n");
         for (;;) {
         }
     }
 }
 void KMain(void) {
-    // const struct BootInfo *bootInfo = (const struct BootInfo *)0x0FF0;
-    // initPalette();
-    // initIO((uint8_t *)bootInfo->vram, bootInfo->scrnx, bootInfo->scrny,
-    //        bootInfo->vram_bytes);
-    // initIDT();
-    // syscall_init();
-    // futex_init();
-    // mm_init();
-    // gdt_init();
-    // percpu_init();
-    // tss_init();
-    // setTextColor(10);
-    // printf("[OK] TSS loaded, TR=0x%x esp0=0x%x\n", (uint32_t)asm_str(),
-    //        tss.esp0);
-    // setCursor(0, 0);
-    // setTextColor(14);
-    // printf("NiTianOS Kernel Inited.\n");
-    // setTextColor(10);
-    // printf("[OK] Higher Half Kernel @ 0xC0000000+\n");
-    // if (apic_init() == 0) {
-    //     printf("[OK] APIC (LAPIC timer + I/O APIC) inited\n");
-    // } else {
-    //     setTextColor(12);
-    //     printf("[FAIL] APIC init error\n");
-    // }
-    // keyboard_init();
-    // mouse_init();
-    // thread_init();
-    // setTextColor(10);
-    // printf("[OK] thread mgr ready\n");
-    // kernel_thread("k_a", 4, k_thread_a, 0);
-    // kernel_thread("k_b", 4, k_thread_b, 0);
-    // asm_sti();
-    // ide_init();
-    // filesys_init();
-    // setTextColor(10);
-    // printf("[OK] user programs on ext2\n");
-    // smp_init();
-    // net_init();
-    // process_execute(init, "init");
+    asm_write_cr4(asm_read_cr4() | 0x600);
+    struct BootInfo *bi = (struct BootInfo *)0x0FF0;
+    initIO((uint8_t *)(uintptr_t)VRAM_VIRT, bi->scrnx, bi->scrny,
+           bi->vram_bytes);
+    kprintf("[diag] vmode=%d scrnx=%d scrny=%d vram=0x%x bytes=%u\n",
+            (int)bi->vmode, (int)bi->scrnx, (int)bi->scrny,
+            (uint32_t)(uintptr_t)bi->vram, bi->vram_bytes);
+
+    kprintf("[init] mm\n");
+    mm_init();
+
+    kprintf("[init] gdt\n");
+    gdt_init();
+
+    kprintf("[init] percpu\n");
+    percpu_init();
+    set_current((struct task_struct *)0);
+
+    kprintf("[init] tss\n");
+    tss_init();
+
+    kprintf("[init] idt\n");
+    initIDT();
+
+    kprintf("[init] syscall\n");
+    syscall_init();
+    futex_init();
+
+    kprintf("[init] ppmode\n");
+    kprintf("[OK] long mode (CR0.PG=1 CR4.PAE=1 EFER.LME=1 CS.L=1)\n");
+
+    kprintf("[init] apic\n");
+    if (apic_init() != 0) {
+        kprintf("[WARN] apic_init failed, fallback PIC+PIT\n");
+        initPic();
+        initPIT(PIT_HZ);
+    }
+
+    kprintf("[init] keyboard\n");
+    keyboard_init();
+    mouse_init();
+
+    kprintf("[init] threads\n");
+    thread_init();
+    kprintf("[OK] kernel threads ready\n");
+
+    setTextColor(10);
+    kprintf("[OK] kernel init done, enable IRQs\n");
+
+    ide_init();
+    filesys_init();
+    smp_init();
+    net_init();
+    kernel_thread("shell", 4, my_shell, 0);
     for (;;) {
-        // thread_yield();
+        asm_sti();
         asm_hlt();
+        thread_yield();
     }
 }

@@ -1,4 +1,4 @@
-// 参考: Wine syscall 翻译(gitlab.winehq.org/wine), Linux set_thread_area
+
 #include "./linux_compat.h"
 #include "../device/ioqueue.h"
 #include "../device/keyboard.h"
@@ -11,9 +11,10 @@
 #include "../userprog/process.h"
 #include "../userprog/wait_exit.h"
 uint32_t sys_brk(uint32_t addr);
+
 struct lc_iovec {
-    uint32_t base;
-    uint32_t len;
+    uint64_t base;
+    uint64_t len;
 };
 static void lc_seterrno(struct task_struct *cur, int32_t val) {
     cur->errno = val;
@@ -68,7 +69,6 @@ static int32_t compat_set_thread_area(struct Registers *r,
     cur->tls_base = base;
     cur->tls_selector = SELECTOR_TLS;
     tls_desc_set_base(base);
-    r->gs = SELECTOR_TLS;
     lc_seterrno(cur, 0);
     return 0;
 }
@@ -143,10 +143,6 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case LC_MMAP: {
-        kprintf(
-            "[compat] mmap(0x%x,%u,prot=0x%x,flags=0x%x,fd=%u,off=%u)  <- 6 "
-            "arg\n",
-            a, b, c, d, e, f);
         if (a != 0) {
             ret = a;
         } else {

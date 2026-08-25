@@ -1,4 +1,4 @@
-// 参考: https://wiki.osdev.org/C_Library
+
 #include "./str.h"
 
 size_t strlen(const char *s) {

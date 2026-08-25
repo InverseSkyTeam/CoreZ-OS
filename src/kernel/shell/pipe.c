@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第15章 管道
+
 #include "pipe.h"
 #include "../device/ioqueue.h"
 #include "../fs/file.h"

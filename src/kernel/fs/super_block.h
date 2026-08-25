@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第14章 文件系统
+
 #ifndef FS_SUPER_BLOCK_H
 #define FS_SUPER_BLOCK_H
 

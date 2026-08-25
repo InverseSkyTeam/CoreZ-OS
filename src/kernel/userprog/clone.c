@@ -1,4 +1,4 @@
-// 参考: 《操作系统真相还原》(于渊) 第15章 fork + Linux
+
 #include "./clone.h"
 #include "../fs/file.h"
 #include "../include/asmFunc.h"
@@ -12,18 +12,19 @@ extern void intr_exit(void);
 static void build_clone_stack(struct task_struct *child,
                               struct Registers *parent_frame,
                               uint32_t user_stack) {
-    uint32_t stack_top = child->kernel_stack_top;
+    uint32_t stack_top = (uint32_t)child->kernel_stack_top;
     struct Registers *child_frame =
         (struct Registers *)(stack_top - sizeof(struct Registers));
     memcpy(child_frame, parent_frame, sizeof(struct Registers));
     child_frame->eax = 0;
     child_frame->user_esp = user_stack;
     struct thread_stack *ts =
-        (struct thread_stack *)((uint32_t)child_frame - 24);
-    memset(ts, 0, 24);
-    ts->eflags = 0x202;
-    ts->eip = (void (*)(void))intr_exit;
-    child->self_kstack = (uint32_t *)ts;
+        (struct thread_stack *)((uint8_t *)child_frame -
+                                sizeof(struct thread_stack));
+    memset(ts, 0, sizeof(struct thread_stack));
+    ts->rflags = 0x202;
+    ts->rip = (void (*)(void))intr_exit;
+    child->self_kstack = (uint64_t *)ts;
 }
 pid_t sys_clone(struct Registers *r) {
     uint32_t flags = r->ebx;

@@ -2,6 +2,21 @@ KERNEL  equ     0x00280000
 KERNEL_VIRT equ 0xC0000000 + KERNEL
 KASLR_MIN  equ    0x00800000
 KASLR_SLOTS equ   124
+KERNEL_FIXED equ  0x00280000
+
+MENU_ITEMS   equ  2
+MENU_TIMEOUT equ  5
+TICKS_PER_SEC equ 18     
+KEY_UP       equ  0x48
+KEY_DOWN     equ  0x50
+KEY_ENTER    equ  0x1C
+KEY_1        equ  0x02
+KEY_2        equ  0x03
+FONT_BASE    equ  0x9C000   
+MENU_BG      equ  0x00
+MENU_NORMAL  equ  0x07
+MENU_HI      equ  0x0E
+MENU_TITLE   equ  0x0F
 DSKCAC  equ     0x00100000
 DSKCAC0 equ     0x00008000
 VBEMODE equ     0x105
@@ -77,6 +92,7 @@ vbe_fail:
         mov     dword [VRAMBYTES], 64000   
 
 vbe_done:
+        call    set_palette
         mov     ax, 0x1130
         mov     bh, 0x06
         int     0x10
@@ -268,6 +284,8 @@ pipelineflush:
         mov     gs, ax
         mov     ss, ax
 
+        call    boot_menu
+
         call    pick_kphys
         mov     eax, [l_kphys]
         add     eax, KERNEL - 0x200000
@@ -389,6 +407,12 @@ memcpy:
         ret
 
 pick_kphys:
+        cmp     dword [l_kaslr], 0
+        jne     .do_kaslr
+        mov     eax, KERNEL_FIXED
+        mov     [l_kphys], eax
+        ret
+.do_kaslr:
         rdtsc
         mov     ebx, eax
         rdtsc
@@ -433,6 +457,326 @@ setup_hpd:
         mov     dword [0x91000 + 3*8], 0x98007
         ret
 
+boot_menu:
+        pushad
+        call    kbd_flush            
+        mov     dword [menu_sel], 0
+        mov     dword [menu_secs], MENU_TIMEOUT
+        call    menu_clear
+        call    menu_draw
+        call    get_rtc_sec
+        mov     [menu_last_sec], eax
+.mloop:
+        call    kbd_poll
+        test    eax, eax
+        jz      .rtc
+        mov     dword [menu_secs], 0x7FFFFFFF  
+        cmp     eax, KEY_UP
+        je      .up
+        cmp     eax, KEY_DOWN
+        je      .down
+        cmp     eax, KEY_1
+        je      .num0
+        cmp     eax, KEY_2
+        je      .num1
+        cmp     eax, KEY_ENTER
+        je      .done
+        jmp     .rtc
+.up:
+        dec     dword [menu_sel]
+        jns     .upcheck
+        mov     dword [menu_sel], MENU_ITEMS-1
+        jmp     .redraw
+.upcheck:
+        mov     eax, [menu_sel]
+        cmp     eax, MENU_ITEMS
+        jb      .redraw
+        mov     dword [menu_sel], MENU_ITEMS-1
+        jmp     .redraw
+.down:
+        inc     dword [menu_sel]
+        mov     eax, [menu_sel]
+        cmp     eax, MENU_ITEMS
+        jb      .redraw
+        mov     dword [menu_sel], 0
+        jmp     .redraw
+.num0:
+        mov     dword [menu_sel], 0
+        jmp     .done
+.num1:
+        mov     dword [menu_sel], 1
+        jmp     .done
+.redraw:
+        call    menu_draw
+        call    menu_draw_count
+        jmp     .mloop
+.rtc:
+        cmp     dword [menu_secs], MENU_TIMEOUT
+        ja      .mloop
+        call    get_rtc_sec
+        cmp     eax, [menu_last_sec]
+        je      .mloop
+        mov     [menu_last_sec], eax
+        dec     dword [menu_secs]
+        cmp     dword [menu_secs], 0
+        jle     .done
+        call    menu_draw_count
+        jmp     .mloop
+.done:
+        cmp     dword [menu_sel], 1
+        je      sys_reboot
+        mov     dword [l_kaslr], 1       
+        popad
+        ret
+
+sys_reboot:
+.again:
+        in      al, 0x64
+        test    al, 0x02
+        jnz     .again
+        mov     al, 0xFE
+        out     0x64, al
+.h:
+        hlt
+        jmp     .h
+
+menu_clear:
+        pushad
+        mov     eax, 0
+        mov     ebx, 0
+        movzx   ecx, word [SCRNX]
+        movzx   edx, word [SCRNY]
+        mov     esi, MENU_BG
+        call    fill_rect
+        popad
+        ret
+
+menu_draw:
+        pushad
+        mov     eax, 40
+        mov     ebx, 30
+        mov     esi, msg_title
+        mov     edx, MENU_TITLE
+        call    draw_str
+        mov     dword [item_idx], 0
+.iloop:
+        mov     eax, [item_idx]
+        cmp     eax, MENU_ITEMS
+        jae     .done
+        imul    ecx, eax, 24
+        add     ecx, 90
+        mov     ebx, ecx
+        mov     eax, 40
+        mov     ecx, [item_idx]
+        cmp     ecx, [menu_sel]
+        jne     .m0
+        mov     esi, msg_sel
+        mov     edx, MENU_HI
+        jmp     .m1
+.m0:
+        mov     esi, msg_unsel
+        mov     edx, MENU_NORMAL
+.m1:
+        call    draw_str
+        mov     ecx, [item_idx]
+        mov     esi, [menu_items + ecx*4]
+        mov     eax, 64
+        mov     ecx, [item_idx]
+        cmp     ecx, [menu_sel]
+        jne     .l0
+        mov     edx, MENU_HI
+        jmp     .l1
+.l0:
+        mov     edx, MENU_NORMAL
+.l1:
+        call    draw_str
+        inc     dword [item_idx]
+        jmp     .iloop
+.done:
+        popad
+        ret
+
+menu_draw_count:
+        pushad
+        cmp     dword [menu_secs], MENU_TIMEOUT
+        ja      .done
+        movzx   eax, word [SCRNY]
+        sub     eax, 28
+        mov     [cnt_y], eax
+        mov     eax, 40
+        mov     ebx, [cnt_y]
+        mov     ecx, 560
+        mov     edx, 16
+        mov     esi, MENU_BG
+        call    fill_rect
+        mov     eax, 40
+        mov     ebx, [cnt_y]
+        mov     esi, msg_count1
+        mov     edx, MENU_NORMAL
+        call    draw_str
+        mov     eax, [menu_secs]
+        add     eax, '0'
+        mov     ecx, eax
+        mov     eax, 144
+        mov     ebx, [cnt_y]
+        mov     edx, MENU_HI
+        call    draw_char
+        mov     eax, 152
+        mov     ebx, [cnt_y]
+        mov     esi, msg_count2
+        mov     edx, MENU_NORMAL
+        call    draw_str
+.done:
+        popad
+        ret
+
+draw_str:
+        pushad
+        mov     [cur_x], eax
+        mov     [cur_y], ebx
+.loop:
+        lodsb
+        test    al, al
+        jz      .done
+        mov     ecx, eax
+        mov     eax, [cur_x]
+        mov     ebx, [cur_y]
+        call    draw_char
+        add     dword [cur_x], 8
+        jmp     .loop
+.done:
+        popad
+        ret
+
+draw_char:
+        pushad
+        mov     [tmp_x], eax
+        mov     [tmp_color], edx
+        mov     esi, FONT_BASE
+        imul    ecx, ecx, 16
+        add     esi, ecx
+        movzx   ecx, word [SCRNX]
+        mov     [pitch], ecx
+        mov     eax, ebx
+        mul     ecx
+        add     eax, [tmp_x]
+        mov     edi, [VRAM]
+        add     edi, eax
+        mov     eax, [tmp_color]
+        mov     edx, 16
+.row:
+        movzx   ebx, byte [esi]
+        push    ecx
+        mov     ecx, 8
+.col:
+        shl     bl, 1
+        jnc     .nopix
+        mov     [edi], al
+.nopix:
+        inc     edi
+        dec     ecx
+        jnz     .col
+        pop     ecx
+        inc     esi
+        push    eax
+        mov     eax, [pitch]
+        sub     eax, 8
+        add     edi, eax
+        pop     eax
+        dec     edx
+        jnz     .row
+        popad
+        ret
+
+fill_rect:
+        pushad
+        mov     [tmp_x], eax
+        mov     [tmp_y], ebx
+        mov     [tmp_w], ecx
+        mov     [tmp_h], edx
+        mov     [tmp_color], esi
+        movzx   ecx, word [SCRNX]
+        mov     [pitch], ecx
+        mov     eax, [tmp_y]
+        mul     ecx
+        add     eax, [tmp_x]
+        mov     edi, [VRAM]
+        add     edi, eax
+        mov     al, [tmp_color]
+        mov     edx, [tmp_h]
+.row:
+        push    edi
+        mov     ecx, [tmp_w]
+        rep     stosb
+        pop     edi
+        add     edi, [pitch]
+        dec     edx
+        jnz     .row
+        popad
+        ret
+
+kbd_poll:
+        in      al, 0x64
+        test    al, 0x01
+        jz      .none
+        in      al, 0x60
+        test    al, 0x80
+        jnz     .none
+        cmp     al, 0xE0
+        je      .ext
+        movzx   eax, al
+        ret
+.ext:
+        call    kbd_waitdata
+        in      al, 0x60
+        test    al, 0x80
+        jnz     .none
+        movzx   eax, al
+        ret
+.none:
+        xor     eax, eax
+        ret
+
+kbd_waitdata:
+.wait:
+        in      al, 0x64
+        test    al, 0x01
+        jz      .wait
+        ret
+
+kbd_flush:
+        push    eax
+        push    ecx
+        mov     ecx, 64
+.loop:
+        in      al, 0x64
+        test    al, 0x01
+        jz      .done
+        in      al, 0x60
+        dec     ecx
+        jnz     .loop
+.done:
+        pop     ecx
+        pop     eax
+        ret
+
+get_rtc_sec:
+.again:
+        mov     al, 0x0A
+        out     0x70, al
+        in      al, 0x71
+        test    al, 0x80
+        jnz     .again
+        mov     al, 0x00
+        out     0x70, al
+        in      al, 0x71
+        mov     ecx, eax
+        and     ecx, 0x0F
+        shr     eax, 4
+        imul    eax, eax, 10
+        add     eax, ecx
+        ret
+
         alignb  16
 
         align   8
@@ -457,7 +801,68 @@ l_off:    dw    0
 l_seg:    dw    0
 l_kname:  db    "KERNEL  BIN"
 
+l_kaslr:      dd    1
+menu_sel:     dd    0
+menu_secs:    dd    0
+menu_last_sec: dd  0
+item_idx:     dd    0
+cnt_y:        dd    0
+cur_x:        dd    0
+cur_y:        dd    0
+pitch:        dd    0
+tmp_x:        dd    0
+tmp_y:        dd    0
+tmp_w:        dd    0
+tmp_h:        dd    0
+tmp_color:    dd    0
+
+msg_title:  db "NiTian OS Boot Menu", 0
+msg_sel:    db "> ", 0
+msg_unsel:  db "  ", 0
+msg_count1: db "Auto boot in ", 0
+msg_count2: db "s", 0
+menu_items:
+        dd  msg_opt0
+        dd  msg_opt2
+msg_opt0: db "Boot NiTian OS", 0
+msg_opt2: db "Reboot", 0
+
 bits    16
+set_palette:
+        pusha
+        mov     dx, 0x3C8
+        mov     al, 0
+        out     dx, al
+        mov     si, palette
+        mov     cx, 48
+        mov     dx, 0x3C9
+.l:
+        mov     al, [si]
+        out     dx, al
+        inc     si
+        dec     cx
+        jnz     .l
+        popa
+        ret
+
+palette:
+        db 0,0,0
+        db 0,0,42
+        db 0,42,0
+        db 0,42,42
+        db 42,0,0
+        db 42,0,42
+        db 42,21,0
+        db 42,42,42
+        db 21,21,21
+        db 21,21,63
+        db 21,63,21
+        db 21,63,63
+        db 63,21,21
+        db 63,21,63
+        db 63,63,21
+        db 63,63,63
+
 l_readsec:
         push    si
         mov     word [dap+0x02], 1

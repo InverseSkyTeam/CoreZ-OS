@@ -27,9 +27,9 @@ void set_tss_desc(uint64_t tss_base, uint32_t tss_limit) {
     d[2] = tss_base & 0xFF;
     d[3] = (tss_base >> 8) & 0xFF;
     d[4] = (tss_base >> 16) & 0xFF;
-    d[5] = 0x89; /* access byte */
-    d[6] = (tss_base >> 24) & 0xFF;
-    d[7] = ((tss_limit >> 16) & 0x0F); /* G=0, AVL=0, limit[19:16] */
+    d[5] = 0x89;                       /* access byte */
+    d[6] = ((tss_limit >> 16) & 0x0F); /* G=0, AVL=0, limit[19:16] */
+    d[7] = (tss_base >> 24) & 0xFF;
     d[8] = (tss_base >> 32) & 0xFF;
     d[9] = (tss_base >> 40) & 0xFF;
     d[10] = (tss_base >> 48) & 0xFF;

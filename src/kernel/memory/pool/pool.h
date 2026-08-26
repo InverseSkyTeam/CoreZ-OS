@@ -31,6 +31,9 @@ uint32_t palloc_pages(struct pool *pool, uint32_t cnt);
 
 #define COW_FLAG (1u << 9)
 
+#define VIRT_OF(phys) ((phys) + 0xC0000000ull)
+#define PTE_PHYS(e) ((uint64_t)(e) & 0x000ffffffffff000ull)
+
 /* 页面权限位 */
 #define PTE_P   (1ull << 0)   /* present */
 #define PTE_W   (1ull << 1)   /* writable */

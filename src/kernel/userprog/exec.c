@@ -449,6 +449,10 @@ int32_t sys_execv(const char *path, const char *argv[],
         ps->rbx = argv_user_base;
         ps->rcx = argc;
     }
+
+    __asm__ volatile("mov %0, %%ds; mov %0, %%es; mov %0, %%fs;" ::"r"(
+                         (uint16_t)SELECTOR_U_DATA)
+                     : "memory");
     __asm__ volatile("mov %0, %%rsp; jmp intr_exit" : : "r"(ps) : "memory");
     return 0;
 }

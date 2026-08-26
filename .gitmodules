@@ -7,3 +7,6 @@
 [submodule "src/app/musl"]
 	path = src/app/musl
 	url = https://github.com/InverseSkyTeam/nitianos-muslc.git
+[submodule "src/app/libc-testsuite"]
+	path = src/app/libc-testsuite
+	url = git://git.musl-libc.org/libc-testsuite

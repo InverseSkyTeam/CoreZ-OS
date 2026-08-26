@@ -73,10 +73,7 @@ int nt_icmp_recv(struct nt_ping_reply *out, int max) {
 
 static void http_handler(struct mg_connection *c, int ev, void *ev_data) {
     struct mg_http_message *hm = (struct mg_http_message *)ev_data;
-    if (ev == MG_EV_OPEN)
-        printf("[N] open\n");
-    if (ev == MG_EV_READ)
-        printf("[N] read\n");
+
     if (ev == MG_EV_HTTP_MSG) {
         printf("[N] http-msg\n");
         if (mg_match(hm->uri, mg_str("/"), NULL)) {
@@ -107,7 +104,6 @@ static void net_thread(void *arg) {
         for (;;)
             thread_yield();
     }
-    printf("[NET] HTTP server on http://0.0.0.0:8765\n");
 
     for (;;) {
         mg_mgr_poll(&mgr, 10);

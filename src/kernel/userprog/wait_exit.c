@@ -18,29 +18,54 @@ static int vaddr_owned_by_current(struct task_struct *t, uint32_t vaddr) {
 }
 static void release_prog_resource(struct task_struct *release_thread) {
     if (release_thread->pgdir != 0) {
-        uint32_t *pgdir_vaddr = (uint32_t *)release_thread->pgdir;
-        for (uint32_t pde_idx = 0; pde_idx < 768; pde_idx++) {
-            uint32_t pde = pgdir_vaddr[pde_idx];
-            if (!(pde & 1))
-                continue;
-            if (pde & 0x80)
-                continue;
-            uint32_t *first_pte = pte_ptr(pde_idx * 0x400000);
-            uint32_t remaining = 0;
-            for (uint32_t pte_idx = 0; pte_idx < 1024; pte_idx++) {
-                if (!(first_pte[pte_idx] & 1))
-                    continue;
-                uint32_t vaddr = pde_idx * 0x400000 + pte_idx * PAGE_SIZE;
-                if (!vaddr_owned_by_current(release_thread, vaddr)) {
-                    remaining++;
+        uint64_t *pml4 = (uint64_t *)VIRT_OF(release_thread->pgdir);
+        uint64_t pml4e = pml4[0];
+        if (pml4e & 1) {
+            uint64_t *pdp = (uint64_t *)VIRT_OF(PTE_PHYS(pml4e));
+            for (uint32_t pdp_idx = 0; pdp_idx < 3; pdp_idx++) {
+                uint64_t pdp_e = pdp[pdp_idx];
+                if (!(pdp_e & 1) || (pdp_e & 0x80)) {
                     continue;
                 }
-                page_free_or_decref(first_pte[pte_idx] & 0xfffff000);
-                first_pte[pte_idx] = 0;
-            }
-            if (remaining == 0) {
-                page_free_or_decref(pde & 0xfffff000);
-                pgdir_vaddr[pde_idx] = 0;
+                uint64_t *pd = (uint64_t *)VIRT_OF(PTE_PHYS(pdp_e));
+                uint32_t pd_remaining = 0;
+                for (uint32_t pd_idx = 0; pd_idx < 512; pd_idx++) {
+                    uint64_t pd_e = pd[pd_idx];
+                    if (!(pd_e & 1)) {
+                        continue;
+                    }
+                    if (pd_e & 0x80) {
+                        pd_remaining++;
+                        continue;
+                    }
+                    uint64_t *pt = (uint64_t *)VIRT_OF(PTE_PHYS(pd_e));
+                    uint32_t pt_remaining = 0;
+                    for (uint32_t pte_idx = 0; pte_idx < 1024; pte_idx++) {
+                        if (!(pt[pte_idx] & 1)) {
+                            continue;
+                        }
+                        uint64_t vaddr = ((uint64_t)pdp_idx << 30) +
+                                         ((uint64_t)pd_idx << 21) +
+                                         ((uint64_t)pte_idx << 12);
+                        if (!vaddr_owned_by_current(release_thread,
+                                                    (uint32_t)vaddr)) {
+                            pt_remaining++;
+                            continue;
+                        }
+                        page_free_or_decref((uint32_t)PTE_PHYS(pt[pte_idx]));
+                        pt[pte_idx] = 0;
+                    }
+                    if (pt_remaining == 0) {
+                        page_free_or_decref((uint32_t)PTE_PHYS(pd_e));
+                        pd[pd_idx] = 0;
+                    } else {
+                        pd_remaining++;
+                    }
+                }
+                if (pd_remaining == 0) {
+                    page_free_or_decref((uint32_t)PTE_PHYS(pdp_e));
+                    pdp[pdp_idx] = 0;
+                }
             }
         }
         if (release_thread->userprog_v_addr.vaddr_bitmap.bits != NULL) {

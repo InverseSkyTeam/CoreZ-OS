@@ -36,51 +36,68 @@ static void copy_user_space(struct task_struct *parent,
     if (parent->pgdir == 0) {
         return;
     }
-    uint32_t *pgdir = (uint32_t *)parent->pgdir;
-    uint32_t *child_pgdir = (uint32_t *)child->pgdir;
-    for (uint32_t pde_idx = 0; pde_idx < 768; pde_idx++) {
-        uint32_t pde = pgdir[pde_idx];
-        if (!(pde & 1) || (pde & 0x80)) {
+
+    uint64_t *pgdir = (uint64_t *)VIRT_OF(parent->pgdir);
+    uint64_t *child_pgdir = (uint64_t *)VIRT_OF(child->pgdir);
+    uint64_t pml4e = pgdir[0];
+    if (!(pml4e & 1)) {
+        return;
+    }
+    uint64_t *pdp = (uint64_t *)VIRT_OF(PTE_PHYS(pml4e));
+    uint64_t *child_pdp = (uint64_t *)VIRT_OF(PTE_PHYS(child_pgdir[0]));
+    for (uint32_t pdp_idx = 0; pdp_idx < 3; pdp_idx++) {
+        uint64_t pdp_e = pdp[pdp_idx];
+        if (!(pdp_e & 1) || (pdp_e & 0x80)) {
             continue;
         }
-        uint32_t child_tbl = (uint32_t)palloc(&kernel_pool);
-        if (child_tbl == 0) {
-            return;
+        uint64_t *pd = (uint64_t *)VIRT_OF(PTE_PHYS(pdp_e));
+        uint64_t child_pdp_e = child_pdp[pdp_idx];
+        if (!(child_pdp_e & 1)) {
+            continue;
         }
-        memset((void *)child_tbl, 0, PAGE_SIZE);
-        uint32_t *first_pte = pte_ptr(pde_idx * 0x400000);
-        for (uint32_t pte_idx = 0; pte_idx < 1024; pte_idx++) {
-            uint32_t pte = first_pte[pte_idx];
-            if (!(pte & 1)) {
+        uint64_t *child_pd = (uint64_t *)VIRT_OF(PTE_PHYS(child_pdp_e));
+        for (uint32_t pd_idx = 0; pd_idx < 512; pd_idx++) {
+            uint64_t pd_e = pd[pd_idx];
+            if (!(pd_e & 1) || (pd_e & 0x80)) {
                 continue;
             }
-            uint32_t phy = pte & 0xfffff000;
-            uint32_t vaddr = pde_idx * 0x400000 + pte_idx * 0x1000;
-            if (vaddr == phy) {
-                continue;
+            uint64_t *pt = (uint64_t *)VIRT_OF(PTE_PHYS(pd_e));
+            uint32_t child_tbl = (uint32_t)palloc(&kernel_pool);
+            if (child_tbl == 0) {
+                return;
             }
-            if (pte & COW_FLAG) {
-                page_incr_shared(phy);
-                mark_child_bitmap(child, vaddr);
-                ((uint32_t *)child_tbl)[pte_idx] = pte;
-            } else if (pte & 2) {
-                first_pte[pte_idx] = (pte & ~(uint32_t)2) | COW_FLAG;
-                __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
-                mark_child_bitmap(child, vaddr);
-                page_incr_shared(phy);
-                ((uint32_t *)child_tbl)[pte_idx] =
-                    (pte & ~(uint32_t)2) | COW_FLAG;
-            } else {
-                page_incr_shared(phy);
-                mark_child_bitmap(child, vaddr);
-                ((uint32_t *)child_tbl)[pte_idx] = pte;
+            memset((void *)VIRT_OF(child_tbl), 0, PAGE_SIZE);
+            uint64_t *child_pt = (uint64_t *)VIRT_OF(child_tbl);
+            for (uint32_t pte_idx = 0; pte_idx < 1024; pte_idx++) {
+                uint64_t pte = pt[pte_idx];
+                if (!(pte & 1)) {
+                    continue;
+                }
+                uint32_t phy = (uint32_t)PTE_PHYS(pte);
+                uint32_t vaddr =
+                    (pdp_idx << 30) + (pd_idx << 21) + (pte_idx << 12);
+                if (vaddr == phy) {
+                    continue;
+                }
+                if (pte & COW_FLAG) {
+                    page_incr_shared(phy);
+                    mark_child_bitmap(child, vaddr);
+                    child_pt[pte_idx] = pte;
+                } else if (pte & 2) {
+                    pt[pte_idx] = (pte & ~(uint64_t)2) | COW_FLAG;
+                    __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
+                    mark_child_bitmap(child, vaddr);
+                    page_incr_shared(phy);
+                    child_pt[pte_idx] = (pte & ~(uint64_t)2) | COW_FLAG;
+                } else {
+                    page_incr_shared(phy);
+                    mark_child_bitmap(child, vaddr);
+                    child_pt[pte_idx] = pte;
+                }
             }
+            child_pd[pd_idx] = (uint64_t)child_tbl | (pd_e & 0xfff);
         }
-        child_pgdir[pde_idx] = child_tbl | (pde & 0xfff);
     }
-    memcpy(child_pgdir + 768, (void *)((uint32_t)pgdir + 768 * 4),
-           255 * sizeof(uint32_t));
-    child_pgdir[1023] = (uint32_t)child->pgdir | 7;
 }
 static void build_child_stack(struct task_struct *child,
                               struct Registers *parent_frame) {

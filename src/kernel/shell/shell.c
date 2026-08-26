@@ -139,6 +139,7 @@ static void cmd_execute(int32_t argc, char **argv) {
             int32_t status = 0;
             int32_t child_pid = wait(&status);
             foreground_pid = (uint32_t)-1;
+
             printf("\n[prog %d exited, status %d]\n", (int)child_pid,
                    (int)status);
         } else if (pid == 0) {

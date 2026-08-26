@@ -381,7 +381,7 @@ void thread_exit(struct task_struct *thread_over, int need_schedule) {
         list_remove(&thread_over->general_tag);
     }
     if (thread_over->pgdir) {
-        free_kernel_page(thread_over->pgdir);
+        pfree(&kernel_pool, thread_over->pgdir);
         thread_over->pgdir = 0;
     }
     if (elem_find(&thread_all_list, &thread_over->all_list_tag)) {

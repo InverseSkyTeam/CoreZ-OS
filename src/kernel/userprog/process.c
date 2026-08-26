@@ -62,10 +62,10 @@ uint32_t *create_page_dir(void) {
     }
     uint64_t *pd0 = phys_to_virt(pd0_phys);
     memset(pd0, 0, PAGE_SIZE);
+
     {
         uint64_t *loader_pd_low = phys_to_virt(0x92000);
-        for (int i = 0; i < 6; i++)
-            pd0[i] = loader_pd_low[i];
+        pd0[0] = loader_pd_low[0] & ~(uint64_t)PTE_U;
     }
     pdp[0] = pd0_phys | 7;
 
@@ -83,7 +83,25 @@ uint32_t *create_page_dir(void) {
     }
     pdp[2] = pd2_phys | 7;
 
-    pdp[3] = 0x87;
+    /*
+     * 3GB-4GB 内核区: 不能再用 0x87 (1GB 大页 identity -> 物理0-1GB)。
+     * KASLR 开启时内核被 loader 随机加载到物理 l_kphys (如 0x5400000),
+     * 启动页表用 PD@0x98000 的 PD[1] 把虚拟 0xC0200000+off 映射到
+     * l_kphys+off。若用户进程页表直接 identity, 子进程一被调度
+     * (process_activate -> CR3 切换) 访问内核代码就映射到错误物理地址,
+     * 执行垃圾/零页, exec 卡死、wait 永不返回。
+     * 因此直接把 loader 的 3GB PD@0x98000 拷贝一份作为进程的 PD。
+     */
+    {
+        uint64_t pd3_phys = palloc_pages(&kernel_pool, 1);
+        if (pd3_phys == 0) {
+            return 0;
+        }
+        uint64_t *pd3 = phys_to_virt(pd3_phys);
+        memset(pd3, 0, PAGE_SIZE);
+        memcpy(pd3, phys_to_virt(0x98000), PAGE_SIZE);
+        pdp[3] = pd3_phys | 7;
+    }
 
     return (uint32_t *)(uintptr_t)pml4_phys;
 }

@@ -13,8 +13,6 @@ static struct lock mem_lock;
 #define PD_INDEX(v) (((uint64_t)(v) >> 21) & 0x1ff)
 #define PT_INDEX(v) (((uint64_t)(v) >> 12) & 0x1ff)
 
-#define VIRT_OF(phys) ((phys) + 0xC0000000ull)
-#define PTE_PHYS(e) ((uint64_t)(e) & 0x000ffffffffff000ull)
 static uint8_t kernel_pool_bitmap[(MAX_PHYS_MEM - MEMORY_BASE) / PAGE_SIZE / 8];
 static uint8_t kernel_vaddr_bitmap[0x1000000 / PAGE_SIZE / 8];
 struct pool kernel_pool;

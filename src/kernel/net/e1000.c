@@ -136,7 +136,6 @@ static bool e1000_init(struct mg_tcpip_if *ifp) {
     writel(REG_RCTL, 0x2 | 0x8000 | 0x04000000);
 
     tx_cur = rx_cur = 0;
-    printf("[NET] e1000 up\n");
     return true;
 }
 

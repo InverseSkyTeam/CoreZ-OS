@@ -60,8 +60,7 @@ UP_CFLAGS = CFLAGS_BASE + [
     "-I", str(KERNEL_DIR / "lib"),
 ]
 UP_LDFLAGS = ["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_start"]
-# 64 位用户程序构建链: x86_64-freestanding 编译 + elf_x86_64 链接,
-# 仍放低地址(0x8048000)以便指针落在 32 位范围内, 与内核 syscall 寄存器映射兼容。
+
 UP_CFLAGS_64 = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
     "-target", "x86_64-freestanding",
@@ -71,8 +70,7 @@ UP_CFLAGS_64 = [
     "-I", str(KERNEL_DIR / "lib"),
 ]
 UP_LDFLAGS_64 = ["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_start"]
-# 64 位用户库(musl/lc)编译链: x86_64-freestanding; 仍放低地址以便指针落 32 位内,
-# 与内核 syscall 寄存器映射兼容
+
 MUSL64_BASE = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
     "-target", "x86_64-freestanding",
@@ -298,9 +296,6 @@ class Task:
                     return True
         return False
     def dep_paths(self) -> Iterable[Path]:
-        # 相对路径须按任务自身的 cwd 解析, 否则(任务 cwd 与仓库根不一致, 如
-        # objcopy 以 build/ 为 cwd、文件名用相对名)会解析到不存在的文件, 导致
-        # 输入比输出新时任务仍被判为 cache hit 而跳过, 产物永远不刷新。
         base = self.cwd or Path.cwd()
         for tok in self.cmd:
             if tok.startswith("-"):
@@ -656,8 +651,7 @@ def make_plan(tools: Tools):
     ]
     for stem, src in shell_objs:
         tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, shell_cflags))
-    # 64 位用户 shell: 复用 64 位 crt0(start.asm) + 64 位用户 lib(stdio/syscall/str/stdlib)。
-    # 不再走 32 位 musl stubs, 保证 nr_shell.elf 为 elf_x86_64, exec.c 按 is64 加载。
+
     nr_shell_elf = task_link("nr_shell.elf", BUILD_DIR / "nr_shell.elf", tools,
         [BUILD_DIR / "up_start.o",
          BUILD_DIR / "shell_core.o", BUILD_DIR / "shell_cmds.o",
@@ -693,10 +687,10 @@ def make_plan(tools: Tools):
         out=font_subset,
     ))
     kernel_objs_names = [
-        "entry.o", "kernel.o", "func.o", "ioc.o", "io.o",
+        "entry.o", "kernel.o", "func.o", "ioc.o", "io.o", "idle.o",
         "apic.o", "pit.o", "stub.o", "idt.o", "interrupt.o", "pic.o",
         "assert.o", "str.o", "bitmap.o", "pool.o", "access.o", "list.o",
-        "switch.o", "idle.o", "thread.o", "sync.o", "percpu.o", "smp.o",
+        "switch.o", "thread.o", "sync.o", "percpu.o", "smp.o",
         "ap_tramp.o", "ioqueue.o", "keyboard.o",
         "ide.o", "ext2.o", "fs.o", "inode.o", "dir.o", "file.o",
         "gdt.o", "tss.o", "process.o", "exec.o", "shell.o",
@@ -785,7 +779,7 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
     s += 1
     console.step_header(s, total_steps, "Compiling kernel assembly")
     asm_kern = [t for t in plan.tasks if t.group == "asm" and t.name in
-                ("func.o", "io.o", "stub.o", "entry.o", "switch.o",
+                ("func.o", "io.o", "stub.o", "entry.o", "switch.o", "idle.o",
                  "ap_trampoline.bin")]
     for t in asm_kern:
         run_task(t)

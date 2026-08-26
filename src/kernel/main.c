@@ -98,6 +98,7 @@ void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
                          : 0;
     io_init((uint8_t *)(uintptr_t)VRAM_VIRT, (int)fb.framebuffer_width,
             (int)fb.framebuffer_height, bytes);
+    io_clear_screen();
     kprintf("[diag] magic=%#x mbi=%p fb: %ux%u bpp=%u addr=%#llx bytes=%u\n",
             magic, mbi_ptr, fb.framebuffer_width, fb.framebuffer_height,
             fb.framebuffer_bpp, (unsigned long long)fb.framebuffer_addr, bytes);

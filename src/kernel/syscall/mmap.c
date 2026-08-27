@@ -14,7 +14,7 @@ static int32_t unmap_pages(uint32_t addr, uint32_t pages) {
     return 0;
 }
 static int page_is_mapped(uint32_t v) {
-    uint32_t *pde = pde_ptr(v);
+    uint64_t *pde = pde_ptr(v);
     if (!(*pde & 1)) {
         return 0;
     }
@@ -116,7 +116,7 @@ int32_t sys_mprotect(uint32_t addr, uint32_t len, uint32_t prot) {
         if (!page_is_mapped(v)) {
             continue;
         }
-        uint64_t *pte = (uint64_t *)pte_ptr(v);
+        uint64_t *pte = pte_ptr(v);
         uint64_t new_pte = *pte & 0x000ffffffffff000ull;
         if (prot != 0) {
             new_pte |= pte_wx(PTE_P | PTE_U, !!(prot & PROT_WRITE),

@@ -12,5 +12,6 @@ int32_t buildin_rm(int32_t argc, char **argv);
 void buildin_pwd(int32_t argc, char **argv);
 void buildin_ps(int32_t argc, char **argv);
 void buildin_clear(int32_t argc, char **argv);
+void buildin_shutdown(int32_t argc, char **argv);
 
 #endif

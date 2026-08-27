@@ -30,3 +30,29 @@ outsw:                          ; void outsw(uint16_t port, const void* buf, int
     cld
     rep     outsw
     ret
+
+global inw
+inw:                            ; uint16_t inw(uint16_t port)
+    mov     dx, di
+    in      ax, dx
+    ret
+
+global outw
+outw:                           ; void outw(uint16_t port, uint16_t value)
+    mov     dx, di
+    mov     ax, si
+    out     dx, ax
+    ret
+
+global inl
+inl:                            ; uint32_t inl(uint16_t port)
+    mov     dx, di
+    in      eax, dx
+    ret
+
+global outl
+outl:                           ; void outl(uint16_t port, uint32_t value)
+    mov     dx, di
+    mov     eax, esi
+    out     dx, eax
+    ret

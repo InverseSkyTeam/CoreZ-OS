@@ -6,6 +6,7 @@
 #include "../gui/gui.h"
 #include "../include/asmFunc.h"
 #include "../include/assert.h"
+#include "../initer/acpi/acpi.h"
 #include "../initer/gdt/gdt.h"
 #include "../initer/idt/interrupt.h"
 #include "../initer/io/io.h"
@@ -85,6 +86,11 @@ static void sys_exit_group(int32_t status) {
     sys_exit(status);
     for (;;) {
     }
+}
+static uint32_t sys_shutdown(void) {
+    kprintf("[shutdown] shutting down system...\n");
+    acpi_shutdown();
+    return 0;
 }
 static uint32_t sys_write(int32_t fd, char *str, uint32_t count) {
     if (fd < 0) {
@@ -498,6 +504,9 @@ uint32_t syscall_handler(struct Registers *r) {
             break;
         ret =
             (uint32_t)nt_icmp_recv((struct nt_ping_reply *)r->ebx, (int)r->ecx);
+        break;
+    case SYS_SHUTDOWN:
+        ret = sys_shutdown();
         break;
     default:
         ret = (uint32_t)-1;

@@ -34,9 +34,10 @@
 #define RX_BUF_LEN 2048
 
 #define V2P(x)                                                                 \
-    ((uint32_t)(x) >= 0xC0000000u                                              \
-         ? ((uint32_t)(x) - 0xC0000000u)                                       \
-         : ((*pte_ptr((uint32_t)(x)) & 0xfffff000) | ((uint32_t)(x) & 0xfff)))
+    ((uint32_t)(x) >= 0xC0000000u)                                             \
+        ? ((uint32_t)(x) - 0xC0000000u)                                        \
+        : (uint32_t)(((*pte_ptr((uint32_t)(x)) & 0xfffff000ull) |              \
+                      ((uint32_t)(x) & 0xfff)))
 
 struct e1000_tx_desc {
     uint64_t addr;

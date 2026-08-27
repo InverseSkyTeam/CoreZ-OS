@@ -92,8 +92,8 @@ static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
             : 1;
     uint32_t vaddr_page = vaddr_first_page;
     for (uint32_t i = 0; i < occupy_pages; i++) {
-        uint32_t *pde = pde_ptr(vaddr_page);
-        uint32_t *pte = pte_ptr(vaddr_page);
+        uint64_t *pde = pde_ptr(vaddr_page);
+        uint64_t *pte = pte_ptr(vaddr_page);
         if (!(*pde & 1) || (*pde & 0x80) || !(*pte & 1)) {
             if (get_a_page(vaddr_page) == 0) {
                 return -1;
@@ -108,7 +108,7 @@ static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
         for (uint32_t pg = vaddr_first_page;
              pg < vaddr_first_page + occupy_pages * PAGE_SIZE;
              pg += PAGE_SIZE) {
-            uint64_t *pte = (uint64_t *)pte_ptr(pg);
+            uint64_t *pte = pte_ptr(pg);
             if (*pte & PTE_P) {
                 *pte = (*pte & 0x000ffffffffff000ull) | PTE_P | PTE_U;
                 __asm__ volatile("invlpg (%0)" : : "r"(pg) : "memory");
@@ -257,8 +257,8 @@ int32_t sys_execv(const char *path, const char *argv[],
     signal_reset_user(cur);
     for (uint32_t sp = USER_STACK3_VADDR - PAGE_SIZE; sp <= USER_STACK3_VADDR;
          sp += PAGE_SIZE) {
-        uint32_t *pde = pde_ptr(sp);
-        uint32_t *pte = pte_ptr(sp);
+        uint64_t *pde = pde_ptr(sp);
+        uint64_t *pte = pte_ptr(sp);
         if (!(*pde & 1) || !(*pte & 1)) {
             if (get_a_page(sp) == 0) {
                 kprintf("[exec] get_a_page for user stack failed\n");

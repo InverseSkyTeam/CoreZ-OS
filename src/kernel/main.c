@@ -4,6 +4,7 @@
 #include "./fs/fs.h"
 #include "./include/asmFunc.h"
 #include "./include/assert.h"
+#include "./initer/acpi/acpi.h"
 #include "./initer/apic/apic.h"
 #include "./initer/gdt/gdt.h"
 #include "./initer/idt/idt.h"
@@ -132,6 +133,9 @@ void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
         pic_init();
         pit_init(PIT_HZ);
     }
+
+    kprintf("[init] acpi\n");
+    acpi_init();
 
     kprintf("[init] keyboard\n");
     keyboard_init();

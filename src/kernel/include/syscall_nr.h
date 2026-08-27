@@ -59,7 +59,8 @@ enum syscall_nr {
     SYS_EXIT_GROUP,
     SYS_MMAP2,
     SYS_ICMP_SEND,
-    SYS_ICMP_RECV
+    SYS_ICMP_RECV,
+    SYS_SHUTDOWN
 };
 
 #endif

@@ -17,31 +17,15 @@
 #define REG_TSAD0 0x20
 
 #define V2P(x)                                                                 \
-    ((uint32_t)(x) >= 0xC0000000u                                              \
-         ? ((uint32_t)(x) - 0xC0000000u)                                       \
-         : ((*pte_ptr((uint32_t)(x)) & 0xfffff000) | ((uint32_t)(x) & 0xfff)))
+    ((uint32_t)(x) >= 0xC0000000u)                                             \
+        ? ((uint32_t)(x) - 0xC0000000u)                                        \
+        : (uint32_t)(((*pte_ptr((uint32_t)(x)) & 0xfffff000ull) |              \
+                      ((uint32_t)(x) & 0xfff)))
 
 static uint16_t ioaddr;
 static uint8_t *rx_buffer;
 static uint32_t rx_cur;
 static uint8_t tx_slot;
-
-static inline void outw(uint16_t port, uint16_t v) {
-    __asm__ volatile("outw %0, %1" : : "a"(v), "Nd"(port));
-}
-static inline void outl(uint16_t port, uint32_t v) {
-    __asm__ volatile("outl %0, %1" : : "a"(v), "Nd"(port));
-}
-static inline uint16_t inw(uint16_t port) {
-    uint16_t v;
-    __asm__ volatile("inw %1, %0" : "=a"(v) : "Nd"(port));
-    return v;
-}
-static inline uint32_t inl(uint16_t port) {
-    uint32_t v;
-    __asm__ volatile("inl %1, %0" : "=a"(v) : "Nd"(port));
-    return v;
-}
 
 static uint32_t pci_read32(uint8_t bus, uint8_t dev, uint8_t reg) {
     uint32_t addr = 0x80000000u | (bus << 16) | (dev << 11) | (reg & 0xFC);

@@ -94,6 +94,12 @@ void mm_init(void) {
 
     kernel_pml4 = asm_read_cr3();
     lock_init(&mem_lock);
+
+    {
+        uint64_t *pd98 = (uint64_t *)VIRT_OF(0x98000);
+        pd98[4] = (uint64_t)0x00080000 | 0x83;
+        pd98[7] = (uint64_t)0x000E0000 | 0x83;
+    }
 }
 
 static uint32_t palloc_raw(struct pool *pool) {
@@ -182,21 +188,21 @@ static uint64_t *pte_make(uint64_t pml4_phys, uint64_t vaddr) {
 
 static uint64_t pte_zero, pde_zero;
 
-uint32_t *pde_ptr(uint32_t vaddr) {
+uint64_t *pde_ptr(uint32_t vaddr) {
     uint64_t pml4_phys = cur_pml4();
     uint64_t *pml4 = (uint64_t *)VIRT_OF(pml4_phys);
     uint64_t e = pml4[PML4_INDEX(vaddr)];
     if (!(e & 1))
-        return (uint32_t *)&pde_zero;
+        return &pde_zero;
     uint64_t *pdp = (uint64_t *)VIRT_OF(PTE_PHYS(e));
     e = pdp[PDPT_INDEX(vaddr)];
     pde_zero = e;
-    return (uint32_t *)&pde_zero;
+    return &pde_zero;
 }
 
-uint32_t *pte_ptr(uint32_t vaddr) {
+uint64_t *pte_ptr(uint32_t vaddr) {
     uint64_t *pte = pte_query(cur_pml4(), (uint64_t)vaddr);
-    return pte ? (uint32_t *)pte : (uint32_t *)&pte_zero;
+    return pte ? pte : &pte_zero;
 }
 
 static void page_table_add_raw(uint32_t vaddr, uint32_t phy_addr) {
@@ -304,9 +310,9 @@ void free_kernel_page(uint32_t vaddr) {
 void free_user_page(uint32_t vaddr) {
     struct task_struct *cur = current;
     lock_acquire(&mem_lock);
-    uint32_t *pte = pte_ptr(vaddr);
+    uint64_t *pte = pte_ptr(vaddr);
     if (*pte & 1) {
-        uint32_t phy = *pte & 0xfffff000;
+        uint32_t phy = (uint32_t)(*pte & 0xfffff000ull);
         *pte = 0;
         __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
         uint32_t bit_idx =

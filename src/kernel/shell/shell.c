@@ -123,6 +123,8 @@ static void cmd_execute(int32_t argc, char **argv) {
         buildin_rm(argc, argv);
     } else if (!strcmp("gui", argv[0])) {
         gui_start();
+    } else if (!strcmp("shutdown", argv[0])) {
+        buildin_shutdown(argc, argv);
     } else {
         make_clear_abs_path(argv[0], final_path);
         char *prog_path = final_path;

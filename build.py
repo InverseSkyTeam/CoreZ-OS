@@ -394,6 +394,7 @@ def make_plan(tools: Tools):
         ("pit.o",        KERNEL_DIR / "initer" / "pit" / "pit.c"),
         ("pic.o",        KERNEL_DIR / "initer" / "pic" / "pic.c"),
         ("apic.o",       KERNEL_DIR / "initer" / "apic" / "apic.c"),
+        ("acpi.o",     KERNEL_DIR / "initer" / "acpi" / "acpi.c"),
         ("idt.o",        KERNEL_DIR / "initer" / "idt" / "idt.c"),
         ("interrupt.o",  KERNEL_DIR / "initer" / "idt" / "interrupt.c"),
         ("kernel.o",     KERNEL_DIR / "main.c"),
@@ -687,7 +688,7 @@ def make_plan(tools: Tools):
         out=font_subset,
     ))
     kernel_objs_names = [
-        "entry.o", "kernel.o", "func.o", "ioc.o", "io.o", "idle.o",
+        "entry.o", "kernel.o", "func.o", "ioc.o", "io.o", "idle.o", "acpi.o",
         "apic.o", "pit.o", "stub.o", "idt.o", "interrupt.o", "pic.o",
         "assert.o", "str.o", "bitmap.o", "pool.o", "access.o", "list.o",
         "switch.o", "thread.o", "sync.o", "percpu.o", "smp.o",

@@ -58,8 +58,8 @@ void page_incr_shared(uint32_t phy_addr);
 void page_free_or_decref(uint32_t phy_addr);
 int page_is_shared(uint32_t phy_addr);
 
-uint32_t *pte_ptr(uint32_t vaddr);
-uint32_t *pde_ptr(uint32_t vaddr);
+uint64_t *pte_ptr(uint32_t vaddr);
+uint64_t *pde_ptr(uint32_t vaddr);
 void page_table_add(uint32_t vaddr, uint32_t phy_addr);
 void *get_a_page(uint32_t vaddr);
 void *get_kernel_pages(uint32_t pg_cnt);

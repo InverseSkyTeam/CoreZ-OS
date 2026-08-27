@@ -250,3 +250,13 @@ int32_t buildin_rm(int32_t argc, char **argv) {
     }
     return ret;
 }
+
+void buildin_shutdown(int32_t argc, char **argv) {
+    (void)argv;
+    if (argc != 1) {
+        printf("shutdown: no argument support!\n");
+        return;
+    }
+    printf("Shutting down...\n");
+    shutdown();
+}

@@ -284,6 +284,10 @@ int32_t icmp_recv(struct nt_ping_reply *buf, int32_t max) {
     return (int32_t)syscall2(SYS_ICMP_RECV, (uint32_t)buf, (uint32_t)max);
 }
 
+int32_t shutdown(void) {
+    return (int32_t)syscall0(SYS_SHUTDOWN);
+}
+
 __attribute__((naked)) void __restore(void) {
     __asm__ volatile("movl %0, %%eax\n"
                      "int $0x80\n"

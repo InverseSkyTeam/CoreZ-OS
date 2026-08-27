@@ -104,6 +104,7 @@ void exit_group(int32_t status);
 
 int32_t icmp_send(uint32_t dst, uint16_t id, uint16_t seq);
 int32_t icmp_recv(struct nt_ping_reply *buf, int32_t max);
+int32_t shutdown(void);
 
 #define FUTEX_WAIT 0
 #define FUTEX_WAKE 1

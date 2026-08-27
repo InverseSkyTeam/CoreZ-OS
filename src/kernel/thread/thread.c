@@ -4,11 +4,14 @@
 #include "../include/assert.h"
 #include "../initer/io/io.h"
 #include "../lib/list/list.h"
+#include "../lib/rbtree/rbtree.h"
 #include "../lib/str/str.h"
 #include "../memory/pool/pool.h"
 #include "../userprog/process.h"
 
-struct list ready_list;
+struct RB_ROOT ready_rb_root;
+static uint64_t global_seq = 0;
+
 static struct task_struct task_table[MAX_TASKS];
 static uint32_t task_count = 0;
 static uint32_t pid_alloc = 0;
@@ -48,20 +51,19 @@ void kernel_thread_entry_c(thread_func function, void *arg) {
     asm_cli();
     schedule();
     asm_restore_eflags(old);
-    for (;;) {
+    for (;;)
         asm_hlt();
-    }
 }
+
 static void init_fd_table(struct task_struct *t) {
     t->fd_table[0] = 0;
     t->fd_table[1] = 1;
     t->fd_table[2] = 2;
-    uint32_t fd_idx = 3;
-    while (fd_idx < MAX_FILES_OPEN_PER_PROC) {
-        t->fd_table[fd_idx++] = (uint32_t)-1;
-    }
+    for (uint32_t fd_idx = 3; fd_idx < MAX_FILES_OPEN_PER_PROC; fd_idx++)
+        t->fd_table[fd_idx] = (uint32_t)-1;
     t->cwd_inode_nr = 0;
 }
+
 static void init_task_struct_basic(struct task_struct *t, int32_t parent_pid) {
     t->status = TASK_READY;
     t->pid = pid_alloc++;
@@ -76,11 +78,35 @@ static void init_task_struct_basic(struct task_struct *t, int32_t parent_pid) {
     t->errno = 0;
     t->compat = 0;
     init_signal_state(t);
-    t->general_tag.prev = t->general_tag.next = NULL;
+
+    t->rb_node.parent = NULL;
+    t->rb_node.left = NULL;
+    t->rb_node.right = NULL;
+    t->rb_node.color = RB_RED;
+    t->rb_node.key = 0;
+    t->in_ready = 0;
+
     t->all_list_tag.prev = t->all_list_tag.next = NULL;
     t->futex_tag.prev = t->futex_tag.next = NULL;
     t->futex_ready = 0;
 }
+
+static void ready_enqueue(struct task_struct *t) {
+    if (t->in_ready)
+        return;
+    t->rb_node.key = ++global_seq;
+    rb_insert(&ready_rb_root, &t->rb_node);
+    t->in_ready = 1;
+    t->status = TASK_READY;
+}
+
+static void ready_remove(struct task_struct *t) {
+    if (!t->in_ready)
+        return;
+    rb_erase(&ready_rb_root, &t->rb_node);
+    t->in_ready = 0;
+}
+
 struct task_struct *thread_create(char *name, uint8_t priority,
                                   thread_func function, void *arg) {
     struct task_struct *t = &task_table[task_count++];
@@ -91,25 +117,26 @@ struct task_struct *thread_create(char *name, uint8_t priority,
     ts->rflags = 0x202;
     ts->r15 = (uint64_t)function;
     ts->r14 = (uint64_t)arg;
-    ts->r13 = 0;
-    ts->r12 = 0;
-    ts->rbx = 0;
-    ts->rbp = 0;
+    ts->r13 = ts->r12 = ts->rbx = ts->rbp = 0;
     ts->rip = kernel_thread_entry;
+
     t->self_kstack = (uint64_t *)ts;
     init_task_struct_basic(t, -1);
     strcpy(t->name, name);
     t->priority = priority;
     t->ticks = priority;
     t->kernel_stack_top = stack + THREAD_STACK_SIZE;
-    list_append(&ready_list, &t->general_tag);
+
+    ready_enqueue(t);
     list_append(&thread_all_list, &t->all_list_tag);
     return t;
 }
+
 void thread_init(void) {
     cpu_idle_init();
-    list_init(&ready_list);
+    rb_root_init(&ready_rb_root);
     list_init(&thread_all_list);
+
     set_current(&task_table[0]);
     task_table[0].self_kstack = 0;
     task_table[0].status = TASK_RUNNING;
@@ -127,13 +154,18 @@ void thread_init(void) {
     task_table[0].tls_selector = 0;
     task_table[0].errno = 0;
     task_table[0].compat = 0;
-    list_append(&thread_all_list, &task_table[0].all_list_tag);
-    task_table[0].general_tag.prev = task_table[0].general_tag.next = NULL;
+    task_table[0].in_ready = 0;
+    task_table[0].rb_node.parent = task_table[0].rb_node.left =
+        task_table[0].rb_node.right = NULL;
+    task_table[0].rb_node.color = RB_BLACK;
     task_table[0].futex_tag.prev = task_table[0].futex_tag.next = NULL;
     task_table[0].futex_ready = 0;
+    list_append(&thread_all_list, &task_table[0].all_list_tag);
     task_count = 1;
+
     idle_thread = thread_create("idle", 10, idle, 0);
 }
+
 struct task_struct *thread_alloc_slot(const char *name, uint8_t priority) {
     if (task_count >= MAX_TASKS) {
         ASSERT(0 && "no task slot");
@@ -145,12 +177,7 @@ struct task_struct *thread_alloc_slot(const char *name, uint8_t priority) {
         (struct thread_stack *)(stack + THREAD_STACK_SIZE -
                                 sizeof(struct thread_stack));
     ts->rflags = 0x202;
-    ts->r15 = 0;
-    ts->r14 = 0;
-    ts->r13 = 0;
-    ts->r12 = 0;
-    ts->rbx = 0;
-    ts->rbp = 0;
+    ts->r15 = ts->r14 = ts->r13 = ts->r12 = ts->rbx = ts->rbp = 0;
     ts->rip = 0;
     t->self_kstack = (uint64_t *)ts;
     init_task_struct_basic(t, -1);
@@ -159,71 +186,92 @@ struct task_struct *thread_alloc_slot(const char *name, uint8_t priority) {
     t->ticks = priority;
     t->kernel_stack_top = stack + THREAD_STACK_SIZE;
     list_append(&thread_all_list, &t->all_list_tag);
+
     return t;
 }
+
 void thread_ready(struct task_struct *t) {
     if (t == NULL)
         return;
     uint32_t old = asm_save_eflags();
     asm_cli();
-    if (!elem_find(&ready_list, &t->general_tag)) {
+    if (!t->in_ready) {
         t->status = TASK_READY;
-        list_append(&ready_list, &t->general_tag);
+        ready_enqueue(t);
     }
     asm_restore_eflags(old);
 }
+
 void kernel_thread(char *name, uint8_t priority, thread_func function,
                    void *arg) {
     thread_create(name, priority, function, arg);
 }
+
 void thread_block(void) {
     uint32_t old = asm_save_eflags();
     asm_cli();
+    if (current->in_ready)
+        ready_remove(current);
     current->status = TASK_BLOCKED;
     schedule();
     asm_restore_eflags(old);
 }
+
 void thread_block_with_status(enum task_status status) {
     uint32_t old = asm_save_eflags();
     asm_cli();
+    if (current->in_ready)
+        ready_remove(current);
     current->status = status;
     schedule();
     asm_restore_eflags(old);
 }
+
 void thread_unblock(struct task_struct *t) {
     uint32_t old = asm_save_eflags();
     asm_cli();
     ASSERT(t->status == TASK_BLOCKED || t->status == TASK_WAITING ||
            t->status == TASK_HANGING);
-    if (t->status != TASK_READY) {
-        ASSERT(!elem_find(&ready_list, &t->general_tag));
-        list_push(&ready_list, &t->general_tag);
+    if (!t->in_ready) {
         t->status = TASK_READY;
+        ready_enqueue(t);
     }
     asm_restore_eflags(old);
 }
+
 void thread_yield(void) {
     uint32_t old = asm_save_eflags();
     asm_cli();
-    current->status = TASK_READY;
-    list_append(&ready_list, &current->general_tag);
+    if (!current->in_ready) {
+        current->status = TASK_READY;
+        ready_enqueue(current);
+    }
     current->ticks = current->priority;
     schedule();
     asm_restore_eflags(old);
 }
+
 void schedule(void) {
     ASSERT((asm_save_eflags() & 0x200) == 0);
+
     if (current->status == TASK_RUNNING) {
+        if (current->in_ready)
+            ready_remove(current);
         current->status = TASK_READY;
-        list_append(&ready_list, &current->general_tag);
+        ready_enqueue(current);
         current->ticks = current->priority;
     }
-    if (list_empty(&ready_list)) {
+
+    if (rb_empty(&ready_rb_root)) {
         thread_unblock(idle_thread);
     }
-    struct list_elem *e = list_pop_front(&ready_list);
-    struct task_struct *next = list_entry(e, struct task_struct, general_tag);
+
+    struct RB_NODE *node = rb_first(&ready_rb_root);
+    struct task_struct *next = rb_entry(node, struct task_struct, rb_node);
+    rb_erase(&ready_rb_root, node);
+    next->in_ready = 0;
     next->status = TASK_RUNNING;
+
     struct task_struct *prev = current;
     set_current(next);
     process_activate(next);
@@ -231,16 +279,19 @@ void schedule(void) {
     switch_to(&prev->self_kstack, &next->self_kstack);
     outb(0x3F8, '>');
 }
+
 struct fork_args {
     fork_continuation cb;
     void *user_arg;
     uint32_t child_pid;
 };
+
 static void fork_thread_entry(void *arg_) {
     struct fork_args *fa = (struct fork_args *)arg_;
     fa->cb(fa->user_arg, fa->child_pid, 1);
     free_kernel_page((uint32_t)fa);
 }
+
 static void build_fork_thread_stack(struct task_struct *t,
                                     struct fork_args *fa) {
     struct thread_stack *ts =
@@ -249,13 +300,11 @@ static void build_fork_thread_stack(struct task_struct *t,
     ts->rflags = 0x202;
     ts->r15 = (uint64_t)fork_thread_entry;
     ts->r14 = (uint64_t)fa;
-    ts->r13 = 0;
-    ts->r12 = 0;
-    ts->rbx = 0;
-    ts->rbp = 0;
+    ts->r13 = ts->r12 = ts->rbx = ts->rbp = 0;
     ts->rip = kernel_thread_entry;
     t->self_kstack = (uint64_t *)ts;
 }
+
 int thread_fork_with_cb(const char *name, uint8_t priority,
                         fork_continuation cb, void *arg) {
     if (cb == NULL)
@@ -278,9 +327,9 @@ int thread_fork_with_cb(const char *name, uint8_t priority,
     child->priority = priority;
     child->ticks = priority;
     child->cwd_inode_nr = parent->cwd_inode_nr;
-    for (uint32_t i = 0; i < MAX_FILES_OPEN_PER_PROC; i++) {
+    for (uint32_t i = 0; i < MAX_FILES_OPEN_PER_PROC; i++)
         child->fd_table[i] = parent->fd_table[i];
-    }
+
     struct fork_args *fa = (struct fork_args *)get_kernel_pages(1);
     if (fa == NULL) {
         asm_restore_eflags(old);
@@ -294,6 +343,7 @@ int thread_fork_with_cb(const char *name, uint8_t priority,
     asm_restore_eflags(old);
     return (int)child->pid;
 }
+
 int thread_traverse_all(thread_all_action action, void *arg) {
     int stopped = 0;
     struct list_elem *e = thread_all_list.head.next;
@@ -309,16 +359,17 @@ int thread_traverse_all(thread_all_action action, void *arg) {
     }
     return stopped;
 }
+
 void thread_exit_current(void) {
     uint32_t old = asm_save_eflags();
     asm_cli();
     current->status = TASK_DIED;
-    if (elem_find(&ready_list, &current->general_tag)) {
-        list_remove(&current->general_tag);
-    }
+    if (current->in_ready)
+        ready_remove(current);
     schedule();
     asm_restore_eflags(old);
 }
+
 void thread_kill_pid(uint32_t pid) {
     struct task_struct *t = NULL;
     for (uint32_t i = 0; i < task_count; i++) {
@@ -331,31 +382,32 @@ void thread_kill_pid(uint32_t pid) {
         return;
     if (t->pgdir == 0)
         return;
+
     uint32_t old = asm_save_eflags();
     asm_cli();
     t->exit_status = -1;
     t->status = TASK_HANGING;
-    if (elem_find(&ready_list, &t->general_tag)) {
-        list_remove(&t->general_tag);
-    }
+    if (t->in_ready)
+        ready_remove(t);
+
     for (uint32_t i = 0; i < task_count; i++) {
-        if (task_table[i].parent_pid == (int32_t)t->pid) {
+        if (task_table[i].parent_pid == (int32_t)t->pid)
             task_table[i].parent_pid = (int32_t)init_pid;
-        }
     }
     if (keyboard_ioq.consumer == t)
         keyboard_ioq.consumer = 0;
     if (keyboard_ioq.producer == t)
         keyboard_ioq.producer = 0;
+
     struct task_struct *parent = pid2thread(t->parent_pid);
-    if (parent && parent->status == TASK_WAITING) {
+    if (parent && parent->status == TASK_WAITING)
         thread_unblock(parent);
-    }
-    if (t == current) {
+
+    if (t == current)
         schedule();
-    }
     asm_restore_eflags(old);
 }
+
 int thread_is_died(uint32_t pid) {
     for (uint32_t i = 0; i < task_count; i++) {
         if (task_table[i].pid == pid) {
@@ -365,30 +417,28 @@ int thread_is_died(uint32_t pid) {
     }
     return 1;
 }
+
 struct task_struct *pid2thread(int32_t pid) {
     for (uint32_t i = 0; i < task_count; i++) {
-        if ((int32_t)task_table[i].pid == pid) {
+        if ((int32_t)task_table[i].pid == pid)
             return &task_table[i];
-        }
     }
     return NULL;
 }
+
 void thread_exit(struct task_struct *thread_over, int need_schedule) {
     uint32_t old = asm_save_eflags();
     asm_cli();
     thread_over->status = TASK_DIED;
-    if (elem_find(&ready_list, &thread_over->general_tag)) {
-        list_remove(&thread_over->general_tag);
-    }
+    if (thread_over->in_ready)
+        ready_remove(thread_over);
     if (thread_over->pgdir) {
         pfree(&kernel_pool, thread_over->pgdir);
         thread_over->pgdir = 0;
     }
-    if (elem_find(&thread_all_list, &thread_over->all_list_tag)) {
+    if (elem_find(&thread_all_list, &thread_over->all_list_tag))
         list_remove(&thread_over->all_list_tag);
-    }
     asm_restore_eflags(old);
-    if (need_schedule) {
+    if (need_schedule)
         schedule();
-    }
 }

@@ -55,12 +55,7 @@ void signal_terminate(struct task_struct *t, int sig) {
     proc_exit(t, 128 + sig);
 }
 static void signal_stop_current(void) {
-    struct task_struct *cur = current;
-    cur->status = TASK_STOPPED;
-    if (elem_find(&ready_list, &cur->general_tag)) {
-        list_remove(&cur->general_tag);
-    }
-    schedule();
+    thread_block_with_status(TASK_STOPPED);
 }
 static void deliver_signal(struct task_struct *cur, struct Registers *r,
                            int sig, struct sigaction *sa) {
@@ -200,10 +195,7 @@ int sys_kill(int pid, int sig) {
         return 0;
     }
     if (sig == SIGCONT && t->status == TASK_STOPPED) {
-        t->status = TASK_READY;
-        if (!elem_find(&ready_list, &t->general_tag)) {
-            list_push(&ready_list, &t->general_tag);
-        }
+        thread_ready(t);
         t->signal_pending &= ~(1u << SIGCONT);
         return 0;
     }

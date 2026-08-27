@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import io
 import os
@@ -426,6 +428,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         ("kernel.o",     KERNEL_DIR / "main.c"),
         ("assert.o",     KERNEL_DIR / "assert.c"),
         ("str.o",        KERNEL_DIR / "lib" / "str" / "str.c"),
+        ("rbtree.o",     KERNEL_DIR / "lib" / "rbtree" / "rbtree.c"),
         ("bitmap.o",     KERNEL_DIR / "memory" / "bitmap" / "bitmap.c"),
         ("pool.o",       KERNEL_DIR / "memory" / "pool" / "pool.c"),
         ("access.o",     KERNEL_DIR / "memory" / "access.c"),
@@ -501,6 +504,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         (KERNEL_DIR / "lib" / "user", "stdio.c",   "up_stdio.o"),
         (KERNEL_DIR / "lib" / "user", "syscall.c", "up_syscall.o"),
         (KERNEL_DIR / "lib" / "str",  "str.c",     "up_str.o"),
+        (KERNEL_DIR / "lib" / "rbtree", "rbtree.c",  "up_rbtree.o"),
         (KERNEL_DIR / "lib" / "user", "stdlib.c",  "up_stdlib.o"),
     ]
     def compile_user_lib(out_dir: Path) -> List[Path]:
@@ -595,7 +599,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
     kernel_objs_names = [
         "entry.o", "kernel.o", "func.o", "ioc.o", "io.o", "idle.o", "acpi.o",
         "apic.o", "pit.o", "stub.o", "idt.o", "interrupt.o", "pic.o",
-        "assert.o", "str.o", "bitmap.o", "pool.o", "access.o", "list.o",
+        "assert.o", "str.o", "rbtree.o", "bitmap.o", "pool.o", "access.o", "list.o",
         "switch.o", "thread.o", "sync.o", "percpu.o", "smp.o",
         "ap_tramp.o", "ioqueue.o", "keyboard.o",
         "ide.o", "ext2.o", "fs.o", "inode.o", "dir.o", "file.o",

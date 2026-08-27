@@ -1,10 +1,13 @@
 #ifndef THREAD_H
 #define THREAD_H
+
 #include "../include/signal.h"
 #include "../lib/list/list.h"
 #include "../memory/pool/pool.h"
 #include "./percpu.h"
 #include <stdint.h>
+#include "../lib/rbtree/rbtree.h"
+
 #define THREAD_STACK_SIZE 0x4000
 #define MAX_TASKS 64
 #define STACK_MAGIC 0x19860726
@@ -39,9 +42,11 @@ struct task_struct {
     uint8_t priority;
     uint8_t ticks;
     uint32_t elapsed_ticks;
-    struct list_elem general_tag;
+    struct RB_NODE rb_node;
+    uint8_t in_ready;       
     struct list_elem all_list_tag;
     struct list_elem futex_tag;
+    struct list_elem wait_tag; 
     uint32_t futex_ready;
     int32_t parent_pid;
     int8_t exit_status;
@@ -62,7 +67,7 @@ struct task_struct {
 };
 extern struct task_struct *idle_thread;
 extern struct list thread_all_list;
-extern struct list ready_list;
+extern struct RB_ROOT ready_rb_root;
 extern uint32_t foreground_pid;
 extern uint32_t init_pid;
 void thread_init(void);

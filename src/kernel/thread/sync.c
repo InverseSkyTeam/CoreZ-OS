@@ -28,7 +28,7 @@ void sema_down(struct semaphore *psema) {
     asm_cli();
     spinlock_acquire(&psema->lock);
     while (psema->value == 0) {
-        list_append(&psema->waiters, &current->general_tag);
+        list_append(&psema->waiters, &current->wait_tag);
         spinlock_release(&psema->lock);
         thread_block();
         spinlock_acquire(&psema->lock);
@@ -43,7 +43,7 @@ void sema_up(struct semaphore *psema) {
     spinlock_acquire(&psema->lock);
     if (!list_empty(&psema->waiters)) {
         struct list_elem *e = list_pop_front(&psema->waiters);
-        struct task_struct *w = list_entry(e, struct task_struct, general_tag);
+        struct task_struct *w = list_entry(e, struct task_struct, wait_tag);
         thread_unblock(w);
     }
     psema->value++;

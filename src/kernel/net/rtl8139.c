@@ -1,11 +1,10 @@
 #include "rtl8139.h"
 
 #include "../include/asmFunc.h"
+#include "../initer/io/io.h"
+#include "../lib/str/str.h"
 #include "../memory/pool/pool.h"
-#include "mongoose.h"
 
-#define RTL8139_VENDOR 0x10EC
-#define RTL8139_DEVICE 0x8139
 #define RX_BUF_SIZE 8192 + 16
 
 #define REG_CMD 0x37
@@ -17,10 +16,9 @@
 #define REG_TSAD0 0x20
 
 #define V2P(x)                                                                 \
-    ((uint32_t)(x) >= 0xC0000000u)                                             \
-        ? ((uint32_t)(x) - 0xC0000000u)                                        \
-        : (uint32_t)(((*pte_ptr((uint32_t)(x)) & 0xfffff000ull) |              \
-                      ((uint32_t)(x) & 0xfff)))
+    ((uint32_t)(x) >= 0xC0000000u                                              \
+         ? ((uint32_t)(x) - 0xC0000000u)                                       \
+         : ((*pte_ptr((uint32_t)(x)) & 0xfffff000) | ((uint32_t)(x) & 0xfff)))
 
 static uint16_t ioaddr;
 static uint8_t *rx_buffer;
@@ -28,12 +26,14 @@ static uint32_t rx_cur;
 static uint8_t tx_slot;
 
 static uint32_t pci_read32(uint8_t bus, uint8_t dev, uint8_t reg) {
-    uint32_t addr = 0x80000000u | (bus << 16) | (dev << 11) | (reg & 0xFC);
+    uint32_t addr = 0x80000000u | ((uint32_t)bus << 16) | ((uint32_t)dev << 11) |
+                    (reg & 0xFC);
     outl(0xCF8, addr);
     return inl(0xCFC);
 }
 static void pci_write32(uint8_t bus, uint8_t dev, uint8_t reg, uint32_t val) {
-    uint32_t addr = 0x80000000u | (bus << 16) | (dev << 11) | (reg & 0xFC);
+    uint32_t addr = 0x80000000u | ((uint32_t)bus << 16) | ((uint32_t)dev << 11) |
+                    (reg & 0xFC);
     outl(0xCF8, addr);
     outl(0xCFC, val);
 }
@@ -51,12 +51,10 @@ static int rtl8139_find_dev(uint8_t *bus, uint8_t *dev) {
     return 0;
 }
 
-static bool rtl8139_init(struct mg_tcpip_if *ifp) {
+int rtl8139_init(NETIF *ifp) {
     uint8_t bus, dev;
-    if (!rtl8139_find_dev(&bus, &dev)) {
-        printf("[NET] rtl8139 not found\n");
-        return false;
-    }
+    if (!rtl8139_find_dev(&bus, &dev))
+        return -1;
     uint32_t bar = pci_read32(bus, dev, 0x10);
     ioaddr = (uint16_t)(bar & 0xFFFFFFFC);
 
@@ -68,9 +66,8 @@ static bool rtl8139_init(struct mg_tcpip_if *ifp) {
     while (inb(ioaddr + REG_CMD) & 0x10) {
     }
 
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 6; i++)
         ifp->mac[i] = inb(ioaddr + i);
-    }
 
     rx_buffer = (uint8_t *)get_kernel_pages(3);
     outl(ioaddr + REG_RBSTART, V2P(rx_buffer));
@@ -80,50 +77,38 @@ static bool rtl8139_init(struct mg_tcpip_if *ifp) {
     outb(ioaddr + REG_CMD, 0x0C);
     rx_cur = 0;
     tx_slot = 0;
-    printf("[NET] rtl8139 up\n");
-    return true;
+    kprintf("[NET] rtl8139 up\n");
+    return 0;
 }
 
-static bool rtl8139_poll(struct mg_tcpip_if *ifp, bool once_per_sec) {
+int rtl8139_tx(NETIF *ifp, const void *frame, uint32_t len) {
     (void)ifp;
-    (void)once_per_sec;
-    return true;
-}
-
-static size_t rtl8139_tx(const void *buf, size_t len, struct mg_tcpip_if *ifp) {
-    (void)ifp;
-    outl(ioaddr + REG_TSAD0 + tx_slot * 4, V2P(buf));
-    outl(ioaddr + REG_TSD0 + tx_slot * 4, (uint32_t)len);
+    outl(ioaddr + REG_TSAD0 + tx_slot * 4, V2P(frame));
+    outl(ioaddr + REG_TSD0 + tx_slot * 4, len);
 
     for (uint32_t i = 0; i < 100000; i++) {
         if (inl(ioaddr + REG_TSD0 + tx_slot * 4) & (1 << 13))
             break;
     }
     tx_slot = (tx_slot + 1) & 3;
-    return len;
+    return (int)len;
 }
 
-static size_t rtl8139_rx(void *buf, size_t len, struct mg_tcpip_if *ifp) {
+int rtl8139_rx(NETIF *ifp, void *buf, uint32_t maxlen) {
     (void)ifp;
     uint16_t st = *(uint16_t *)(rx_buffer + rx_cur);
-    if (!(st & 0x0001)) {
+    if (!(st & 0x0001))
         return 0;
-    }
     uint16_t pkt_len = *(uint16_t *)(rx_buffer + rx_cur + 2);
-    if (pkt_len > len)
-        pkt_len = (uint16_t)len;
-    printf("[N] rx\n");
+    if (pkt_len > maxlen)
+        pkt_len = (uint16_t)maxlen;
     memcpy(buf, rx_buffer + rx_cur + 4, pkt_len);
     rx_cur = (rx_cur + 4 + pkt_len + 3) & ~3u;
     if (rx_cur >= 8192)
         rx_cur = 0;
-    outw(ioaddr + REG_CAPR, rx_cur >= 16 ? rx_cur - 16 : rx_cur + 8192 - 16);
+    if (rx_cur >= 16)
+        outw(ioaddr + REG_CAPR, rx_cur - 16);
+    else
+        outw(ioaddr + REG_CAPR, rx_cur + 8192 - 16);
     return pkt_len;
 }
-
-struct mg_tcpip_driver mg_tcpip_driver_rtl8139 = {
-    .init = rtl8139_init,
-    .poll = rtl8139_poll,
-    .tx = rtl8139_tx,
-    .rx = rtl8139_rx,
-};

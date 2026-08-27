@@ -1,8 +1,14 @@
-#ifndef E1000_H
-#define E1000_H
+#ifndef NIITAN_NET_E1000_H
+#define NIITAN_NET_E1000_H
 
-#include <stddef.h>
+#include <stdint.h>
+#include "netif.h"
 
-extern struct mg_tcpip_driver mg_tcpip_driver_e1000;
+#define E1000_VENDOR 0x8086
+#define E1000_DEVICE 0x100E
+
+int e1000_init(NETIF *ifp);
+int e1000_tx(NETIF *ifp, const void *frame, uint32_t len);
+int e1000_rx(NETIF *ifp, void *buf, uint32_t maxlen);
 
 #endif

@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
         exit(-2);
     }
 
-    uint32_t dst_host = htonl(dst);
+    uint32_t dst_host = dst;
     char ipstr[16];
     ip_to_ipv4_str(dst, ipstr);
     printf("PING %s: 56 data bytes\n", ipstr);
@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
     int sent = 0, recv = 0;
     for (uint16_t seq = 1; sent < PING_MAX; seq++) {
         uint32_t t_send = now_ms();
-        if (icmp_send(dst_host, PING_ID, seq) == 0)
+        if (icmp_send(dst_host, PING_ID, seq) >= 0)
             sent++;
         uint32_t rtt = 0;
         if (wait_reply(PING_ID, seq, &rtt)) {

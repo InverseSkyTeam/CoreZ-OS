@@ -17,7 +17,7 @@
 #include "./lib/user/stdio.h"
 #include "./lib/user/syscall.h"
 #include "./memory/pool/pool.h"
-#include "./net/nt_net.h"
+#include "./net/net.h"
 #include "./shell/shell.h"
 #include "./syscall/futex.h"
 #include "./syscall/syscall.h"

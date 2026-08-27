@@ -1,8 +1,14 @@
-#ifndef RTL8139_H
-#define RTL8139_H
+#ifndef NIITAN_NET_RTL8139_H
+#define NIITAN_NET_RTL8139_H
 
-#include <stddef.h>
+#include <stdint.h>
+#include "netif.h"
 
-extern struct mg_tcpip_driver mg_tcpip_driver_rtl8139;
+#define RTL8139_VENDOR 0x10EC
+#define RTL8139_DEVICE 0x8139
+
+int rtl8139_init(NETIF *ifp);
+int rtl8139_tx(NETIF *ifp, const void *frame, uint32_t len);
+int rtl8139_rx(NETIF *ifp, void *buf, uint32_t maxlen);
 
 #endif

@@ -1,3 +1,5 @@
+
+
 #include "./syscall.h"
 
 #include "../../include/syscall_nr.h"
@@ -71,9 +73,7 @@ static inline uint64_t syscall6(uint64_t nr, uint64_t arg1, uint64_t arg2,
     return retval;
 }
 
-uint32_t getpid(void) {
-    return syscall0(SYS_GETPID);
-}
+uint32_t getpid(void) { return syscall0(SYS_GETPID); }
 int32_t write(int32_t fd, const void *buf, uint32_t count) {
     return (int32_t)syscall3(SYS_WRITE, (uint64_t)fd, (uint64_t)(uintptr_t)buf,
                              count);
@@ -82,22 +82,14 @@ int32_t read(int32_t fd, void *buf, uint32_t count) {
     return (int32_t)syscall3(SYS_READ, (uint64_t)fd, (uint64_t)(uintptr_t)buf,
                              count);
 }
-void putchar(char c) {
-    write(1, &c, 1);
-}
-void clear(void) {
-    syscall0(SYS_CLEAR);
-}
-int32_t fork(void) {
-    return (int32_t)syscall0(SYS_FORK);
-}
+void putchar(char c) { write(1, &c, 1); }
+void clear(void) { syscall0(SYS_CLEAR); }
+int32_t fork(void) { return (int32_t)syscall0(SYS_FORK); }
 int32_t open(const char *pathname, uint8_t flag) {
     return (int32_t)syscall2(SYS_OPEN, (uint64_t)(uintptr_t)pathname,
                              (uint64_t)flag);
 }
-int32_t close(int32_t fd) {
-    return (int32_t)syscall1(SYS_CLOSE, (uint64_t)fd);
-}
+int32_t close(int32_t fd) { return (int32_t)syscall1(SYS_CLOSE, (uint64_t)fd); }
 int32_t lseek(int32_t fd, int32_t offset, uint8_t whence) {
     return (int32_t)syscall3(SYS_LSEEK, (uint64_t)fd, (uint64_t)offset,
                              (uint64_t)whence);
@@ -134,9 +126,7 @@ struct dir_entry *readdir(struct dir *dir) {
 void rewinddir(struct dir *dir) {
     syscall1(SYS_REWINDDIR, (uint64_t)(uintptr_t)dir);
 }
-void ps(void) {
-    syscall0(SYS_PS);
-}
+void ps(void) { syscall0(SYS_PS); }
 int32_t execv(const char *path, const char *argv[]) {
     return (int32_t)syscall2(SYS_EXECV, (uint64_t)(uintptr_t)path,
                              (uint64_t)(uintptr_t)argv);
@@ -155,9 +145,7 @@ int32_t pipe(int32_t pipefd[2]) {
 void fd_redirect(uint32_t old_local_fd, uint32_t new_local_fd) {
     syscall2(SYS_FD_REDIRECT, (uint64_t)old_local_fd, (uint64_t)new_local_fd);
 }
-int32_t gui_start(void) {
-    return (int32_t)syscall0(SYS_GUI);
-}
+int32_t gui_start(void) { return (int32_t)syscall0(SYS_GUI); }
 void *brk(void *addr) {
     return (void *)syscall1(SYS_BRK, (uint64_t)(uintptr_t)addr);
 }
@@ -257,18 +245,10 @@ int32_t gettimeofday(struct timeval *tv, void *tz) {
 int32_t nanosleep(const struct timespec *req, struct timespec *rem) {
     return (int32_t)syscall2(SYS_NANOSLEEP, (uint32_t)req, (uint32_t)rem);
 }
-uint32_t getuid(void) {
-    return syscall0(SYS_GETUID);
-}
-uint32_t getgid(void) {
-    return syscall0(SYS_GETGID);
-}
-uint32_t geteuid(void) {
-    return syscall0(SYS_GETEUID);
-}
-uint32_t getegid(void) {
-    return syscall0(SYS_GETEGID);
-}
+uint32_t getuid(void) { return syscall0(SYS_GETUID); }
+uint32_t getgid(void) { return syscall0(SYS_GETGID); }
+uint32_t geteuid(void) { return syscall0(SYS_GETEUID); }
+uint32_t getegid(void) { return syscall0(SYS_GETEGID); }
 void exit_group(int32_t status) {
     syscall1(SYS_EXIT_GROUP, (uint32_t)status);
     for (;;) {
@@ -284,8 +264,40 @@ int32_t icmp_recv(struct nt_ping_reply *buf, int32_t max) {
     return (int32_t)syscall2(SYS_ICMP_RECV, (uint32_t)buf, (uint32_t)max);
 }
 
-int32_t shutdown(void) {
-    return (int32_t)syscall0(SYS_SHUTDOWN);
+int32_t socket(int32_t domain, int32_t type, int32_t proto) {
+    return (int32_t)syscall3(SYS_SOCKET, (uint32_t)domain, (uint32_t)type,
+                             (uint32_t)proto);
+}
+int32_t sock_bind(int32_t fd, uint32_t ip, uint16_t port) {
+    return (int32_t)syscall3(SYS_BIND, (uint32_t)fd, (uint32_t)ip, port);
+}
+int32_t sock_listen(int32_t fd, int32_t backlog) {
+    return (int32_t)syscall2(SYS_LISTEN, (uint32_t)fd, (uint32_t)backlog);
+}
+int32_t sock_connect(int32_t fd, uint32_t ip, uint16_t port) {
+    return (int32_t)syscall3(SYS_CONNECT, (uint32_t)fd, (uint32_t)ip, port);
+}
+int32_t sock_send(int32_t fd, const void *buf, uint32_t len) {
+    return (int32_t)syscall3(SYS_SEND, (uint32_t)fd, (uint32_t)buf, len);
+}
+int32_t sock_recv(int32_t fd, void *buf, uint32_t len) {
+    return (int32_t)syscall3(SYS_RECV, (uint32_t)fd, (uint32_t)buf, len);
+}
+int32_t sock_sendto(int32_t fd, const void *buf, uint32_t len, uint32_t daddr,
+                    uint16_t dport) {
+    return (int32_t)syscall5(SYS_SENDTO, (uint32_t)fd, (uint32_t)buf, len,
+                             daddr, dport);
+}
+int32_t sock_recvfrom(int32_t fd, void *buf, uint32_t len, uint32_t *saddr,
+                      uint16_t *sport) {
+    return (int32_t)syscall5(SYS_RECVFROM, (uint32_t)fd, (uint32_t)buf, len,
+                             (uint32_t)saddr, (uint32_t)sport);
+}
+int32_t sock_accept(int32_t fd) {
+    return (int32_t)syscall1(SYS_ACCEPT, (uint32_t)fd);
+}
+int32_t sock_close(int32_t fd) {
+    return (int32_t)syscall1(SYS_CLOSE_SOCKET, (uint32_t)fd);
 }
 
 __attribute__((naked)) void __restore(void) {

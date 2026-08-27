@@ -60,7 +60,17 @@ enum syscall_nr {
     SYS_MMAP2,
     SYS_ICMP_SEND,
     SYS_ICMP_RECV,
-    SYS_SHUTDOWN
+    SYS_SHUTDOWN,
+    SYS_SOCKET,
+    SYS_BIND,
+    SYS_LISTEN,
+    SYS_CONNECT,
+    SYS_SEND,
+    SYS_RECV,
+    SYS_SENDTO,
+    SYS_RECVFROM,
+    SYS_ACCEPT,
+    SYS_CLOSE_SOCKET
 };
 
 #endif

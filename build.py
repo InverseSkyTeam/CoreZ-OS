@@ -494,6 +494,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         ("fsyscall_demo","fsyscall_demo.c","_start", []),
         ("clone_demo",  "clone_demo.c",  "_start", []),
         ("ping",        "ping.c",        "_start", []),
+        ("udp_echo",    "udp_echo.c",    "_start", []),
         ("cow_stress",  "cow_stress.c",  "_start", []),
     ]
     user_lib_sources = [
@@ -568,23 +569,22 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         flags=["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_start"])
     tasks.append(nr_shell_elf)
     user_elves.append(nr_shell_elf)
-    mongoose_src = SRC_DIR / "app" / "mongoose"
     net_dir = KERNEL_DIR / "net"
-    mongoose_cflags = KERNEL_CFLAGS + [
-        "-I", str(MUSL_INC),
-        "-I", str(mongoose_src),
-        "-I", str(net_dir),
-    ]
-    tasks.append(task_cc("mongoose.o", mongoose_src / "mongoose.c",
-                         BUILD_DIR / "mongoose.o", tools, mongoose_cflags))
+    net_cflags = KERNEL_CFLAGS + ["-I", str(net_dir)]
     net_c_sources = [
         ("rtl8139.o", net_dir / "rtl8139.c"),
         ("e1000.o", net_dir / "e1000.c"),
-        ("nt_mongoose_plat.o", net_dir / "nt_mongoose_plat.c"),
-        ("nt_net.o", net_dir / "nt_net.c"),
+        ("arp.o", net_dir / "arp.c"),
+        ("ip.o", net_dir / "ip.c"),
+        ("eth.o", net_dir / "eth.c"),
+        ("icmp.o", net_dir / "icmp.c"),
+        ("tcp.o", net_dir / "tcp.c"),
+        ("udp.o", net_dir / "udp.c"),
+        ("socket.o", net_dir / "socket.c"),
+        ("net.o", net_dir / "net.c"),
     ]
     for stem, src in net_c_sources:
-        tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, mongoose_cflags))
+        tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, net_cflags))
     font_subset = BUILD_DIR / "font_subset.ttf"
     tasks.append(task_python(
         "font_subset.ttf",
@@ -605,7 +605,8 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         "usyscall.o", "ustdio.o", "wait_exit.o", "fork.o", "clone.o",
         "mouse.o", "gfx.o", "shm.o", "guiserver.o", "layout.o",
         "wm.o", "guiclients.o", "gui.o",
-        "mongoose.o", "rtl8139.o", "e1000.o", "nt_mongoose_plat.o", "nt_net.o",
+        "rtl8139.o", "e1000.o", "arp.o", "ip.o", "eth.o", "icmp.o",
+        "tcp.o", "udp.o", "socket.o", "net.o",
     ]
     kernel_link_objs = [BUILD_DIR / n for n in kernel_objs_names]
     kernel_elf = BUILD_DIR / "kernel.elf"

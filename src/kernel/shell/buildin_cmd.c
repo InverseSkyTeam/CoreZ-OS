@@ -7,6 +7,7 @@
 #include "../lib/user/stdio.h"
 #include "../lib/user/syscall.h"
 #include "./shell.h"
+#include "../initer/acpi/acpi.h"
 
 static void wash_path(char *old_abs_path, char *new_abs_path) {
     ASSERT(old_abs_path[0] == '/');
@@ -258,5 +259,5 @@ void buildin_shutdown(int32_t argc, char **argv) {
         return;
     }
     printf("Shutting down...\n");
-    shutdown();
+    acpi_shutdown();
 }

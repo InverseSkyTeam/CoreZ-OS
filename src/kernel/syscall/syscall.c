@@ -14,7 +14,8 @@
 #include "../lib/str/str.h"
 #include "../lib/user/syscall.h"
 #include "../memory/access.h"
-#include "../net/nt_net.h"
+#include "../net/net.h"
+#include "../net/socket.h"
 #include "../shell/pipe.h"
 #include "../thread/thread.h"
 #include "../userprog/clone.h"
@@ -516,6 +517,52 @@ uint32_t syscall_handler(struct Registers *r) {
         break;
     case SYS_SHUTDOWN:
         ret = sys_shutdown();
+        break;
+    case SYS_SOCKET:
+        ret = (uint32_t)net_socket((int)r->ebx, (int)r->ecx, (int)r->edx);
+        break;
+    case SYS_BIND:
+        ret =
+            (uint32_t)net_bind((int)r->ebx, (uint32_t)r->ecx, (uint16_t)r->edx);
+        break;
+    case SYS_LISTEN:
+        ret = (uint32_t)net_listen((int)r->ebx, (int)r->ecx);
+        break;
+    case SYS_CONNECT:
+        ret = (uint32_t)net_connect((int)r->ebx, (uint32_t)r->ecx,
+                                    (uint16_t)r->edx);
+        break;
+    case SYS_SEND:
+        if (!access_ok((const void *)r->ecx, (size_t)r->edx, 0))
+            break;
+        ret = (uint32_t)net_send((int)r->ebx, (const void *)r->ecx,
+                                 (uint32_t)r->edx);
+        break;
+    case SYS_RECV:
+        if (!access_ok((const void *)r->ecx, (size_t)r->edx, 1))
+            break;
+        ret = (uint32_t)net_recv((int)r->ebx, (void *)r->ecx,
+                                 (uint32_t)r->edx);
+        break;
+    case SYS_SENDTO:
+        if (!access_ok((const void *)r->ecx, (size_t)r->edx, 0))
+            break;
+        ret = (uint32_t)net_sendto((int)r->ebx, (const void *)r->ecx,
+                                   (uint32_t)r->edx, (uint32_t)r->esi,
+                                   (uint16_t)r->edi);
+        break;
+    case SYS_RECVFROM:
+        if (!access_ok((const void *)r->ecx, (size_t)r->edx, 1))
+            break;
+        ret = (uint32_t)net_recvfrom((int)r->ebx, (void *)r->ecx,
+                                     (uint32_t)r->edx,
+                                     (uint32_t *)r->esi, (uint16_t *)r->edi);
+        break;
+    case SYS_ACCEPT:
+        ret = (uint32_t)net_accept((int)r->ebx);
+        break;
+    case SYS_CLOSE_SOCKET:
+        ret = (uint32_t)net_close((int)r->ebx);
         break;
     default:
         ret = (uint32_t)-1;

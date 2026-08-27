@@ -1,8 +1,9 @@
 #include "e1000.h"
 
 #include "../include/asmFunc.h"
+#include "../lib/str/str.h"
 #include "../memory/pool/pool.h"
-#include "mongoose.h"
+#include "netif.h"
 #include "pci.h"
 
 #define E1000_VENDOR 0x8086
@@ -14,9 +15,7 @@
 #define REG_TCTL 0x0400
 #define REG_TIPG 0x0410
 #define REG_RCTL 0x0100
-#define REG_ICR 0x00C0
 #define REG_IMC 0x00D8
-#define REG_IMS 0x00D0
 #define REG_TDBAL 0x3800
 #define REG_TDBAH 0x3804
 #define REG_TDLEN 0x3808
@@ -34,12 +33,11 @@
 #define RX_BUF_LEN 2048
 
 #define V2P(x)                                                                 \
-    ((uint32_t)(x) >= 0xC0000000u)                                             \
-        ? ((uint32_t)(x) - 0xC0000000u)                                        \
-        : (uint32_t)(((*pte_ptr((uint32_t)(x)) & 0xfffff000ull) |              \
-                      ((uint32_t)(x) & 0xfff)))
+    ((uint32_t)(x) >= 0xC0000000u                                              \
+         ? ((uint32_t)(x) - 0xC0000000u)                                       \
+         : ((*pte_ptr((uint32_t)(x)) & 0xfffff000) | ((uint32_t)(x) & 0xfff)))
 
-struct e1000_tx_desc {
+struct E1000_TX_DESC {
     uint64_t addr;
     uint16_t length;
     uint8_t cso;
@@ -49,7 +47,7 @@ struct e1000_tx_desc {
     uint16_t special;
 } __attribute__((packed));
 
-struct e1000_rx_desc {
+struct E1000_RX_DESC {
     uint64_t addr;
     uint16_t length;
     uint16_t csum;
@@ -58,47 +56,44 @@ struct e1000_rx_desc {
     uint16_t special;
 } __attribute__((packed));
 
-static volatile uint8_t *regs;
-static struct e1000_tx_desc *tx_desc;
-static struct e1000_rx_desc *rx_desc;
-static uint8_t *tx_buf;
-static uint8_t *rx_buf;
-static uint32_t tx_cur, rx_cur;
+static volatile uint8_t *s_regs;
+static struct E1000_TX_DESC *s_tx;
+static struct E1000_RX_DESC *s_rx;
+static uint8_t *s_tx_buf;
+static uint8_t *s_rx_buf;
+static uint32_t s_tx_cur;
+static uint32_t s_rx_cur;
 
-static inline uint32_t readl(uint32_t off) {
-    return *(volatile uint32_t *)(regs + off);
+static inline uint32_t e_reg(uint32_t off) {
+    return *(volatile uint32_t *)(s_regs + off);
 }
-static inline void writel(uint32_t off, uint32_t v) {
-    *(volatile uint32_t *)(regs + off) = v;
+static inline void e_wreg(uint32_t off, uint32_t v) {
+    *(volatile uint32_t *)(s_regs + off) = v;
 }
 
 static void e1000_reset(void) {
-    writel(REG_CTRL, readl(REG_CTRL) | (1 << 26));
+    e_wreg(REG_CTRL, e_reg(REG_CTRL) | (1 << 26));
     for (uint32_t i = 0; i < 10000; i++) {
-        if (!(readl(REG_CTRL) & (1 << 26)))
+        if (!(e_reg(REG_CTRL) & (1 << 26)))
             break;
     }
 }
 
-static bool e1000_init(struct mg_tcpip_if *ifp) {
+int e1000_init(NETIF *ifp) {
     uint8_t bus, dev;
-    if (!pci_find_device(E1000_VENDOR, E1000_DEVICE, &bus, &dev)) {
-        printf("[NET] e1000 not found\n");
-        return false;
-    }
+    if (!pci_find_device(E1000_VENDOR, E1000_DEVICE, &bus, &dev))
+        return -1;
     uint32_t bar = pci_read32(bus, dev, E1000_BAR0);
     uint32_t phy = bar & ~0xFu;
     pci_enable_bus_master(bus, dev, 0x6);
 
-    regs = (volatile uint8_t *)ioremap(phy, 0x20000);
-    if (!regs) {
-        printf("[NET] e1000 ioremap failed\n");
-        return false;
-    }
+    s_regs = (volatile uint8_t *)ioremap(phy, 0x20000);
+    if (!s_regs)
+        return -1;
     e1000_reset();
 
-    uint32_t ral = readl(REG_RA);
-    uint32_t rah = readl(REG_RA + 4);
+    uint32_t ral = e_reg(REG_RA);
+    uint32_t rah = e_reg(REG_RA + 4);
     ifp->mac[0] = (uint8_t)(ral & 0xFF);
     ifp->mac[1] = (uint8_t)((ral >> 8) & 0xFF);
     ifp->mac[2] = (uint8_t)((ral >> 16) & 0xFF);
@@ -106,92 +101,77 @@ static bool e1000_init(struct mg_tcpip_if *ifp) {
     ifp->mac[4] = (uint8_t)(rah & 0xFF);
     ifp->mac[5] = (uint8_t)((rah >> 8) & 0xFF);
 
-    writel(REG_IMC, 0xFFFFFFFF);
+    e_wreg(REG_IMC, 0xFFFFFFFF);
 
-    tx_desc = (struct e1000_tx_desc *)get_kernel_pages(1);
-    tx_buf = (uint8_t *)get_kernel_pages(TX_DESC_N * RX_BUF_LEN / PAGE_SIZE);
+    s_tx = (struct E1000_TX_DESC *)get_kernel_pages(1);
+    s_tx_buf = (uint8_t *)get_kernel_pages(TX_DESC_N * RX_BUF_LEN / PAGE_SIZE);
     for (uint32_t i = 0; i < TX_DESC_N; i++) {
-        tx_desc[i].addr = V2P(tx_buf) + (uint64_t)i * RX_BUF_LEN;
-        tx_desc[i].cmd = 0;
-        tx_desc[i].status = 0x01;
+        s_tx[i].addr = V2P(s_tx_buf) + (uint64_t)i * RX_BUF_LEN;
+        s_tx[i].cmd = 0;
+        s_tx[i].status = 0x01;
     }
-    writel(REG_TDBAL, V2P(tx_desc));
-    writel(REG_TDBAH, 0);
-    writel(REG_TDLEN, TX_DESC_N * 16);
-    writel(REG_TDH, 0);
-    writel(REG_TDT, 0);
-    writel(REG_TCTL, 0x10000 | 0x400 | 0x8 | 0x2);
-    writel(REG_TIPG, 0x18);
+    e_wreg(REG_TDBAL, V2P(s_tx));
+    e_wreg(REG_TDBAH, 0);
+    e_wreg(REG_TDLEN, TX_DESC_N * 16);
+    e_wreg(REG_TDH, 0);
+    e_wreg(REG_TDT, 0);
+    e_wreg(REG_TCTL, 0x10000 | 0x400 | 0x8 | 0x2);
+    e_wreg(REG_TIPG, 0x18);
 
-    rx_desc = (struct e1000_rx_desc *)get_kernel_pages(1);
-    rx_buf = (uint8_t *)get_kernel_pages(RX_DESC_N * RX_BUF_LEN / PAGE_SIZE);
+    s_rx = (struct E1000_RX_DESC *)get_kernel_pages(1);
+    s_rx_buf = (uint8_t *)get_kernel_pages(RX_DESC_N * RX_BUF_LEN / PAGE_SIZE);
     for (uint32_t i = 0; i < RX_DESC_N; i++) {
-        rx_desc[i].addr = V2P(rx_buf) + (uint64_t)i * RX_BUF_LEN;
-        rx_desc[i].status = 0;
+        s_rx[i].addr = V2P(s_rx_buf) + (uint64_t)i * RX_BUF_LEN;
+        s_rx[i].status = 0;
     }
-    writel(REG_RDBAL, V2P(rx_desc));
-    writel(REG_RDBAH, 0);
-    writel(REG_RDLEN, RX_DESC_N * 16);
-    writel(REG_RDH, 0);
-    writel(REG_RDT, RX_DESC_N - 1);
-    writel(REG_RCTL, 0x2 | 0x8000 | 0x04000000);
+    e_wreg(REG_RDBAL, V2P(s_rx));
+    e_wreg(REG_RDBAH, 0);
+    e_wreg(REG_RDLEN, RX_DESC_N * 16);
+    e_wreg(REG_RDH, 0);
+    e_wreg(REG_RDT, RX_DESC_N - 1);
+    e_wreg(REG_RCTL, 0x2 | 0x8000 | 0x04000000);
 
-    tx_cur = rx_cur = 0;
-    return true;
+    s_tx_cur = s_rx_cur = 0;
+    return 0;
 }
 
-static bool e1000_poll(struct mg_tcpip_if *ifp, bool once_per_sec) {
+int e1000_tx(NETIF *ifp, const void *frame, uint32_t len) {
     (void)ifp;
-    (void)once_per_sec;
-    return readl(REG_STATUS) & 0x2;
-}
-
-static size_t e1000_tx(const void *buf, size_t len, struct mg_tcpip_if *ifp) {
-    (void)ifp;
-    uint32_t slot = tx_cur % TX_DESC_N;
-
+    uint32_t slot = s_tx_cur % TX_DESC_N;
     for (uint32_t i = 0; i < 100000; i++) {
-        if (tx_desc[slot].status & 0x01)
+        if (s_tx[slot].status & 0x01)
             break;
     }
-    memcpy(tx_buf + (size_t)slot * RX_BUF_LEN, buf, len);
-    tx_desc[slot].length = (uint16_t)len;
-    tx_desc[slot].cso = 0;
-    tx_desc[slot].css = 0;
-    tx_desc[slot].cmd = 0x01 | 0x02 | 0x08;
-    tx_desc[slot].status = 0;
-    tx_cur++;
-    writel(REG_TDT, tx_cur % TX_DESC_N);
-
+    memcpy(s_tx_buf + (size_t)slot * RX_BUF_LEN, frame, len);
+    s_tx[slot].length = (uint16_t)len;
+    s_tx[slot].cso = 0;
+    s_tx[slot].css = 0;
+    s_tx[slot].cmd = 0x01 | 0x02 | 0x08;
+    s_tx[slot].status = 0;
+    s_tx_cur++;
+    e_wreg(REG_TDT, s_tx_cur % TX_DESC_N);
     for (uint32_t i = 0; i < 100000; i++) {
-        if (tx_desc[slot].status & 0x01)
+        if (s_tx[slot].status & 0x01)
             break;
     }
-    return len;
+    return (int)len;
 }
 
-static size_t e1000_rx(void *buf, size_t len, struct mg_tcpip_if *ifp) {
+int e1000_rx(NETIF *ifp, void *buf, uint32_t maxlen) {
     (void)ifp;
-    if (!(rx_desc[rx_cur].status & 0x01))
+    if (!(s_rx[s_rx_cur].status & 0x01))
         return 0;
-    size_t got = 0;
-    if (rx_desc[rx_cur].errors == 0) {
-        uint16_t plen = rx_desc[rx_cur].length;
-        if (plen > len)
-            plen = (uint16_t)len;
-        memcpy(buf, rx_buf + (size_t)rx_cur * RX_BUF_LEN, plen);
+    uint32_t got = 0;
+    if (s_rx[s_rx_cur].errors == 0) {
+        uint16_t plen = s_rx[s_rx_cur].length;
+        if (plen > maxlen)
+            plen = (uint16_t)maxlen;
+        memcpy(buf, s_rx_buf + (size_t)s_rx_cur * RX_BUF_LEN, plen);
         got = plen;
     }
-    uint32_t done = rx_cur;
-    rx_desc[rx_cur].status = 0;
-    rx_cur = (rx_cur + 1) % RX_DESC_N;
-    writel(REG_RDT, done);
-    return got;
+    uint32_t done = s_rx_cur;
+    s_rx[s_rx_cur].status = 0;
+    s_rx_cur = (s_rx_cur + 1) % RX_DESC_N;
+    e_wreg(REG_RDT, done);
+    return (int)got;
 }
-
-struct mg_tcpip_driver mg_tcpip_driver_e1000 = {
-    .init = e1000_init,
-    .poll = e1000_poll,
-    .tx = e1000_tx,
-    .rx = e1000_rx,
-};

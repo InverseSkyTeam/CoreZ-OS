@@ -118,12 +118,12 @@ void isr_handler(struct Registers *r) {
     uint64_t cr2;
     asm volatile("mov %%cr2, %0" : "=r"(cr2));
     kprintf("  cr2 (fault addr) = 0x%x\n", (uint32_t)cr2);
-    /* kprintf %x 只支持 32 位 */
+
     kprintf("  efer = 0x%x (NXE=%d)  cr4 = 0x%x (PAE=%d SMEP=%d SMAP=%d)\n",
             (uint32_t)asm_rdmsr(0xC0000080u),
-            (int)((asm_rdmsr(0xC0000080u) >> 11) & 1),
-            (uint32_t)asm_read_cr4(), (int)((asm_read_cr4() >> 5) & 1),
-            (int)((asm_read_cr4() >> 20) & 1), (int)((asm_read_cr4() >> 21) & 1));
+            (int)((asm_rdmsr(0xC0000080u) >> 11) & 1), (uint32_t)asm_read_cr4(),
+            (int)((asm_read_cr4() >> 5) & 1), (int)((asm_read_cr4() >> 20) & 1),
+            (int)((asm_read_cr4() >> 21) & 1));
     if (n == 14) {
         page_table_dump((uint32_t)cr2);
     }
@@ -133,6 +133,21 @@ void isr_handler(struct Registers *r) {
     } else if (cr2 >= 0xE0000000) {
         kprintf("  (note: fault is inside VRAM region 0xE0000000+)\n");
     }
+
+    unsigned long *rbp;
+    unsigned long ret_addr;
+    int frame = 1;
+
+    __asm__ volatile("mov %%rbp, %0" : "=r"(rbp));
+    while (rbp) {
+        ret_addr = *(rbp + 1);
+        kprintf("[#%d] 0x%x\n", frame++, ret_addr);
+
+        if ((unsigned long)rbp < 0x1000)
+            break;
+        rbp = (unsigned long *)*rbp;
+    }
+
     asm_cli();
     for (;;) {
         asm_hlt();

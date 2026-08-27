@@ -319,6 +319,33 @@ int32_t sock_accept(int32_t fd) {
 int32_t sock_close(int32_t fd) {
     return (int32_t)syscall1(SYS_CLOSE_SOCKET, (uint32_t)fd);
 }
+int32_t sock_shutdown(int32_t fd, int32_t how) {
+    return (int32_t)syscall2(SYS_SOCK_SHUTDOWN, (uint32_t)fd, (uint32_t)how);
+}
+int32_t sock_getsockname(int32_t fd, uint32_t *ip, uint16_t *port) {
+    return (int32_t)syscall3(SYS_GETSOCKNAME, (uint32_t)fd, (uint32_t)ip,
+                             (uint32_t)port);
+}
+int32_t sock_getpeername(int32_t fd, uint32_t *ip, uint16_t *port) {
+    return (int32_t)syscall3(SYS_GETPEERNAME, (uint32_t)fd, (uint32_t)ip,
+                             (uint32_t)port);
+}
+int32_t sock_getsockopt(int32_t fd, int32_t level, int32_t optname, void *val,
+                        uint32_t *len) {
+    return (int32_t)syscall5(SYS_GETSOCKOPT, (uint32_t)fd, (uint32_t)level,
+                             (uint32_t)optname, (uint32_t)val, (uint32_t)len);
+}
+int32_t sock_setsockopt(int32_t fd, int32_t level, int32_t optname,
+                        const void *val, uint32_t len) {
+    return (int32_t)syscall5(SYS_SETSOCKOPT, (uint32_t)fd, (uint32_t)level,
+                             (uint32_t)optname, (uint32_t)val, len);
+}
+int32_t sock_select(int32_t nfds, uint32_t *rfds, uint32_t *wfds,
+                    uint32_t *efds, int32_t timeout_ms) {
+    return (int32_t)syscall5(SYS_SELECT, (uint32_t)nfds, (uint32_t)rfds,
+                             (uint32_t)wfds, (uint32_t)efds,
+                             (uint32_t)timeout_ms);
+}
 
 __attribute__((naked)) void __restore(void) {
     __asm__ volatile("movl %0, %%eax\n"

@@ -77,6 +77,7 @@ int tcp_recv(struct TCP_PCB *pcb, void *buf, uint32_t len);
 struct TCP_PCB *tcp_accept(struct TCP_PCB *listener);
 int tcp_accept_ready(struct TCP_PCB *listener);
 int tcp_close(struct TCP_PCB *pcb);
+int tcp_shutdown(struct TCP_PCB *pcb, int how);
 
 int tcp_state(struct TCP_PCB *pcb);
 

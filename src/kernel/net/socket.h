@@ -8,6 +8,31 @@
 #define SOCK_STREAM 1
 #define SOCK_DGRAM  2
 
+#define EPERM 1
+#define EBADF 9
+#define EAGAIN 11
+#define EFAULT 14
+#define EINVAL 22
+#define ENOTSOCK 88
+#define ENOTCONN 107
+#define EINPROGRESS 115
+#define EOPNOTSUPP 95
+
+#define SHUT_RD 0
+#define SHUT_WR 1
+#define SHUT_RDWR 2
+
+#define SOL_SOCKET 1
+#define SO_REUSEADDR 2
+#define SO_ERROR 4
+#define SO_SNDBUF 7
+#define SO_RCVBUF 8
+#define SO_KEEPALIVE 9
+
+#define O_NONBLOCK 0x800
+
+#define NET_FDSET_WORDS 2
+
 #define MAX_SOCKET 64
 
 void sock_init(void);
@@ -23,6 +48,17 @@ int net_recvfrom(int fd, void *buf, uint32_t len, uint32_t *saddr,
                  uint16_t *sport);
 int net_accept(int fd);
 int net_close(int fd);
+
+int net_shutdown(int fd, int how);
+int net_getsockname(int fd, uint32_t *ip, uint16_t *port);
+int net_getpeername(int fd, uint32_t *ip, uint16_t *port);
+int net_getsockopt(int fd, int level, int optname, void *val, uint32_t *len);
+int net_setsockopt(int fd, int level, int optname, const void *val,
+                   uint32_t len);
+int net_fcntl(int fd, int cmd, uint32_t arg);
+int net_is_socket(int fd);
+int net_select(int nfds, uint32_t *rfds, uint32_t *wfds, uint32_t *efds,
+               int timeout_ms);
 
 void sock_poll(void);
 

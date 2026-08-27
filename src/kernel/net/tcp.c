@@ -4,6 +4,7 @@
 #include "../lib/str/str.h"
 #include "ip.h"
 #include "net.h"
+#include "socket.h"
 
 #define RCV_MASK (TCP_RCV_BUF - 1)
 
@@ -265,6 +266,32 @@ int tcp_close(struct TCP_PCB *pcb) {
         return 0;
     }
     return -1;
+}
+
+int tcp_shutdown(struct TCP_PCB *pcb, int how) {
+    extern NETIF g_netif;
+    if (how & SHUT_WR) {
+        if (pcb->state == TCP_ESTABLISHED) {
+            pcb->fin_sent = 1;
+            tcp_emit(&g_netif, pcb, pcb->snd_nxt, pcb->rcv_nxt,
+                     TCP_FLAG_FIN | TCP_FLAG_ACK, 0, 0);
+            pcb->snd_nxt++;
+            pcb->tmo = net_ms() + TCP_INIT_RTO;
+            pcb->retry = 0;
+            pcb->state = TCP_FIN_WAIT1;
+        } else if (pcb->state == TCP_CLOSE_WAIT) {
+            pcb->fin_sent = 1;
+            tcp_emit(&g_netif, pcb, pcb->snd_nxt, pcb->rcv_nxt,
+                     TCP_FLAG_FIN | TCP_FLAG_ACK, 0, 0);
+            pcb->snd_nxt++;
+            pcb->tmo = net_ms() + TCP_INIT_RTO;
+            pcb->retry = 0;
+            pcb->state = TCP_LAST_ACK;
+        }
+    }
+    if (how & SHUT_RD)
+        pcb->fin_rcvd = 1;
+    return 0;
 }
 
 static void tcp_accept_child(NETIF *ifp, struct TCP_PCB *listener,

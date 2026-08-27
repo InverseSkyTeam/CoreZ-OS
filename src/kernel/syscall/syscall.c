@@ -563,6 +563,47 @@ uint32_t syscall_handler(struct Registers *r) {
     case SYS_CLOSE_SOCKET:
         ret = (uint32_t)net_close((int)r->ebx);
         break;
+    case SYS_SOCK_SHUTDOWN:
+        ret = (uint32_t)net_shutdown((int)r->ebx, (int)r->ecx);
+        break;
+    case SYS_GETSOCKNAME:
+        if (!access_ok((void *)r->ecx, 4, 1) || !access_ok((void *)r->edx, 2, 1))
+            break;
+        ret = (uint32_t)net_getsockname((int)r->ebx, (uint32_t *)r->ecx,
+                                        (uint16_t *)r->edx);
+        break;
+    case SYS_GETPEERNAME:
+        if (!access_ok((void *)r->ecx, 4, 1) || !access_ok((void *)r->edx, 2, 1))
+            break;
+        ret = (uint32_t)net_getpeername((int)r->ebx, (uint32_t *)r->ecx,
+                                        (uint16_t *)r->edx);
+        break;
+    case SYS_GETSOCKOPT:
+        if (!access_ok((void *)r->esi, 4, 1) || !access_ok((void *)r->edi, 4, 1))
+            break;
+        ret = (uint32_t)net_getsockopt((int)r->ebx, (int)r->ecx, (int)r->edx,
+                                       (void *)r->esi, (uint32_t *)r->edi);
+        break;
+    case SYS_SETSOCKOPT:
+        if (!access_ok((void *)r->esi, 4, 0))
+            break;
+        ret = (uint32_t)net_setsockopt((int)r->ebx, (int)r->ecx, (int)r->edx,
+                                       (const void *)r->esi, (uint32_t)r->edi);
+        break;
+    case SYS_SOCK_FCNTL:
+        ret = (uint32_t)net_fcntl((int)r->ebx, (int)r->ecx, (uint32_t)r->edx);
+        break;
+    case SYS_SELECT:
+        if (r->ecx && !access_ok((void *)r->ecx, 8, 1))
+            break;
+        if (r->edx && !access_ok((void *)r->edx, 8, 1))
+            break;
+        if (r->esi && !access_ok((void *)r->esi, 8, 1))
+            break;
+        ret = (uint32_t)net_select((int)r->ebx, (uint32_t *)r->ecx,
+                                   (uint32_t *)r->edx, (uint32_t *)r->esi,
+                                   (int)r->edi);
+        break;
     default:
         ret = (uint32_t)-1;
         break;

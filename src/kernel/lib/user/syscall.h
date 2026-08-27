@@ -117,6 +117,22 @@ int32_t  sock_recvfrom(int32_t fd, void* buf, uint32_t len, uint32_t* saddr,
                        uint16_t* sport);
 int32_t  sock_accept(int32_t fd);
 int32_t  sock_close(int32_t fd);
+int32_t  sock_shutdown(int32_t fd, int32_t how);
+int32_t  sock_getsockname(int32_t fd, uint32_t *ip, uint16_t *port);
+int32_t  sock_getpeername(int32_t fd, uint32_t *ip, uint16_t *port);
+int32_t  sock_getsockopt(int32_t fd, int32_t level, int32_t optname, void* val,
+                         uint32_t* len);
+int32_t  sock_setsockopt(int32_t fd, int32_t level, int32_t optname,
+                         const void* val, uint32_t len);
+int32_t  sock_select(int32_t nfds, uint32_t* rfds, uint32_t* wfds,
+                     uint32_t* efds, int32_t timeout_ms);
+
+#define NET_FDSET_WORDS 2
+typedef uint32_t net_fd_set[NET_FDSET_WORDS];
+#define FD_ZERO(s) do { uint32_t* _b = (uint32_t*)(s); _b[0] = 0; _b[1] = 0; } while (0)
+#define FD_SET(fd, s) (((uint32_t*)(s))[(fd) / 32] |= 1u << ((fd) % 32))
+#define FD_CLR(fd, s) (((uint32_t*)(s))[(fd) / 32] &= ~(1u << ((fd) % 32)))
+#define FD_ISSET(fd, s) ((((uint32_t*)(s))[(fd) / 32] >> ((fd) % 32)) & 1u)
 
 #define FUTEX_WAIT 0
 #define FUTEX_WAKE 1

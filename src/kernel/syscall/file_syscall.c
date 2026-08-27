@@ -7,6 +7,7 @@
 #include "../fs/inode.h"
 #include "../lib/str/str.h"
 #include "../memory/pool/pool.h"
+#include "../net/socket.h"
 #include "../thread/thread.h"
 struct linux_dirent {
     uint32_t d_ino;
@@ -71,6 +72,8 @@ int32_t sys_dup2(int32_t oldfd, int32_t newfd) {
     return newfd;
 }
 int32_t sys_fcntl(int32_t fd, int32_t cmd, uint32_t arg) {
+    if (net_is_socket(fd))
+        return net_fcntl(fd, cmd, arg);
     if (fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
     }

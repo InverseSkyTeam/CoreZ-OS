@@ -1,4 +1,3 @@
-/* Intel PRO/1000 (QEMU e1000 设备, 设备号 0x100E) 的轮询式网卡驱动 */
 #ifndef E1000_H
 #define E1000_H
 

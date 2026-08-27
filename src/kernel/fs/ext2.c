@@ -6,39 +6,6 @@
 #include "../memory/pool/pool.h"
 #include "dir.h"
 
-#define EXT2_SUPER_MAGIC 0xEF53u
-#define EXT2_S_IFREG 0x8000u
-#define EXT2_S_IFDIR 0x4000u
-#define EXT2_DT_DIR 2u
-#define EXT2_INODE_SIZE 128u
-
-struct ext2_super {
-    uint32_t s_inodes_count;
-    uint32_t s_blocks_count;
-    uint32_t s_r_blocks_count;
-    uint32_t s_free_blocks_count;
-    uint32_t s_free_inodes_count;
-    uint32_t s_first_data_block;
-    uint32_t s_log_block_size;
-    uint32_t s_log_frag_size;
-    uint32_t s_blocks_per_group;
-    uint32_t s_frags_per_group;
-    uint32_t s_inodes_per_group;
-    uint32_t s_mtime;
-    uint32_t s_wtime;
-    uint16_t s_mnt_count;
-    uint16_t s_max_mnt_count;
-    uint16_t s_magic;
-} __attribute__((packed));
-
-struct ext2_dirent {
-    uint32_t inode;
-    uint16_t rec_len;
-    uint8_t name_len;
-    uint8_t file_type;
-    char name[0];
-} __attribute__((packed));
-
 static struct disk *disk = NULL;
 static struct partition *part = NULL;
 static uint32_t start = 0;
@@ -85,7 +52,7 @@ int ext2_init(void) {
         }
         memset(buf, 0, 4096);
         ide_read(p->my_disk, p->start_lba, buf, 4);
-        struct ext2_super *sb = (struct ext2_super *)(buf + 1024);
+        struct EXT2_SURPER *sb = (struct EXT2_SURPER *)(buf + 1024);
         if (sb->s_magic == EXT2_SUPER_MAGIC) {
             disk = p->my_disk;
             part = p;
@@ -95,7 +62,7 @@ int ext2_init(void) {
             inodes_per_group = sb->s_inodes_per_group;
             first_block = sb->s_first_data_block;
             total_blocks = sb->s_blocks_count;
-            struct ext2_super *sb2 = (struct ext2_super *)buf;
+            struct EXT2_SURPER *sb2 = (struct EXT2_SURPER *)buf;
             free_blocks = sb2->s_free_blocks_count;
             free_inodes = sb2->s_free_inodes_count;
             uint8_t *gb = (uint8_t *)get_kernel_pages(1);
@@ -500,7 +467,7 @@ int ext2_add_entry(struct inode *dino, uint32_t ino, const char *name,
         uint32_t target = 0xFFFFFFFFu;
         uint32_t slot_rec = 0;
         while (off < bs) {
-            struct ext2_dirent *de = (struct ext2_dirent *)(blk + off);
+            struct EXT2_DIRENT *de = (struct EXT2_DIRENT *)(blk + off);
             uint32_t rl = de->rec_len;
             if (rl < 8u) {
                 if (bs - off >= need) {
@@ -517,7 +484,7 @@ int ext2_add_entry(struct inode *dino, uint32_t ino, const char *name,
             off += rl;
         }
         if (target != 0xFFFFFFFFu) {
-            struct ext2_dirent *de = (struct ext2_dirent *)(blk + target);
+            struct EXT2_DIRENT *de = (struct EXT2_DIRENT *)(blk + target);
             de->inode = ino;
             de->rec_len = (uint16_t)slot_rec;
             de->name_len = (uint8_t)nl;
@@ -536,7 +503,7 @@ int ext2_add_entry(struct inode *dino, uint32_t ino, const char *name,
         return -1;
     }
     memset(blk, 0, 4096);
-    struct ext2_dirent *de = (struct ext2_dirent *)blk;
+    struct EXT2_DIRENT *de = (struct EXT2_DIRENT *)blk;
     de->inode = ino;
     de->rec_len = (uint16_t)bs;
     de->name_len = (uint8_t)nl;
@@ -567,7 +534,7 @@ int ext2_remove_entry(struct inode *dino, const char *name) {
         ext2_read_block(addr, blk);
         uint32_t off = 0;
         while (off < bs) {
-            struct ext2_dirent *de = (struct ext2_dirent *)(blk + off);
+            struct EXT2_DIRENT *de = (struct EXT2_DIRENT *)(blk + off);
             uint32_t rl = de->rec_len;
             if (rl < 8u) {
                 break;
@@ -685,7 +652,7 @@ int ext2_dir_next(const struct inode *dino, uint32_t *pos,
         ext2_read_block(addr, blk);
         uint32_t off = 0;
         while (off < bs) {
-            struct ext2_dirent *de = (struct ext2_dirent *)(blk + off);
+            struct EXT2_DIRENT *de = (struct EXT2_DIRENT *)(blk + off);
             uint32_t rec_len = de->rec_len;
             if (rec_len < 8) {
                 break;

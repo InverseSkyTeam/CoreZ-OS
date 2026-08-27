@@ -6,6 +6,38 @@
 #include <stdint.h>
 
 struct partition;
+#define EXT2_SUPER_MAGIC 0xEF53u
+#define EXT2_S_IFREG 0x8000u
+#define EXT2_S_IFDIR 0x4000u
+#define EXT2_DT_DIR 2u
+#define EXT2_INODE_SIZE 128u
+
+struct EXT2_SURPER {
+    uint32_t s_inodes_count;
+    uint32_t s_blocks_count;
+    uint32_t s_r_blocks_count;
+    uint32_t s_free_blocks_count;
+    uint32_t s_free_inodes_count;
+    uint32_t s_first_data_block;
+    uint32_t s_log_block_size;
+    uint32_t s_log_frag_size;
+    uint32_t s_blocks_per_group;
+    uint32_t s_frags_per_group;
+    uint32_t s_inodes_per_group;
+    uint32_t s_mtime;
+    uint32_t s_wtime;
+    uint16_t s_mnt_count;
+    uint16_t s_max_mnt_count;
+    uint16_t s_magic;
+} __attribute__((packed));
+
+struct EXT2_DIRENT {
+    uint32_t inode;
+    uint16_t rec_len;
+    uint8_t name_len;
+    uint8_t file_type;
+    char name[0];
+} __attribute__((packed));
 
 int ext2_init(void);
 struct partition *ext2_partition(void);

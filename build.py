@@ -27,10 +27,6 @@ def _force_utf8_stdout() -> None:
                 pass
 _force_utf8_stdout()
 ROOT       = Path(__file__).resolve().parent
-_local_tmp = (ROOT / ".zig-tmp").resolve()
-os.makedirs(_local_tmp, exist_ok=True)
-os.environ["TMP"] = os.environ["TEMP"] = str(_local_tmp)
-os.environ.setdefault("ZIG_GLOBAL_CACHE_DIR", str(ROOT / ".zig-cache"))
 SRC_DIR    = ROOT / "src"
 BOOT_DIR   = SRC_DIR / "boot"
 CMD_DIR    = SRC_DIR / "command"
@@ -43,16 +39,12 @@ SHELL_SRC  = SRC_DIR / "app" / "mr_micro_shell"
 NRSHELL    = CMD_DIR / "nr_shell"
 CFLAGS_BASE = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
-    "-target", "x86-freestanding",
-    "-fmodules-cache-path=" + str(ROOT / ".zig-cache" / "modules"),
 ]
 CFLAGS = CFLAGS_BASE
 KERNEL_CFLAGS = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
-    "-target", "x86_64-freestanding",
     "-mcmodel=large",
     "-mno-red-zone",
-    "-fmodules-cache-path=" + str(ROOT / ".zig-cache" / "modules"),
 ]
 UP_CFLAGS = CFLAGS_BASE + [
     "-I", str(KERNEL_DIR / "lib" / "user"),
@@ -63,8 +55,6 @@ UP_LDFLAGS = ["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_start"]
 
 UP_CFLAGS_64 = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
-    "-target", "x86_64-freestanding",
-    "-fmodules-cache-path=" + str(ROOT / ".zig-cache" / "modules"),
     "-I", str(KERNEL_DIR / "lib" / "user"),
     "-I", str(KERNEL_DIR / "lib" / "str"),
     "-I", str(KERNEL_DIR / "lib"),
@@ -73,8 +63,6 @@ UP_LDFLAGS_64 = ["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_start"
 
 MUSL64_BASE = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
-    "-target", "x86_64-freestanding",
-    "-fmodules-cache-path=" + str(ROOT / ".zig-cache" / "modules"),
 ]
 MUSL_CFLAGS = MUSL64_BASE + [
     "-I", str(MUSL_SRC / "arch" / "x86_64"),
@@ -136,6 +124,7 @@ class Tools:
     ld:      str
     objcopy: str
     python:  str
+    is_zig:  bool = False
 def _find(name: str, candidates: Sequence[str]) -> str:
     for c in candidates:
         path = shutil.which(c)
@@ -151,24 +140,26 @@ def _find(name: str, candidates: Sequence[str]) -> str:
     raise FileNotFoundError(
         f"Could not find any of: {', '.join(candidates)} (needed for `{name}`)."
     )
-def _resolve_cc() -> List[str]:
+def _resolve_cc() -> Tuple[List[str], bool]:
     zig = shutil.which("zig")
     if zig:
-        return [zig, "cc"]
-    for c in ("cc", "gcc", "x86_64-elf-gcc", "i686-elf-gcc"):
+        return [zig, "cc"], True
+    for c in ("x86_64-elf-gcc", "gcc", "cc", "i686-elf-gcc"):
         path = shutil.which(c)
         if path:
-            return [path]
+            return [path], False
     raise FileNotFoundError(
-        "Could not find any C compiler (zig/cc/gcc/x86_64-elf-gcc)."
+        "Could not find any C compiler (zig, x86_64-elf-gcc, gcc, cc)."
     )
 def detect_tools() -> Tools:
+    cc, is_zig = _resolve_cc()
     return Tools(
         nasm    = _find("nasm",    ["nasm"]),
-        cc      = _resolve_cc(),
+        cc      = cc,
         ld      = _find("ld",      ["ld.lld", "lld-link", "x86_64-elf-ld", "ld"]),
         objcopy = _find("objcopy", ["objcopy", "llvm-objcopy", "x86_64-elf-objcopy"]),
         python  = sys.executable,
+        is_zig  = is_zig,
     )
 @dataclass
 class CmdResult:
@@ -329,10 +320,14 @@ def task_assemble_elf64(name: str, src: Path, out: Path, tools: Tools) -> Task:
         out=out, deps=[], description=str(src.relative_to(ROOT)),
         group="asm",
     )
-def task_cc(name: str, src: Path, out: Path, tools: Tools, flags: List[str]) -> Task:
+def task_cc(name: str, src: Path, out: Path, tools: Tools, flags: List[str], target: str = "x86_64-freestanding") -> Task:
+    cmd = [*tools.cc]
+    if tools.is_zig and target:
+        cmd.append(f"--target={target}")
+    cmd += ["-c", str(src), *flags, "-o", str(out)]
     return Task(
         name=name,
-        cmd=[*tools.cc, "-c", str(src), *flags, "-o", str(out)],
+        cmd=cmd,
         out=out, deps=[], description=str(src.relative_to(ROOT)),
         group="cc",
     )
@@ -877,6 +872,8 @@ def show_failure_hint(console: Console, missing: List[str]) -> None:
     console.writeln("          • macOS   : brew install nasm zig")
     console.writeln("          • Windows : install zig, nasm, llvm (winget/choco/scoop)")
     console.writeln()
+    console.info("Cross-compiler priority: zig cc > x86_64-elf-gcc > gcc > cc")
+    console.writeln()
 def do_clean(console: Console) -> None:
     if BUILD_DIR.exists():
         shutil.rmtree(BUILD_DIR)
@@ -947,7 +944,7 @@ def main(argv: Sequence[str]) -> int:
     except FileNotFoundError as exc:
         show_failure_hint(console, [str(exc)])
         return 2
-    console.info(f"cc      = {tools.cc}")
+    console.info(f"cc      = {tools.cc}  {'(zig)' if tools.is_zig else ''}")
     console.info(f"ld      = {tools.ld}")
     console.info(f"nasm    = {tools.nasm}")
     console.info(f"objcopy = {tools.objcopy}")

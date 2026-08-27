@@ -16,6 +16,16 @@
 #define EFLAGS_IF_1 (1 << 9)
 #define EFLAGS_IOPL_0 0
 #define MAX_ARG_NR 16
+
+struct Elf64_Nhdr {
+    uint32_t namesz;
+    uint32_t descsz;
+    uint32_t type;
+};
+
+#define NT_GNU_ABI_TAG 1
+#define EM_X86_64 62
+#define EM_386 3
 typedef uint32_t Elf32_Word, Elf32_Addr, Elf32_Off;
 typedef uint16_t Elf32_Half;
 struct Elf32_Ehdr {
@@ -117,7 +127,7 @@ static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
     }
     return 0;
 }
-static int32_t load(const char *pathname, int *is64) {
+static int32_t load(const char *pathname, int *is64, int *is_linux) {
     int32_t ret = -1;
     unsigned char ident[16];
     int32_t fd = open_file(pathname, O_RDONLY);
@@ -133,6 +143,7 @@ static int32_t load(const char *pathname, int *is64) {
         goto done;
     }
     *is64 = (ident[4] == 2);
+    *is_linux = 0;
     sys_lseek(fd, 0, SEEK_SET);
     if (*is64) {
         struct Elf64_Ehdr elf64_header;
@@ -141,11 +152,12 @@ static int32_t load(const char *pathname, int *is64) {
             sizeof(elf64_header)) {
             goto done;
         }
-        if (elf64_header.e_type != 2 || elf64_header.e_machine != 62 ||
+        if (elf64_header.e_type != 2 || elf64_header.e_machine != EM_X86_64 ||
             elf64_header.e_version != 1 || elf64_header.e_phnum > 1024 ||
             elf64_header.e_phentsize != sizeof(struct Elf64_Phdr)) {
             goto done;
         }
+
         Elf64_Off prog_header_offset = elf64_header.e_phoff;
         for (uint32_t prog_idx = 0; prog_idx < elf64_header.e_phnum;
              prog_idx++) {
@@ -156,6 +168,40 @@ static int32_t load(const char *pathname, int *is64) {
                 sizeof(prog64_header)) {
                 goto done;
             }
+
+            if (prog64_header.p_type == PT_NOTE) {
+                sys_lseek(fd, (uint32_t)prog64_header.p_offset, SEEK_SET);
+                uint32_t remaining = (uint32_t)prog64_header.p_filesz;
+                while (remaining >= sizeof(struct Elf64_Nhdr)) {
+                    struct Elf64_Nhdr nhdr;
+                    if (read_file(fd, &nhdr, sizeof(nhdr)) != sizeof(nhdr))
+                        break;
+                    uint32_t note_size = sizeof(nhdr) +
+                        ((nhdr.namesz + 3) & ~3u) +
+                        ((nhdr.descsz + 3) & ~3u);
+                    if (note_size > remaining)
+                        break;
+                    if (nhdr.type == NT_GNU_ABI_TAG && nhdr.namesz >= 4) {
+                        char name[4];
+                        read_file(fd, name, 4);
+                        if (memcmp(name, "GNU", 4) == 0 && nhdr.descsz >= 8) {
+                            uint8_t desc[8];
+                            read_file(fd, desc, 8);
+                            if (desc[0] == 0) {
+                                *is_linux = 1;
+                                kprintf("[exec] Linux ELF detected (GNU ABI-tag)\n");
+                            }
+                        }
+                    }
+                    remaining -= note_size;
+                    sys_lseek(fd, (uint32_t)prog64_header.p_offset +
+                              (prog64_header.p_filesz - remaining), SEEK_SET);
+                }
+                sys_lseek(fd, prog_header_offset + prog_idx *
+                          elf64_header.e_phentsize + sizeof(struct Elf64_Phdr),
+                          SEEK_SET);
+            }
+
             if (prog64_header.p_type == PT_LOAD &&
                 prog64_header.p_vaddr >= USER_VADDR_START &&
                 prog64_header.p_vaddr < USER_STACK3_VADDR) {
@@ -179,11 +225,12 @@ static int32_t load(const char *pathname, int *is64) {
             goto done;
         }
         if (memcmp(elf_header.e_ident, "\177ELF\1\1\1", 7) ||
-            elf_header.e_type != 2 || elf_header.e_machine != 3 ||
+            elf_header.e_type != 2 || elf_header.e_machine != EM_386 ||
             elf_header.e_version != 1 || elf_header.e_phnum > 1024 ||
             elf_header.e_phentsize != sizeof(struct Elf32_Phdr)) {
             goto done;
         }
+
         Elf32_Off prog_header_offset = elf_header.e_phoff;
         for (uint32_t prog_idx = 0; prog_idx < elf_header.e_phnum; prog_idx++) {
             memset(&prog_header, 0, sizeof(prog_header));
@@ -192,6 +239,39 @@ static int32_t load(const char *pathname, int *is64) {
                 sizeof(prog_header)) {
                 goto done;
             }
+
+            if (prog_header.p_type == PT_NOTE) {
+                sys_lseek(fd, prog_header.p_offset, SEEK_SET);
+                uint32_t remaining = prog_header.p_filesz;
+                while (remaining >= 12) {
+                    uint32_t namesz, descsz, type;
+                    if (read_file(fd, &namesz, 4) != 4) break;
+                    if (read_file(fd, &descsz, 4) != 4) break;
+                    if (read_file(fd, &type, 4) != 4) break;
+                    uint32_t note_size = 12 + ((namesz + 3) & ~3u) +
+                        ((descsz + 3) & ~3u);
+                    if (note_size > remaining) break;
+                    if (type == NT_GNU_ABI_TAG && namesz >= 4) {
+                        char name[4];
+                        read_file(fd, name, 4);
+                        if (memcmp(name, "GNU", 4) == 0 && descsz >= 8) {
+                            uint8_t desc[8];
+                            read_file(fd, desc, 8);
+                            if (desc[0] == 0) {
+                                *is_linux = 1;
+                                kprintf("[exec] Linux ELF detected (GNU ABI-tag)\n");
+                            }
+                        }
+                    }
+                    remaining -= note_size;
+                    sys_lseek(fd, prog_header.p_offset +
+                              (prog_header.p_filesz - remaining), SEEK_SET);
+                }
+                sys_lseek(fd, prog_header_offset + prog_idx *
+                          elf_header.e_phentsize + sizeof(struct Elf32_Phdr),
+                          SEEK_SET);
+            }
+
             if (prog_header.p_type == PT_LOAD &&
                 prog_header.p_vaddr >= USER_VADDR_START &&
                 prog_header.p_vaddr < USER_STACK3_VADDR) {
@@ -222,6 +302,7 @@ int32_t sys_execv(const char *path, const char *argv[],
     uint32_t slen;
     struct Registers *ps;
     int is64 = 0;
+    int is_linux = 0;
     cur = current;
     old_pgdir = cur->pgdir;
     if (cur->pgdir == 0) {
@@ -243,7 +324,7 @@ int32_t sys_execv(const char *path, const char *argv[],
     while (argv && argv[argc] && argc < MAX_ARG_NR) {
         ++argc;
     }
-    entry_point = load(path, &is64);
+    entry_point = load(path, &is64, &is_linux);
     if (entry_point == -1) {
         if (cur->pgdir != old_pgdir) {
             cur->pgdir = old_pgdir;
@@ -269,7 +350,11 @@ int32_t sys_execv(const char *path, const char *argv[],
     cur->tls_base = 0;
     cur->tls_selector = 0;
     cur->errno = 0;
-    cur->compat = 0;
+    cur->compat = is_linux;
+    if (is_linux) {
+        kprintf("[exec] task %d marked as Linux compat (ABI-tag detected)\n",
+                cur->pid);
+    }
     ustack_ptr = USER_STACK3_VADDR + PAGE_SIZE;
     for (i = 0; i < MAX_ARG_NR; ++i) {
         argv_user_addrs[i] = 0;

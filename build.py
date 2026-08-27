@@ -1,4 +1,3 @@
-from __future__ import annotations
 import argparse
 import io
 import os
@@ -35,6 +34,7 @@ BUILD_DIR  = ROOT / "build"
 LINKER_DIR = ROOT / "linker"
 SCRIPTS    = ROOT / "scripts"
 MUSL_SRC   = SRC_DIR / "app" / "musl"
+MUSL_ARCH  = "x86_64"
 SHELL_SRC  = SRC_DIR / "app" / "mr_micro_shell"
 NRSHELL    = CMD_DIR / "nr_shell"
 CFLAGS_BASE = [
@@ -69,9 +69,12 @@ MUSL_CFLAGS = MUSL64_BASE + [
     "-I", str(MUSL_SRC / "arch" / "generic"),
     "-I", str(MUSL_SRC / "src" / "internal"),
     "-I", str(MUSL_SRC / "include"),
-    "-I", str(MUSL_SRC / "nitian"),
-    "-include", str(MUSL_SRC / "nitian" / "nt_libc_macros.h"),
 ]
+
+MUSL_PREFIX = BUILD_DIR / "musl"
+MUSL_INC   = MUSL_PREFIX / "include"
+MUSL_LIB   = MUSL_PREFIX / "lib"
+MUSL_DEMO_CFLAGS = MUSL64_BASE + ["-I", str(MUSL_INC)]
 LC_CFLAGS = MUSL64_BASE + ["-I", str(KERNEL_DIR / "lib" / "compat")]
 class Ansi:
     RESET   = "\x1b[0m"
@@ -273,6 +276,8 @@ class Task:
     deps: List[Task] = field(default_factory=list)
     description: str = ""
     group: str = ""
+    env:  Optional[dict] = None
+    optional: bool = False
     def is_stale(self) -> bool:
         if not self.out:
             return True
@@ -357,7 +362,33 @@ def task_python(name: str, script: Path, args: Sequence[str],
         cmd=[sys.executable, str(script), *args],
         out=out, deps=[], description=str(script.name), group="python",
     )
-def make_plan(tools: Tools):
+def _musl_buildenv(tools: Tools) -> Optional[dict]:
+    if os.name == "nt":
+        return None
+    sh = shutil.which("sh") or shutil.which("bash")
+    make = shutil.which("make")
+    if not sh or not make:
+        return None
+    cc = shutil.which("gcc") or shutil.which("cc")
+    if cc is None:
+        cc = list(tools.cc)
+    else:
+        cc = [cc]
+
+    if len(cc) > 1:
+        wrapper = BUILD_DIR / "musl-cc"
+        wrapper.parent.mkdir(parents=True, exist_ok=True)
+        body = "#!/bin/sh\nexec " + " ".join(shlex.quote(c) for c in cc) + ' "$@"\n'
+        wrapper.write_text(body, encoding="utf-8")
+        try:
+            os.chmod(wrapper, 0o755)
+        except OSError:
+            pass
+        cc = [str(wrapper)]
+    return {"sh": sh, "make": make, "cc": cc}
+
+
+def make_plan(tools: Tools, with_musl_lib: bool = False):
     tasks: List[Task] = []
     user_elves: List[Task] = []
     tasks.append(task_assemble_bin("boot.bin",
@@ -438,6 +469,14 @@ def make_plan(tools: Tools):
         ("guiclients.o", KERNEL_DIR / "gui" / "clients.c"),
         ("gui.o",        KERNEL_DIR / "gui" / "gui.c"),
     ]
+
+    tasks.append(Task(
+        name="musl-headers",
+        cmd=[sys.executable, str(SCRIPTS / "gen_musl_headers.py"),
+             "--src", str(MUSL_SRC), "--out", str(MUSL_INC), "--arch", MUSL_ARCH],
+        out=MUSL_INC / "bits" / "alltypes.h",
+        group="musl-headers",
+        description="assemble musl headers into build/musl/include (cross-platform)"))
     for stem, src in kernel_c_sources:
         tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, KERNEL_CFLAGS))
     user_programs = [
@@ -510,132 +549,6 @@ def make_plan(tools: Tools):
                        flags=["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_lc_start"])
     tasks.append(lc_elf)
     user_elves.append(lc_elf)
-    musl_start = task_assemble_elf64("musl_start.o", MUSL_SRC / "nitian" / "musl_crt0.asm",
-                                     BUILD_DIR / "musl_start.o", tools)
-    tasks.append(musl_start)
-    musl_syscall = task_assemble_elf64("musl_syscall.o", MUSL_SRC / "nitian" / "musl_syscall.asm",
-                                       BUILD_DIR / "musl_syscall.o", tools)
-    tasks.append(musl_syscall)
-    musl_c_sources = [
-        ("nt_errno.o", MUSL_SRC / "nitian" / "nt_errno.c"),
-        ("musl_ret.o", MUSL_SRC / "src" / "internal" / "syscall_ret.c"),
-        ("musl_getpid.o", MUSL_SRC / "src" / "unistd" / "getpid.c"),
-        ("musl_write.o", MUSL_SRC / "src" / "unistd" / "write.c"),
-        ("musl_read.o", MUSL_SRC / "src" / "unistd" / "read.c"),
-        ("musl_exit.o", MUSL_SRC / "src" / "unistd" / "_exit.c"),
-        ("musl_exit_cap.o", MUSL_SRC / "src" / "exit" / "_Exit.c"),
-        ("musl_strlen.o", MUSL_SRC / "src" / "string" / "strlen.c"),
-        ("musl_strcpy.o", MUSL_SRC / "src" / "string" / "strcpy.c"),
-        ("musl_strcmp.o", MUSL_SRC / "src" / "string" / "strcmp.c"),
-        ("musl_strchr.o", MUSL_SRC / "src" / "string" / "strchr.c"),
-        ("musl_stpcpy.o", MUSL_SRC / "src" / "string" / "stpcpy.c"),
-        ("musl_strchrnul.o", MUSL_SRC / "src" / "string" / "strchrnul.c"),
-        ("musl_vfprintf.o", MUSL_SRC / "src" / "stdio" / "vfprintf.c"),
-        ("musl_vsnprintf.o", MUSL_SRC / "src" / "stdio" / "vsnprintf.c"),
-        ("musl_snprintf.o", MUSL_SRC / "src" / "stdio" / "snprintf.c"),
-        ("musl_sprintf.o", MUSL_SRC / "src" / "stdio" / "sprintf.c"),
-        ("musl_printf.o", MUSL_SRC / "src" / "stdio" / "printf.c"),
-        ("musl_fprintf.o", MUSL_SRC / "src" / "stdio" / "fprintf.c"),
-        ("musl_stdout.o", MUSL_SRC / "src" / "stdio" / "stdout.c"),
-        ("musl_towrite.o", MUSL_SRC / "src" / "stdio" / "__towrite.c"),
-        ("musl_stdiowrite.o", MUSL_SRC / "src" / "stdio" / "__stdio_write.c"),
-        ("musl_fwrite.o", MUSL_SRC / "src" / "stdio" / "fwrite.c"),
-        ("musl_overflow.o", MUSL_SRC / "src" / "stdio" / "__overflow.c"),
-        ("musl_uflow.o", MUSL_SRC / "src" / "stdio" / "__uflow.c"),
-        ("musl_toread.o", MUSL_SRC / "src" / "stdio" / "__toread.c"),
-        ("musl_stdioclose.o", MUSL_SRC / "src" / "stdio" / "__stdio_close.c"),
-        ("musl_strncpy.o", MUSL_SRC / "src" / "string" / "strncpy.c"),
-        ("musl_strncmp.o", MUSL_SRC / "src" / "string" / "strncmp.c"),
-        ("musl_strncat.o", MUSL_SRC / "src" / "string" / "strncat.c"),
-        ("musl_strrchr.o", MUSL_SRC / "src" / "string" / "strrchr.c"),
-        ("musl_strspn.o", MUSL_SRC / "src" / "string" / "strspn.c"),
-        ("musl_strcspn.o", MUSL_SRC / "src" / "string" / "strcspn.c"),
-        ("musl_strpbrk.o", MUSL_SRC / "src" / "string" / "strpbrk.c"),
-        ("musl_strtok.o", MUSL_SRC / "src" / "string" / "strtok.c"),
-        ("musl_strlcpy.o", MUSL_SRC / "src" / "string" / "strlcpy.c"),
-        ("musl_strlcat.o", MUSL_SRC / "src" / "string" / "strlcat.c"),
-        ("musl_strdup.o", MUSL_SRC / "src" / "string" / "strdup.c"),
-        ("musl_strnlen.o", MUSL_SRC / "src" / "string" / "strnlen.c"),
-        ("musl_memcpy.o", MUSL_SRC / "src" / "string" / "memcpy.c"),
-        ("musl_memset.o", MUSL_SRC / "src" / "string" / "memset.c"),
-        ("musl_memcmp.o", MUSL_SRC / "src" / "string" / "memcmp.c"),
-        ("musl_memmove.o", MUSL_SRC / "src" / "string" / "memmove.c"),
-        ("musl_qsort.o", MUSL_SRC / "src" / "stdlib" / "qsort.c"),
-        ("musl_qsortnr.o", MUSL_SRC / "src" / "stdlib" / "qsort_nr.c"),
-        ("musl_atol.o", MUSL_SRC / "src" / "stdlib" / "atol.c"),
-        ("musl_atoi.o", MUSL_SRC / "src" / "stdlib" / "atoi.c"),
-        ("musl_strtol.o", MUSL_SRC / "src" / "stdlib" / "strtol.c"),
-        ("musl_intscan.o", MUSL_SRC / "src" / "internal" / "intscan.c"),
-        ("musl_shgetc.o", MUSL_SRC / "src" / "internal" / "shgetc.c"),
-        ("musl_basename.o", MUSL_SRC / "src" / "misc" / "basename.c"),
-        ("musl_dirname.o", MUSL_SRC / "src" / "misc" / "dirname.c"),
-        ("nt_libc_stubs.o", MUSL_SRC / "nitian" / "nt_libc_stubs.c"),
-        ("nt_fnmatch.o", MUSL_SRC / "nitian" / "nt_fnmatch.c"),
-    ]
-    for stem, src in musl_c_sources:
-        tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, MUSL_CFLAGS))
-    musl_demo_c = task_cc("musl_demo.o", CMD_DIR / "musl_demo.c",
-                          BUILD_DIR / "musl_demo.o", tools, MUSL_CFLAGS)
-    tasks.append(musl_demo_c)
-    musl_demo_elf = task_link("musl_demo.elf", BUILD_DIR / "musl_demo.elf", tools,
-        [BUILD_DIR / "musl_start.o", BUILD_DIR / "musl_demo.o",
-         BUILD_DIR / "musl_getpid.o", BUILD_DIR / "musl_write.o",
-         BUILD_DIR / "musl_exit.o", BUILD_DIR / "musl_exit_cap.o",
-         BUILD_DIR / "musl_strlen.o", BUILD_DIR / "musl_strcpy.o",
-         BUILD_DIR / "musl_strcmp.o", BUILD_DIR / "musl_strchr.o",
-         BUILD_DIR / "musl_stpcpy.o", BUILD_DIR / "musl_strchrnul.o",
-         BUILD_DIR / "musl_ret.o", BUILD_DIR / "nt_errno.o",
-         BUILD_DIR / "musl_syscall.o"],
-        flags=["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_musl_start"])
-    tasks.append(musl_demo_elf)
-    user_elves.append(musl_demo_elf)
-    libc_tests_main = task_cc("libc_tests_main.o", CMD_DIR / "libc_tests_main.c",
-                              BUILD_DIR / "libc_tests_main.o", tools, MUSL_CFLAGS)
-    tasks.append(libc_tests_main)
-    tests_sources = [
-        ("test_string.o", SRC_DIR / "app" / "libc-testsuite" / "string.c"),
-        ("test_qsort.o", SRC_DIR / "app" / "libc-testsuite" / "qsort.c"),
-        ("test_strtol.o", SRC_DIR / "app" / "libc-testsuite" / "strtol.c"),
-        ("test_strtod.o", SRC_DIR / "app" / "libc-testsuite" / "strtod.c"),
-        ("test_basename.o", SRC_DIR / "app" / "libc-testsuite" / "basename.c"),
-        ("test_dirname.o", SRC_DIR / "app" / "libc-testsuite" / "dirname.c"),
-        ("test_fnmatch.o", SRC_DIR / "app" / "libc-testsuite" / "fnmatch.c"),
-    ]
-    for stem, src in tests_sources:
-        tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, MUSL_CFLAGS))
-    libc_tests_elf = task_link("libc_testsuite.elf", BUILD_DIR / "libc_testsuite.elf", tools,
-        [BUILD_DIR / "musl_start.o", BUILD_DIR / "musl_syscall.o",
-         BUILD_DIR / "musl_ret.o", BUILD_DIR / "nt_errno.o",
-         BUILD_DIR / "libc_tests_main.o",
-         BUILD_DIR / "test_string.o", BUILD_DIR / "test_qsort.o",
-         BUILD_DIR / "test_strtol.o", BUILD_DIR / "test_strtod.o",
-         BUILD_DIR / "test_basename.o", BUILD_DIR / "test_dirname.o",
-         BUILD_DIR / "test_fnmatch.o",
-         BUILD_DIR / "musl_vfprintf.o", BUILD_DIR / "musl_vsnprintf.o",
-         BUILD_DIR / "musl_snprintf.o", BUILD_DIR / "musl_sprintf.o",
-         BUILD_DIR / "musl_printf.o", BUILD_DIR / "musl_fprintf.o",
-         BUILD_DIR / "musl_stdout.o", BUILD_DIR / "musl_towrite.o",
-         BUILD_DIR / "musl_stdiowrite.o", BUILD_DIR / "musl_fwrite.o",
-         BUILD_DIR / "musl_overflow.o", BUILD_DIR / "musl_uflow.o",
-         BUILD_DIR / "musl_toread.o", BUILD_DIR / "musl_stdioclose.o",
-         BUILD_DIR / "musl_strlen.o", BUILD_DIR / "musl_strcpy.o",
-         BUILD_DIR / "musl_strcmp.o", BUILD_DIR / "musl_strchr.o",
-         BUILD_DIR / "musl_strncpy.o", BUILD_DIR / "musl_strncmp.o",
-         BUILD_DIR / "musl_strncat.o", BUILD_DIR / "musl_strrchr.o",
-         BUILD_DIR / "musl_strspn.o", BUILD_DIR / "musl_strcspn.o",
-         BUILD_DIR / "musl_strpbrk.o", BUILD_DIR / "musl_strtok.o",
-         BUILD_DIR / "musl_strlcpy.o", BUILD_DIR / "musl_strlcat.o",
-         BUILD_DIR / "musl_strdup.o", BUILD_DIR / "musl_strnlen.o",
-         BUILD_DIR / "musl_memcpy.o", BUILD_DIR / "musl_memset.o",
-         BUILD_DIR / "musl_memcmp.o", BUILD_DIR / "musl_qsort.o",
-         BUILD_DIR / "musl_qsortnr.o", BUILD_DIR / "musl_atol.o",
-         BUILD_DIR / "musl_atoi.o", BUILD_DIR / "musl_strtol.o",
-         BUILD_DIR / "musl_intscan.o", BUILD_DIR / "musl_shgetc.o",
-         BUILD_DIR / "musl_basename.o", BUILD_DIR / "musl_dirname.o",
-         BUILD_DIR / "nt_libc_stubs.o", BUILD_DIR / "nt_fnmatch.o"],
-        flags=["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_musl_start"])
-    tasks.append(libc_tests_elf)
-    user_elves.append(libc_tests_elf)
     shell_cflags = UP_CFLAGS_64 + [
         "-I", str(SHELL_SRC / "inc"),
         "-I", str(NRSHELL),
@@ -658,10 +571,7 @@ def make_plan(tools: Tools):
     mongoose_src = SRC_DIR / "app" / "mongoose"
     net_dir = KERNEL_DIR / "net"
     mongoose_cflags = KERNEL_CFLAGS + [
-        "-I", str(MUSL_SRC / "arch" / "i386"),
-        "-I", str(MUSL_SRC / "arch" / "generic"),
-        "-I", str(MUSL_SRC / "src" / "internal"),
-        "-I", str(MUSL_SRC / "include"),
+        "-I", str(MUSL_INC),
         "-I", str(mongoose_src),
         "-I", str(net_dir),
     ]
@@ -720,11 +630,89 @@ def make_plan(tools: Tools):
          str(floppy_img)],
         out=floppy_img,
     ))
-    return BuildPlan(tasks=tasks, user_elves=user_elves)
+
+    musl_env = _musl_buildenv(tools) if with_musl_lib else None
+    plan_musl_enabled = musl_env is not None
+    if plan_musl_enabled:
+        sh, make, cc = musl_env["sh"], musl_env["make"], musl_env["cc"]
+        cc_str = " ".join(cc)
+
+        musl_script = (
+            "set -e; set -o pipefail; "
+            f"rm -rf {shlex.quote(str(MUSL_PREFIX))}; "
+            f"mkdir -p {shlex.quote(str(MUSL_PREFIX))}; "
+            f"cd {shlex.quote(str(MUSL_SRC))}; "
+            f"rm -rf obj; "
+            f"mkdir -p obj/include/bits; "
+            f"sed -f tools/mkalltypes.sed arch/x86_64/bits/alltypes.h.in "
+            f"include/alltypes.h.in > obj/include/bits/alltypes.h; "
+            f"cp arch/x86_64/bits/syscall.h.in obj/include/bits/syscall.h; "
+            f"CC={shlex.quote(cc_str)} "
+            f"./configure --prefix={shlex.quote(str(MUSL_PREFIX))} "
+            f"--disable-shared --enable-static --disable-option-checking; "
+            f"make -j\"$(nproc 2>/dev/null || echo 4)\" "
+            f"2>&1 | tee {shlex.quote(str(MUSL_PREFIX / 'build.log'))}; "
+            f"make install"
+        )
+        tasks.append(Task(
+            name="musl-native-lib",
+            cmd=[sh, "-c", musl_script],
+            out=MUSL_PREFIX / "lib" / "libc.a",
+            optional=True,
+            group="musl-lib",
+            description="configure+make+install native musl 1.2.6",
+        ))
+        musl_demo_c = task_cc("musl_demo.o", CMD_DIR / "musl_demo.c",
+                              BUILD_DIR / "musl_demo.o", tools, MUSL_DEMO_CFLAGS)
+        musl_demo_c.optional = True
+        tasks.append(musl_demo_c)
+        libc_tests_main = task_cc("libc_tests_main.o", CMD_DIR / "libc_tests_main.c",
+                                  BUILD_DIR / "libc_tests_main.o", tools, MUSL_DEMO_CFLAGS)
+        libc_tests_main.optional = True
+        tasks.append(libc_tests_main)
+        tests_sources = [
+            ("test_string.o", SRC_DIR / "app" / "libc-testsuite" / "string.c"),
+            ("test_qsort.o", SRC_DIR / "app" / "libc-testsuite" / "qsort.c"),
+            ("test_strtol.o", SRC_DIR / "app" / "libc-testsuite" / "strtol.c"),
+            ("test_strtod.o", SRC_DIR / "app" / "libc-testsuite" / "strtod.c"),
+            ("test_basename.o", SRC_DIR / "app" / "libc-testsuite" / "basename.c"),
+            ("test_dirname.o", SRC_DIR / "app" / "libc-testsuite" / "dirname.c"),
+            ("test_fnmatch.o", SRC_DIR / "app" / "libc-testsuite" / "fnmatch.c"),
+        ]
+        for stem, src in tests_sources:
+            t = task_cc(stem, src, BUILD_DIR / stem, tools, MUSL_DEMO_CFLAGS)
+            t.optional = True
+            tasks.append(t)
+        def link_musl_user(name, elf, objs):
+            crt1 = MUSL_LIB / "crt1.o"
+            crti = MUSL_LIB / "crti.o"
+            crtn = MUSL_LIB / "crtn.o"
+            cmd = [*tools.cc, "-nostdlib", "-static",
+                   "-Ttext", "0x8048000", "-e", "_start",
+                   str(crt1), str(crti), *map(str, objs), str(crtn),
+                   "-L", str(MUSL_LIB), "--start-group", "-lc", "--end-group"]
+            return Task(name=name, cmd=cmd, out=elf, optional=True,
+                        group="musl", description=f"link {elf.name} (native musl)",
+                        cwd=BUILD_DIR)
+        musl_demo_elf = link_musl_user(
+            "musl_demo.elf", BUILD_DIR / "musl_demo.elf",
+            [BUILD_DIR / "musl_demo.o"])
+        tasks.append(musl_demo_elf)
+        libc_tests_elf = link_musl_user(
+            "libc_testsuite.elf", BUILD_DIR / "libc_testsuite.elf",
+            [BUILD_DIR / "libc_tests_main.o",
+             BUILD_DIR / "test_string.o", BUILD_DIR / "test_qsort.o",
+             BUILD_DIR / "test_strtol.o", BUILD_DIR / "test_strtod.o",
+             BUILD_DIR / "test_basename.o", BUILD_DIR / "test_dirname.o",
+             BUILD_DIR / "test_fnmatch.o"])
+        tasks.append(libc_tests_elf)
+    return BuildPlan(tasks=tasks, user_elves=user_elves,
+                     musl_enabled=plan_musl_enabled)
 @dataclass
 class BuildPlan:
     tasks: List[Task]
     user_elves: List[Task]
+    musl_enabled: bool = False
     def all(self) -> List[Task]:
         return list(self.tasks) + list(self.user_elves)
 def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
@@ -745,12 +733,19 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
                 stats.timings[task.name] = (time.perf_counter() - t0, "cached")
                 return
         try:
-            res = run(task.cmd, cwd=task.cwd)
+            res = run(task.cmd, cwd=task.cwd, env=task.env)
         except FileNotFoundError as exc:
+            if task.optional:
+                console.warn(f"{task.name} 跳过: {exc}")
+                return
             stats.failed += 1
             console.fail(f"{task.name}: {exc}")
             raise
         if not res.ok:
+            if task.optional:
+                console.warn(f"{task.name} 跳过 (exit {res.returncode}, "
+                             f"原生 musl 不可用不影响其它构建)")
+                return
             stats.failed += 1
             console.fail(f"{task.name} (exit {res.returncode})")
             for line in (res.stderr or res.stdout).splitlines()[-30:]:
@@ -766,7 +761,7 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
         return f"({seconds/60:.1f}min)"
     def c_dim(s: str) -> str:
         return f"{console._c(Ansi.DIM)}{console._c(Ansi.GRAY)}{s}{console._c(Ansi.RESET)}"
-    total_steps = 9
+    total_steps = 11
     s = 1
     console.step_header(s, total_steps, "Assembling boot sectors")
     for t in plan.tasks[:3]:
@@ -784,6 +779,9 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
         run_task(t)
     s += 1
     console.step_header(s, total_steps, "Compiling kernel C objects")
+    for t in (t for t in plan.tasks if t.group == "musl-headers"):
+        run_task(t)
+        console.ok(f"{t.description}  {c_dim(fmt_dur(stats.timings[t.name][0]))}")
     cc_kern = [t for t in plan.tasks if t.group == "cc" and t.name.endswith(".o")
                and not t.name.startswith("up_") and not t.name.startswith("lc_")
                and not t.name.startswith("musl_") and not t.name.startswith("test_")
@@ -814,15 +812,35 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
             run_task(t)
             update(i, t.description)
     s += 1
-    console.step_header(s, total_steps, "Building musl demos & libc testsuite")
-    musl_tasks = [t for t in plan.tasks if t.group in ("asm","cc","link","objcopy") and
-                  ("musl_" in t.name or "test_" in t.name or "nt_" in t.name or
-                   "libc_tests" in t.name)]
-    with console.progress(len(musl_tasks), "musl", Ansi.BR_BLU) as update:
-        for i, t in enumerate(musl_tasks, 1):
-            run_task(t)
-            update(i, t.description)
+
+    console.step_header(s, total_steps, "Building native musl (configure+make)")
+    if not plan.musl_enabled:
+        console.info("原生 musl 编译已跳过 (未开 --with-musl-lib 或缺少 sh/make/cc)")
+    else:
+        musl_lib_tasks = [t for t in plan.tasks if t.group == "musl-lib"]
+        with console.progress(len(musl_lib_tasks), "musl lib", Ansi.BR_BLU) as update:
+            for i, t in enumerate(musl_lib_tasks, 1):
+                run_task(t)
+                update(i, t.description)
     s += 1
+
+    console.step_header(s, total_steps, "Building musl demos & libc testsuite")
+    musl_lib_ok = (MUSL_PREFIX / "lib" / "libc.a").exists()
+    if not plan.musl_enabled:
+        console.info("musl demo/testsuite 跳过 (原生 musl 未启用)")
+    elif not musl_lib_ok:
+        console.info("musl 库未生成 (configure/make 失败或被跳过), "
+                     "demo/testsuite 跳过 — 不影响内核/用户程序")
+    else:
+        musl_tasks = [t for t in plan.tasks if t.group in ("cc", "link") and
+                      ("musl_" in t.name or "test_" in t.name or
+                       "libc_tests" in t.name)]
+        with console.progress(len(musl_tasks), "musl", Ansi.BR_BLU) as update:
+            for i, t in enumerate(musl_tasks, 1):
+                run_task(t)
+                update(i, t.description)
+    s += 1
+
     console.step_header(s, total_steps, "Generating font subset")
     font_py = [t for t in plan.tasks if t.group == "python" and "font" in t.name]
     with console.progress(len(font_py), "font", Ansi.BR_MAG) as update:
@@ -881,13 +899,24 @@ def do_clean(console: Console) -> None:
     else:
         console.info(f"{BUILD_DIR} already absent")
 def do_run(console: Console, stats: BuildStats,
-           smp: int, gdb: bool, no_net: bool, boot_floppy: bool) -> None:
+           smp: int, gdb: bool, no_net: bool, boot_floppy: bool,
+           kvm: bool) -> None:
     qemu = shutil.which("qemu-system-x86_64")
     if qemu is None:
-        console.warn("qemu-system-i386 not found on PATH; build is up-to-date.")
+        console.warn("qemu-system-x86_64 not found on PATH; build is up-to-date.")
         return
-    cmd = [qemu, "-accel", "tcg,tb-size=256", "-m", "1G",
-           "-smp", str(max(1, smp))]
+
+    if kvm and not os.path.exists("/dev/kvm"):
+        console.warn("未找到 /dev/kvm, KVM 不可用 (需 Linux/WSL2 且开启嵌套虚拟化); "
+                     "回退 TCG 软件模拟")
+        kvm = False
+    if kvm:
+        console.info("KVM 加速已启用 (-enable-kvm -cpu host), 可在 ring0 测 MWAIT")
+        cmd = [qemu, "-enable-kvm", "-cpu", "host", "-m", "1G",
+               "-smp", str(max(1, smp))]
+    else:
+        cmd = [qemu, "-accel", "tcg,tb-size=256", "-m", "1G",
+               "-smp", str(max(1, smp))]
     if boot_floppy:
         cmd += ["-fda", str(BUILD_DIR / "floppy.img")]
     else:
@@ -906,6 +935,7 @@ def do_run(console: Console, stats: BuildStats,
     console.writeln()
     console.writeln(f"  {console._c(Ansi.BR_GRN)}▶ launching qemu..."
                     f"{'（SMP' if smp > 1 else ''}"
+                    f"{' · KVM' if kvm else ''}"
                     f"{' · GDB 等待' if gdb else ''}"
                     f"{' · floppy 引导' if boot_floppy else ''}"
                     f"{console._c(Ansi.RESET)}")
@@ -932,6 +962,12 @@ def main(argv: Sequence[str]) -> int:
                         help="不挂虚拟网卡/后端(默认挂 e1000 + user 后端)")
     parser.add_argument("--boot-floppy", action="store_true",
                         help="以 floppy.img 作为引导软盘(-fda); 默认用 test_hd.img(-hda)")
+    parser.add_argument("--kvm", action="store_true",
+                        help="启用 KVM 硬件加速(-enable-kvm -cpu host), 用于测试 "
+                             "需在 ring0 执行的 MWAIT 等真实 CPU 特性(需 Linux/WSL2)")
+    parser.add_argument("--with-musl-lib", action="store_true",
+                        help="编完整原生 musl libc.a 并链接 musl_demo.elf/libc_testsuite.elf "
+                             "(默认关闭; 日常构建只兼容 musl 头子集, 不 make 完整 libc)")
     args = parser.parse_args(argv)
     _enable_vt_on_windows()
     console = Console(use_color=color_enabled(args.no_color))
@@ -949,7 +985,7 @@ def main(argv: Sequence[str]) -> int:
     console.info(f"nasm    = {tools.nasm}")
     console.info(f"objcopy = {tools.objcopy}")
     console.writeln()
-    plan = make_plan(tools)
+    plan = make_plan(tools, with_musl_lib=args.with_musl_lib)
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     try:
         stats = execute_plan(plan, tools, console, jobs=args.jobs)
@@ -989,7 +1025,7 @@ def main(argv: Sequence[str]) -> int:
                     f"✔  build complete{console._c(Ansi.RESET)}")
     console.writeln()
     if args.target == "run":
-        do_run(console, stats, 4, args.gdb, args.no_net, args.boot_floppy)
+        do_run(console, stats, 4, args.gdb, args.no_net, args.boot_floppy, args.kvm)
     return 0
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

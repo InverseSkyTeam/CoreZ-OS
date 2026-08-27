@@ -1,6 +1,7 @@
 #include "idt.h"
 
 #include "../../include/asm/stub.h"
+#include "../../include/asmFunc.h"
 #include "../gdt/gdt.h"
 
 struct IDTEntry idt[256];
@@ -82,4 +83,19 @@ void idt_init(void) {
     idtr0.limit = (uint16_t)(sizeof(idt) - 1);
     idtr0.base = (uint64_t)idt;
     __asm__ volatile("lidt %0" : : "m"(idtr0) : "memory");
+
+    /* IA32_STAR SYS_CS<<48|SYS_SS<<32|USER_CS<<16|USER_SS (错写 EFER 会清 NXE) */
+    uint64_t star_msr = ((uint64_t)0x08 << 48) | ((uint64_t)0x10 << 32) |
+                         ((uint64_t)0x33 << 16) | (uint64_t)0x23;
+    __asm__ volatile("wrmsr" : : "c"(0xC0000081), "a"((uint32_t)star_msr),
+                     "d"((uint32_t)(star_msr >> 32)));
+
+    /* LSTAR -> syscall_entry */
+    uint64_t lstar = (uint64_t)syscall_entry;
+    __asm__ volatile("wrmsr" : : "c"(0xC0000082), "a"((uint32_t)lstar),
+                     "d"((uint32_t)(lstar >> 32)));
+
+    /* EFER.SCE, 保留 pae_init 已置的 NXE/LME */
+    uint64_t efer = asm_rdmsr(0xC0000080);
+    asm_wrmsr(0xC0000080, efer | 1u);
 }

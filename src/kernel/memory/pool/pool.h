@@ -40,11 +40,18 @@ uint32_t palloc_pages(struct pool *pool, uint32_t cnt);
 #define PTE_U   (1ull << 2)   /* user */
 #define PTE_NX  (1ull << 63)  /* no-execute */
 
-/* W^X: 可写则不可执行，可执行则不可写，否则只读。base保留固有标志。 */
+/* NXE 读回验证通过才为 1; 否则 bit63 是保留位, 触发 RSVD #PF */
+extern int g_nx_usable;
+
+/* W^X: 可写则不可执行, 可执行则不可写, 否则只读 */
 static inline uint64_t pte_wx(uint64_t base, int writable, int executable) {
     base &= ~PTE_W;
     if (writable) {
         base |= PTE_W;
+    }
+    if (!g_nx_usable) {
+        base &= ~PTE_NX;  /* 无 NX 能力, 置位必 RSVD */
+        return base;
     }
     if (executable && !writable) {
         base &= ~PTE_NX;
@@ -60,6 +67,7 @@ int page_is_shared(uint32_t phy_addr);
 
 uint64_t *pte_ptr(uint32_t vaddr);
 uint64_t *pde_ptr(uint32_t vaddr);
+void page_table_dump(uint32_t vaddr);
 void page_table_add(uint32_t vaddr, uint32_t phy_addr);
 void *get_a_page(uint32_t vaddr);
 void *get_kernel_pages(uint32_t pg_cnt);

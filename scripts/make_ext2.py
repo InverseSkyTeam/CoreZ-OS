@@ -26,8 +26,8 @@ DATA_START = ITABLE_BLK + ITABLE_BLOCKS
 FILES = [
     "prog_no_arg.elf", "prog_arg.elf", "cat.elf", "fork_demo.elf",
     "prog_pipe.elf", "font_demo.elf", "heap_demo.elf", "signal_demo.elf",
-    "font_subset.ttf", "libc_testsuite.elf", "nr_shell.elf", "ping.elf",
-    "lc_demo.elf", "musl_demo.elf"
+    "font_subset.ttf", "nr_shell.elf", "ping.elf",
+    "lc_demo.elf", "libc_testsuite.elf", "musl_demo.elf"
 ]
 ALIASES = {"forktest.elf": "fork_demo.elf"}
 
@@ -95,6 +95,8 @@ def build(build_dir, out):
         src = bd / (ALIASES.get(name, name))
         if src.exists():
             pre[name] = src.read_bytes()
+    # 只保留实际存在的文件, 可选 elf 缺失时跳过
+    names = [n for n in names if n in pre]
 
     next_ino = 3
     dir_entries = [(2, 2, "."), (2, 2, "..")]

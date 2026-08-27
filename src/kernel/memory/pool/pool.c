@@ -63,10 +63,16 @@ static int cpuid_has_nx(void) {
     return (d & CPUID_NX) != 0;
 }
 
+int g_nx_usable = 0;
+
 void pae_init(void) {
-    if (detect_64bit() != 0 && cpuid_has_nx()) {
-        /* 64 位 + 硬件 NX: 开启 EFER.NXE, 让 PTE_NX(bit63) 真正由 CPU 强制 */
-        asm_wrmsr(EFER_MSR, asm_rdmsr(EFER_MSR) | EFER_NXE);
+    /* 读回确认 NXE 生效; 未生效则 PTE bit63 是保留位, 触发 RSVD #PF */
+    if (cpuid_has_nx()) {
+        uint64_t efer = asm_rdmsr(EFER_MSR);
+        asm_wrmsr(EFER_MSR, efer | EFER_NXE);
+        g_nx_usable = (asm_rdmsr(EFER_MSR) & EFER_NXE) != 0;
+    } else {
+        g_nx_usable = 0;
     }
 }
 
@@ -205,6 +211,41 @@ uint64_t *pte_ptr(uint32_t vaddr) {
     return pte ? pte : &pte_zero;
 }
 
+void page_table_dump(uint32_t vaddr) {
+    uint64_t pml4_phys = cur_pml4();
+    uint64_t *pml4 = (uint64_t *)VIRT_OF(pml4_phys);
+    uint64_t e0 = pml4[PML4_INDEX(vaddr)];
+    uint64_t e1 = 0, e2 = 0, e3 = 0;
+    if (e0 & 1) {
+        uint64_t *pdp = (uint64_t *)VIRT_OF(PTE_PHYS(e0));
+        e1 = pdp[PDPT_INDEX(vaddr)];
+        if (e1 & 1) {
+            uint64_t *pd = (uint64_t *)VIRT_OF(PTE_PHYS(e1));
+            e2 = pd[PD_INDEX(vaddr)];
+            if ((e2 & 1) && !(e2 & (1ull << 7))) { /* 跳过 2M 大页 */
+                uint64_t *pt = (uint64_t *)VIRT_OF(PTE_PHYS(e2));
+                e3 = pt[PT_INDEX(vaddr)];
+            }
+        }
+    }
+    /* kprintf %x 仅 32 位 */
+    kprintf("  [pgtbl] nx_usable=%d efer=0x%x\n", g_nx_usable,
+            (uint32_t)asm_rdmsr(EFER_MSR));
+    kprintf("  [pgtbl] cr3=0x%x vaddr=0x%x\n", (uint32_t)pml4_phys, vaddr);
+    kprintf("  [pgtbl] PML4[%d]=0x%x\n", (int)PML4_INDEX(vaddr),
+            (uint32_t)e0);
+    kprintf("  [pgtbl] PDPT[%d]=0x%x\n", (int)PDPT_INDEX(vaddr),
+            (uint32_t)e1);
+    kprintf("  [pgtbl] PD[%d]=0x%x\n", (int)PD_INDEX(vaddr), (uint32_t)e2);
+    kprintf("  [pgtbl] PT[%d]=0x%x  (P=%d W=%d U=%d PCD=%d PAT=%d G=%d "
+            "NX=%d phys=%#x)\n",
+            (int)PT_INDEX(vaddr), (uint32_t)e3,
+            (int)(e3 & 1), (int)((e3 >> 1) & 1), (int)((e3 >> 2) & 1),
+            (int)((e3 >> 4) & 1), (int)((e3 >> 7) & 1), (int)((e3 >> 8) & 1),
+            (int)((e3 >> 63) & 1),
+            (uint32_t)(e3 & 0x000ffffffffff000ull));
+}
+
 static void page_table_add_raw(uint32_t vaddr, uint32_t phy_addr) {
     uint64_t *pte = pte_make(cur_pml4(), (uint64_t)vaddr);
     if (pte == 0)
@@ -220,6 +261,7 @@ static void page_table_add_no_cache(uint32_t vaddr, uint32_t phy_addr) {
     }
     /* MMIO: 可写、不可执行; PCD(bit4) 关闭缓存 */
     *pte = (uint64_t)phy_addr | pte_wx(PTE_P | PTE_U | 0x10, 1, 0);
+    __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
 }
 
 uint64_t *phys_to_virt(uint64_t phys) {

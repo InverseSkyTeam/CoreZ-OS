@@ -29,7 +29,7 @@
 static uint32_t sys_getpid(void) {
     return current->pid;
 }
-static int32_t sys_clock_gettime(int32_t clk_id, struct timespec *tp) {
+int32_t sys_clock_gettime(int32_t clk_id, struct timespec *tp) {
     if (tp == NULL) {
         return -1;
     }
@@ -39,7 +39,7 @@ static int32_t sys_clock_gettime(int32_t clk_id, struct timespec *tp) {
     tp->tv_nsec = (int32_t)((tick % PIT_HZ) * (1000u * 1000u * 1000u / PIT_HZ));
     return 0;
 }
-static int32_t sys_gettimeofday(struct timeval *tv, void *tz) {
+int32_t sys_gettimeofday(struct timeval *tv, void *tz) {
     if (tv == NULL) {
         return -1;
     }
@@ -49,7 +49,7 @@ static int32_t sys_gettimeofday(struct timeval *tv, void *tz) {
     tv->tv_usec = (int32_t)((tick % PIT_HZ) * (1000u * 1000u / PIT_HZ));
     return 0;
 }
-static int32_t sys_nanosleep(const struct timespec *req, struct timespec *rem) {
+int32_t sys_nanosleep(const struct timespec *req, struct timespec *rem) {
     if (req == NULL || req->tv_sec < 0 || req->tv_nsec < 0) {
         return -1;
     }
@@ -241,6 +241,15 @@ uint32_t syscall_handler(struct Registers *r) {
     uint32_t ret = (uint32_t)-1;
     if (current->compat || nr >= COMPAT_SYSCALL_BASE) {
         check_pending_signals(r);
+        /* int 0x80 (musl) uses the 32-bit arg regs; remap to the x86_64 ABI.
+         * The syscall instruction path (int_no=0x81) already uses it. */
+        if (r->int_no == 0x80 && nr < COMPAT_SYSCALL_BASE) {
+            r->rdi = r->rbx;
+            r->rsi = r->rcx;
+            r->r10 = r->esi;
+            r->r8 = r->edi;
+            r->r9 = r->ebp;
+        }
         return linux_compat_handler(r);
     }
     switch (nr) {

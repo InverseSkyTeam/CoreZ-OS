@@ -55,6 +55,7 @@ extern void irq15(void);
 
 extern void default_handler(void);
 extern void syscall_0x80(void);
+extern void syscall_entry(void);
 
 struct Registers {
     uint64_t r15;

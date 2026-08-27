@@ -118,6 +118,15 @@ void isr_handler(struct Registers *r) {
     uint64_t cr2;
     asm volatile("mov %%cr2, %0" : "=r"(cr2));
     kprintf("  cr2 (fault addr) = 0x%x\n", (uint32_t)cr2);
+    /* kprintf %x 只支持 32 位 */
+    kprintf("  efer = 0x%x (NXE=%d)  cr4 = 0x%x (PAE=%d SMEP=%d SMAP=%d)\n",
+            (uint32_t)asm_rdmsr(0xC0000080u),
+            (int)((asm_rdmsr(0xC0000080u) >> 11) & 1),
+            (uint32_t)asm_read_cr4(), (int)((asm_read_cr4() >> 5) & 1),
+            (int)((asm_read_cr4() >> 20) & 1), (int)((asm_read_cr4() >> 21) & 1));
+    if (n == 14) {
+        page_table_dump((uint32_t)cr2);
+    }
     if (cr2 >= 0xC1000000 && cr2 < 0xC1400000) {
         kprintf("  (note: fault is inside kernel virtual pool "
                 "0xC1000000..0xC1400000)\n");

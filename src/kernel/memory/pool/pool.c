@@ -228,21 +228,18 @@ void page_table_dump(uint32_t vaddr) {
             }
         }
     }
-    /* kprintf %x 仅 32 位 */
+
     kprintf("  [pgtbl] nx_usable=%d efer=0x%x\n", g_nx_usable,
             (uint32_t)asm_rdmsr(EFER_MSR));
     kprintf("  [pgtbl] cr3=0x%x vaddr=0x%x\n", (uint32_t)pml4_phys, vaddr);
-    kprintf("  [pgtbl] PML4[%d]=0x%x\n", (int)PML4_INDEX(vaddr),
-            (uint32_t)e0);
-    kprintf("  [pgtbl] PDPT[%d]=0x%x\n", (int)PDPT_INDEX(vaddr),
-            (uint32_t)e1);
+    kprintf("  [pgtbl] PML4[%d]=0x%x\n", (int)PML4_INDEX(vaddr), (uint32_t)e0);
+    kprintf("  [pgtbl] PDPT[%d]=0x%x\n", (int)PDPT_INDEX(vaddr), (uint32_t)e1);
     kprintf("  [pgtbl] PD[%d]=0x%x\n", (int)PD_INDEX(vaddr), (uint32_t)e2);
     kprintf("  [pgtbl] PT[%d]=0x%x  (P=%d W=%d U=%d PCD=%d PAT=%d G=%d "
             "NX=%d phys=%#x)\n",
-            (int)PT_INDEX(vaddr), (uint32_t)e3,
-            (int)(e3 & 1), (int)((e3 >> 1) & 1), (int)((e3 >> 2) & 1),
-            (int)((e3 >> 4) & 1), (int)((e3 >> 7) & 1), (int)((e3 >> 8) & 1),
-            (int)((e3 >> 63) & 1),
+            (int)PT_INDEX(vaddr), (uint32_t)e3, (int)(e3 & 1),
+            (int)((e3 >> 1) & 1), (int)((e3 >> 2) & 1), (int)((e3 >> 4) & 1),
+            (int)((e3 >> 7) & 1), (int)((e3 >> 8) & 1), (int)((e3 >> 63) & 1),
             (uint32_t)(e3 & 0x000ffffffffff000ull));
 }
 

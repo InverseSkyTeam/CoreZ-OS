@@ -28,7 +28,9 @@ static struct SOCKET s_sock[MAX_SOCKET];
 
 #define SOCK_CONNECT_TMO 10000
 
-void sock_init(void) { memset(s_sock, 0, sizeof s_sock); }
+void sock_init(void) {
+    memset(s_sock, 0, sizeof s_sock);
+}
 
 static struct SOCKET *sock_alloc(void) {
     for (int i = 0; i < MAX_SOCKET; i++) {
@@ -85,8 +87,7 @@ void sock_poll(void) {
 }
 
 int net_socket(int domain, int type, int proto) {
-    if (domain != AF_INET ||
-        (type != SOCK_STREAM && type != SOCK_DGRAM))
+    if (domain != AF_INET || (type != SOCK_STREAM && type != SOCK_DGRAM))
         return -1;
     (void)proto;
     struct SOCKET *s = sock_alloc();

@@ -68,8 +68,7 @@ int main(int argc, char **argv) {
         fmt_ip(saddr, ipstr);
         uint16_t sport_host =
             (uint16_t)(((sport & 0xff) << 8) | ((sport >> 8) & 0xff));
-        printf("udp_echo: %d bytes from %s:%d\n", n, ipstr,
-               (int)sport_host);
+        printf("udp_echo: %d bytes from %s:%d\n", n, ipstr, (int)sport_host);
         if (sock_sendto(fd, buf, (uint32_t)n, saddr, sport) < 0)
             printf("udp_echo: sendto failed\n");
     }

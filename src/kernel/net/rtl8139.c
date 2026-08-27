@@ -26,14 +26,14 @@ static uint32_t rx_cur;
 static uint8_t tx_slot;
 
 static uint32_t pci_read32(uint8_t bus, uint8_t dev, uint8_t reg) {
-    uint32_t addr = 0x80000000u | ((uint32_t)bus << 16) | ((uint32_t)dev << 11) |
-                    (reg & 0xFC);
+    uint32_t addr = 0x80000000u | ((uint32_t)bus << 16) |
+                    ((uint32_t)dev << 11) | (reg & 0xFC);
     outl(0xCF8, addr);
     return inl(0xCFC);
 }
 static void pci_write32(uint8_t bus, uint8_t dev, uint8_t reg, uint32_t val) {
-    uint32_t addr = 0x80000000u | ((uint32_t)bus << 16) | ((uint32_t)dev << 11) |
-                    (reg & 0xFC);
+    uint32_t addr = 0x80000000u | ((uint32_t)bus << 16) |
+                    ((uint32_t)dev << 11) | (reg & 0xFC);
     outl(0xCF8, addr);
     outl(0xCFC, val);
 }

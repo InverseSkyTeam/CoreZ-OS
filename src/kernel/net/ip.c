@@ -69,8 +69,8 @@ int ip_output(NETIF *ifp, uint32_t daddr, uint8_t proto, const void *data,
     net_put16(pkt + 10, ip_csum(pkt, IP_HDR_LEN));
     memcpy(pkt + IP_HDR_LEN, data, len);
 
-    uint32_t nh = ((daddr & ifp->mask) == (ifp->ip & ifp->mask)) ? daddr
-                                                                 : ifp->gw;
+    uint32_t nh =
+        ((daddr & ifp->mask) == (ifp->ip & ifp->mask)) ? daddr : ifp->gw;
     uint8_t mac[6];
     if (arp_resolve(ifp, nh, mac) == 0)
         return eth_output(ifp, mac, ETH_IP, pkt, tot);

@@ -541,8 +541,7 @@ uint32_t syscall_handler(struct Registers *r) {
     case SYS_RECV:
         if (!access_ok((const void *)r->ecx, (size_t)r->edx, 1))
             break;
-        ret = (uint32_t)net_recv((int)r->ebx, (void *)r->ecx,
-                                 (uint32_t)r->edx);
+        ret = (uint32_t)net_recv((int)r->ebx, (void *)r->ecx, (uint32_t)r->edx);
         break;
     case SYS_SENDTO:
         if (!access_ok((const void *)r->ecx, (size_t)r->edx, 0))
@@ -555,8 +554,8 @@ uint32_t syscall_handler(struct Registers *r) {
         if (!access_ok((const void *)r->ecx, (size_t)r->edx, 1))
             break;
         ret = (uint32_t)net_recvfrom((int)r->ebx, (void *)r->ecx,
-                                     (uint32_t)r->edx,
-                                     (uint32_t *)r->esi, (uint16_t *)r->edi);
+                                     (uint32_t)r->edx, (uint32_t *)r->esi,
+                                     (uint16_t *)r->edi);
         break;
     case SYS_ACCEPT:
         ret = (uint32_t)net_accept((int)r->ebx);

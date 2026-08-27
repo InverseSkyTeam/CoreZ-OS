@@ -10,7 +10,9 @@
 
 static struct UDP_PCB s_upcb[MAX_UDP_PCB];
 
-void udp_init(void) { memset(s_upcb, 0, sizeof s_upcb); }
+void udp_init(void) {
+    memset(s_upcb, 0, sizeof s_upcb);
+}
 
 static uint16_t udp_sum(const uint8_t *pkt, uint32_t len, uint32_t saddr,
                         uint32_t daddr) {
@@ -46,7 +48,9 @@ struct UDP_PCB *udp_pcb_alloc(void) {
     return 0;
 }
 
-void udp_pcb_free(struct UDP_PCB *pcb) { pcb->active = 0; }
+void udp_pcb_free(struct UDP_PCB *pcb) {
+    pcb->active = 0;
+}
 
 int udp_bind(struct UDP_PCB *pcb, uint32_t ip, uint16_t port) {
     for (int i = 0; i < MAX_UDP_PCB; i++) {
@@ -64,8 +68,8 @@ void udp_connect(struct UDP_PCB *pcb, uint32_t ip, uint16_t port) {
     pcb->remote_port = port;
 }
 
-int udp_sendto(NETIF *ifp, struct UDP_PCB *pcb, const void *data,
-               uint32_t len, uint32_t daddr, uint16_t dport) {
+int udp_sendto(NETIF *ifp, struct UDP_PCB *pcb, const void *data, uint32_t len,
+               uint32_t daddr, uint16_t dport) {
     uint8_t seg[UDP_HDR_LEN + UDP_PAYLOAD_MAX];
     uint32_t tot = UDP_HDR_LEN + len;
     if (tot > sizeof seg)

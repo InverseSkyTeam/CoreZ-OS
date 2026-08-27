@@ -62,4 +62,6 @@ void net_init(void) {
     kernel_thread("net", 8, net_thread, NULL);
 }
 
-uint32_t net_ms(void) { return (uint32_t)tick * (1000u / PIT_HZ); }
+uint32_t net_ms(void) {
+    return (uint32_t)tick * (1000u / PIT_HZ);
+}

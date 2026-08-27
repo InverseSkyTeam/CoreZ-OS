@@ -1,7 +1,4 @@
-#include "./file_syscall.h"
-#include "./futex.h"
 #include "./linux_compat.h"
-#include "./mmap.h"
 #include "../device/ioqueue.h"
 #include "../device/keyboard.h"
 #include "../fs/fs.h"
@@ -14,6 +11,9 @@
 #include "../thread/thread.h"
 #include "../userprog/process.h"
 #include "../userprog/wait_exit.h"
+#include "./file_syscall.h"
+#include "./futex.h"
+#include "./mmap.h"
 
 uint32_t sys_brk(uint32_t addr);
 int32_t sys_clock_gettime(int32_t clk_id, struct timespec *tp);
@@ -171,14 +171,14 @@ uint32_t linux_compat_handler(struct Registers *r) {
             break;
         }
         case 9: /* LC_WRITEV */ {
-            int32_t n = sys_compat_writev((int32_t)a, (struct lc_iovec *)b,
-                                          (int32_t)c);
+            int32_t n =
+                sys_compat_writev((int32_t)a, (struct lc_iovec *)b, (int32_t)c);
             lc_seterrno(cur, n < 0 ? -n : 0);
             ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
             break;
         }
         default:
-            lc_seterrno(cur, 38);  /* ENOSYS */
+            lc_seterrno(cur, 38); /* ENOSYS */
             ret = (uint32_t)-1;
             break;
         }
@@ -224,7 +224,8 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     case SYS_LINUX_exit_group:
         sys_exit((int32_t)a);
-        for (;;) { }
+        for (;;) {
+        }
         break;
     case SYS_LINUX_brk: {
         uint32_t rr = sys_brk(a);
@@ -262,8 +263,8 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_writev: {
-        int32_t n = sys_compat_writev((int32_t)a, (struct lc_iovec *)b,
-                                      (int32_t)c);
+        int32_t n =
+            sys_compat_writev((int32_t)a, (struct lc_iovec *)b, (int32_t)c);
         lc_seterrno(cur, n < 0 ? -n : 0);
         ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
         break;
@@ -388,8 +389,8 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_nanosleep: {
-        int32_t rr = sys_nanosleep((const struct timespec *)a,
-                                   (struct timespec *)b);
+        int32_t rr =
+            sys_nanosleep((const struct timespec *)a, (struct timespec *)b);
         lc_seterrno(cur, rr < 0 ? -rr : 0);
         ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
         break;
@@ -423,8 +424,8 @@ uint32_t linux_compat_handler(struct Registers *r) {
             lc_seterrno(cur, 22);
             ret = (uint32_t)-1;
         } else {
-            int rr = sys_sigprocmask((int)a, (const sigset_t *)b,
-                                     (sigset_t *)c);
+            int rr =
+                sys_sigprocmask((int)a, (const sigset_t *)b, (sigset_t *)c);
             lc_seterrno(cur, rr < 0 ? -rr : 0);
             ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
         }
@@ -434,7 +435,7 @@ uint32_t linux_compat_handler(struct Registers *r) {
         ret = 0;
         break;
     default:
-        lc_seterrno(cur, 38);  /* ENOSYS */
+        lc_seterrno(cur, 38); /* ENOSYS */
         ret = (uint32_t)-1;
         break;
     }

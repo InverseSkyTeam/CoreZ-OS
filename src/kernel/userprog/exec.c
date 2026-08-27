@@ -177,8 +177,8 @@ static int32_t load(const char *pathname, int *is64, int *is_linux) {
                     if (read_file(fd, &nhdr, sizeof(nhdr)) != sizeof(nhdr))
                         break;
                     uint32_t note_size = sizeof(nhdr) +
-                        ((nhdr.namesz + 3) & ~3u) +
-                        ((nhdr.descsz + 3) & ~3u);
+                                         ((nhdr.namesz + 3) & ~3u) +
+                                         ((nhdr.descsz + 3) & ~3u);
                     if (note_size > remaining)
                         break;
                     if (nhdr.type == NT_GNU_ABI_TAG && nhdr.namesz >= 4) {
@@ -189,16 +189,21 @@ static int32_t load(const char *pathname, int *is64, int *is_linux) {
                             read_file(fd, desc, 8);
                             if (desc[0] == 0) {
                                 *is_linux = 1;
-                                kprintf("[exec] Linux ELF detected (GNU ABI-tag)\n");
+                                kprintf("[exec] Linux ELF detected (GNU "
+                                        "ABI-tag)\n");
                             }
                         }
                     }
                     remaining -= note_size;
-                    sys_lseek(fd, (uint32_t)prog64_header.p_offset +
-                              (prog64_header.p_filesz - remaining), SEEK_SET);
+                    sys_lseek(fd,
+                              (uint32_t)prog64_header.p_offset +
+                                  (prog64_header.p_filesz - remaining),
+                              SEEK_SET);
                 }
-                sys_lseek(fd, prog_header_offset + prog_idx *
-                          elf64_header.e_phentsize + sizeof(struct Elf64_Phdr),
+                sys_lseek(fd,
+                          prog_header_offset +
+                              prog_idx * elf64_header.e_phentsize +
+                              sizeof(struct Elf64_Phdr),
                           SEEK_SET);
             }
 
@@ -245,12 +250,16 @@ static int32_t load(const char *pathname, int *is64, int *is_linux) {
                 uint32_t remaining = prog_header.p_filesz;
                 while (remaining >= 12) {
                     uint32_t namesz, descsz, type;
-                    if (read_file(fd, &namesz, 4) != 4) break;
-                    if (read_file(fd, &descsz, 4) != 4) break;
-                    if (read_file(fd, &type, 4) != 4) break;
-                    uint32_t note_size = 12 + ((namesz + 3) & ~3u) +
-                        ((descsz + 3) & ~3u);
-                    if (note_size > remaining) break;
+                    if (read_file(fd, &namesz, 4) != 4)
+                        break;
+                    if (read_file(fd, &descsz, 4) != 4)
+                        break;
+                    if (read_file(fd, &type, 4) != 4)
+                        break;
+                    uint32_t note_size =
+                        12 + ((namesz + 3) & ~3u) + ((descsz + 3) & ~3u);
+                    if (note_size > remaining)
+                        break;
                     if (type == NT_GNU_ABI_TAG && namesz >= 4) {
                         char name[4];
                         read_file(fd, name, 4);
@@ -259,16 +268,21 @@ static int32_t load(const char *pathname, int *is64, int *is_linux) {
                             read_file(fd, desc, 8);
                             if (desc[0] == 0) {
                                 *is_linux = 1;
-                                kprintf("[exec] Linux ELF detected (GNU ABI-tag)\n");
+                                kprintf("[exec] Linux ELF detected (GNU "
+                                        "ABI-tag)\n");
                             }
                         }
                     }
                     remaining -= note_size;
-                    sys_lseek(fd, prog_header.p_offset +
-                              (prog_header.p_filesz - remaining), SEEK_SET);
+                    sys_lseek(fd,
+                              prog_header.p_offset +
+                                  (prog_header.p_filesz - remaining),
+                              SEEK_SET);
                 }
-                sys_lseek(fd, prog_header_offset + prog_idx *
-                          elf_header.e_phentsize + sizeof(struct Elf32_Phdr),
+                sys_lseek(fd,
+                          prog_header_offset +
+                              prog_idx * elf_header.e_phentsize +
+                              sizeof(struct Elf32_Phdr),
                           SEEK_SET);
             }
 

@@ -5,6 +5,7 @@
 #include "../fs/file.h"
 #include "../fs/fs.h"
 #include "../fs/inode.h"
+#include "../fs/proc.h"
 #include "../lib/str/str.h"
 #include "../memory/pool/pool.h"
 #include "../net/socket.h"
@@ -29,11 +30,14 @@ int32_t sys_fstat(int32_t fd, void *buf) {
         return -1;
     }
     struct file *pf = &file_table[global_fd];
-    if (pf->fd_inode == NULL) {
+    if (pf->fd_inode == NULL && pf->proc_id == 0) {
         return -1;
     }
     struct stat *st = (struct stat *)buf;
     memset(st, 0, sizeof(*st));
+    if (pf->proc_id != 0) {
+        return proc_fstat(pf, st);
+    }
     st->st_ino = pf->fd_inode->i_no;
     st->st_size = pf->fd_inode->i_size;
     st->st_filetype = FT_REGULAR;
@@ -143,6 +147,9 @@ int32_t sys_access(const char *path, int32_t mode) {
         return -1;
     }
     (void)mode;
+    if (proc_access(path) == 0) {
+        return 0;
+    }
     struct path_search_record rec;
     memset(&rec, 0, sizeof(rec));
     int inode_no = search_file(path, &rec);
@@ -170,6 +177,9 @@ int32_t sys_chmod(const char *path, uint32_t mode) {
         return -1;
     }
     (void)mode;
+    if (proc_access(path) == 0) {
+        return 0;
+    }
     struct path_search_record rec;
     memset(&rec, 0, sizeof(rec));
     int inode_no = search_file(path, &rec);

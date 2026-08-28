@@ -8,6 +8,7 @@
 #include "ext2.h"
 #include "file.h"
 #include "inode.h"
+#include "proc.h"
 struct partition *cur_part;
 void filesys_init(void) {
     if (ext2_init()) {
@@ -158,8 +159,11 @@ static void ext2_free_best_effort(struct inode *ino) {
     ext2_free_inode(ino->i_no);
 }
 int open_file(const char *pathname, uint8_t flags) {
-    if (pathname[strlen(pathname) - 1] == '/') {
+    if (pathname == NULL || pathname[strlen(pathname) - 1] == '/') {
         return -1;
+    }
+    if (proc_match(pathname)) {
+        return proc_open(pathname, flags);
     }
     uint32_t ino = 0;
     int is_dir = 0;
@@ -222,6 +226,7 @@ int close_file(int fd) {
     file->fd_inode = NULL;
     file->fd_pos = 0;
     file->fd_flag = 0;
+    file->proc_id = 0;
     fd_release((uint32_t)fd);
     return 0;
 }
@@ -233,7 +238,11 @@ uint32_t read_file(int fd, void *buf, uint32_t count) {
     if (global_fd_idx == (uint32_t)-1) {
         return (uint32_t)-1;
     }
-    return file_read(&file_table[global_fd_idx], buf, count);
+    struct file *pf = &file_table[global_fd_idx];
+    if (pf->proc_id != 0) {
+        return proc_read(pf, buf, count);
+    }
+    return file_read(pf, buf, count);
 }
 uint32_t write_file(int fd, const void *buf, uint32_t count) {
     if (fd < 0 || fd >= MAX_FILES_OPEN_PER_PROC) {
@@ -254,6 +263,9 @@ int32_t sys_lseek(int32_t fd, int32_t offset, uint8_t whence) {
         return -1;
     }
     struct file *pf = &file_table[global_fd_idx];
+    if (pf->proc_id != 0) {
+        return proc_lseek(pf, offset, whence);
+    }
     int32_t new_pos = 0;
     int32_t file_size = (int32_t)pf->fd_inode->i_size;
     switch (whence) {
@@ -467,6 +479,12 @@ int32_t sys_chdir(const char *path) {
     return 0;
 }
 int32_t sys_stat(const char *path, struct stat *buf) {
+    if (path == NULL) {
+        return -1;
+    }
+    if (proc_match(path)) {
+        return proc_stat(path, buf);
+    }
     if (!strcmp(path, ".") || !strcmp(path, "/.") || !strcmp(path, "/..")) {
         buf->st_filetype = FT_DIRECTORY;
         buf->st_ino = 2;

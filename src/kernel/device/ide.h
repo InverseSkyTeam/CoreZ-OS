@@ -3,6 +3,7 @@
 
 #include "../fs/super_block.h"
 #include "../lib/list/list.h"
+#include "../lib/rbtree/rbtree.h"
 #include "../memory/bitmap/bitmap.h"
 #include "../thread/sync.h"
 #include <stdint.h>
@@ -16,7 +17,7 @@ struct partition {
     struct super_block *sb;
     struct bitmap block_bitmap;
     struct bitmap inode_bitmap;
-    struct list open_inodes;
+    struct RB_ROOT open_inodes_rb;
 };
 
 struct disk {

@@ -18,7 +18,7 @@ void filesys_init(void) {
     if (cur_part == NULL) {
         return;
     }
-    list_init(&cur_part->open_inodes);
+    rb_root_init(&cur_part->open_inodes_rb);
     open_root_dir(cur_part);
     kprintf("filesys init done, root=%s\n", cur_part->name);
 }

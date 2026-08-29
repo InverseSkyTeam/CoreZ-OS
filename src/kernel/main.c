@@ -52,7 +52,7 @@ static void mb2_parse(uint32_t magic, void *mbi_ptr,
                       struct mb2_tag_framebuffer *fb) {
     if (magic != MULTIBOOT2_BOOTLOADER_MAGIC || mbi_ptr == 0)
         return;
-    uint8_t *p = (uint8_t *)mbi_ptr + 8; /* 跳过 8 字节头部 */
+    uint8_t *p = (uint8_t *)mbi_ptr + 8; 
     uint32_t total = *(const uint32_t *)mbi_ptr;
     uint8_t *end = (uint8_t *)mbi_ptr + total;
     while (p + 8 <= end) {
@@ -65,28 +65,6 @@ static void mb2_parse(uint32_t magic, void *mbi_ptr,
     }
 }
 
-static void init(void) {
-    init_pid = getpid();
-    uint32_t ret_pid = fork();
-    if (ret_pid > 0) {
-        for (;;) {
-            int32_t status = 0;
-            int32_t child_pid = wait(&status);
-            if (child_pid != -1) {
-                kprintf("init: reaped child %d, status %d\n", (int)child_pid,
-                        (int)status);
-            } else {
-                thread_yield();
-            }
-        }
-    } else if (ret_pid == 0) {
-        my_shell(NULL);
-    } else {
-        kprintf("init: fork failed\n");
-        for (;;) {
-        }
-    }
-}
 void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
     asm_write_cr4(asm_read_cr4() | 0x600);
     kernel_kphys = kphys;
@@ -152,6 +130,7 @@ void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
     filesys_init();
     smp_init();
     net_init();
+
     kernel_thread("shell", 4, my_shell, 0);
     for (;;) {
         cpu_idle();

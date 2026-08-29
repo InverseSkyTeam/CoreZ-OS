@@ -70,7 +70,6 @@ extern struct task_struct *idle_thread;
 extern struct list thread_all_list;
 extern struct RB_ROOT ready_rb_root;
 extern uint32_t foreground_pid;
-extern uint32_t init_pid;
 void thread_init(void);
 void cpu_idle_init(void);
 void cpu_idle(void);

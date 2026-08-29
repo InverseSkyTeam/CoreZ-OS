@@ -18,7 +18,6 @@ static uint32_t died_pending = 0;
 struct list thread_all_list;
 struct task_struct *idle_thread;
 uint32_t foreground_pid = (uint32_t)-1;
-uint32_t init_pid = 1;
 static volatile uint32_t idle_monitor;
 static int mwait_ok;
 
@@ -394,10 +393,12 @@ void thread_kill_pid(uint32_t pid) {
     if (t->in_ready)
         ready_remove(t);
 
+    /* 被杀线程的子进程成为孤儿, 无人 wait, 直接标记 DIED 回收 */
     for (uint32_t i = 0; i < MAX_TASKS; i++) {
         if (task_table[i].slot_used &&
-            task_table[i].parent_pid == (int32_t)t->pid)
-            task_table[i].parent_pid = (int32_t)init_pid;
+            task_table[i].parent_pid == (int32_t)t->pid &&
+            task_table[i].status != TASK_DIED)
+            thread_exit(&task_table[i], 0);
     }
     if (keyboard_ioq.consumer == t)
         keyboard_ioq.consumer = 0;

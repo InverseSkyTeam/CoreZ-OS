@@ -125,13 +125,15 @@ pid_t sys_wait(int32_t *status) {
 }
 void proc_exit(struct task_struct *cur, int status) {
     cur->exit_status = (int8_t)status;
+
     struct list_elem *e = thread_all_list.head.next;
     while (e != &thread_all_list.tail) {
         struct task_struct *t = list_entry(e, struct task_struct, all_list_tag);
+        struct list_elem *next = e->next;
         if (t->parent_pid == (int32_t)cur->pid) {
-            t->parent_pid = (int32_t)init_pid;
+            thread_exit(t, 0);
         }
-        e = e->next;
+        e = next;
     }
     release_prog_resource(cur);
     struct task_struct *parent = pid2thread(cur->parent_pid);

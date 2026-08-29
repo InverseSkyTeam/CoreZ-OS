@@ -59,32 +59,21 @@ int proc_open(const char *path, uint8_t flags) {
     if (node == PROC_NONE) {
         return -1;
     }
-    lock_acquire(&file_table_lock);
-    uint32_t global_fd_idx = 0;
-    while (global_fd_idx < MAX_FILE_OPEN) {
-        if (file_table[global_fd_idx].fd_inode == NULL &&
-            file_table[global_fd_idx].proc_id == 0) {
-            break;
-        }
-        global_fd_idx++;
-    }
-    if (global_fd_idx >= MAX_FILE_OPEN) {
-        lock_release(&file_table_lock);
+    int gfd = file_table_alloc_slot();
+    if (gfd == -1) {
         return -1;
     }
-    file_table[global_fd_idx].fd_pos = 0;
-    file_table[global_fd_idx].fd_flag = flags;
-    file_table[global_fd_idx].fd_inode = NULL;
-    file_table[global_fd_idx].proc_id = (uint32_t)node;
-    file_table[global_fd_idx].ref_cnt = 1;
-    int fd = fd_install((int32_t)global_fd_idx);
+    struct file *file = file_get((uint32_t)gfd);
+    file->fd_pos = 0;
+    file->fd_flag = flags;
+    file->fd_inode = NULL;
+    file->proc_id = (uint32_t)node;
+    file->ref_cnt = 1;
+    int fd = fd_install(gfd);
     if (fd == -1) {
-        file_table[global_fd_idx].proc_id = 0;
-        file_table[global_fd_idx].ref_cnt = 0;
-        lock_release(&file_table_lock);
+        file_table_free_slot(gfd);
         return -1;
     }
-    lock_release(&file_table_lock);
     return fd;
 }
 

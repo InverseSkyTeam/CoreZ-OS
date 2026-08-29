@@ -29,7 +29,7 @@ int32_t sys_fstat(int32_t fd, void *buf) {
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
         return -1;
     }
-    struct file *pf = &file_table[global_fd];
+    struct file *pf = file_get(global_fd);
     if (pf->fd_inode == NULL && pf->proc_id == 0) {
         return -1;
     }
@@ -57,7 +57,7 @@ int32_t sys_dup(int32_t oldfd) {
         lock_release(&file_table_lock);
         return -1;
     }
-    file_table[global_fd].ref_cnt++;
+    file_table_ref(global_fd);
     lock_release(&file_table_lock);
     return newfd;
 }
@@ -79,7 +79,7 @@ int32_t sys_dup2(int32_t oldfd, int32_t newfd) {
         close_file(newfd);
     }
     current->fd_table[newfd] = global_fd;
-    file_table[global_fd].ref_cnt++;
+    file_table_ref(global_fd);
     lock_release(&file_table_lock);
     return newfd;
 }
@@ -93,7 +93,7 @@ int32_t sys_fcntl(int32_t fd, int32_t cmd, uint32_t arg) {
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
         return -1;
     }
-    struct file *pf = &file_table[global_fd];
+    struct file *pf = file_get(global_fd);
     switch (cmd) {
     case F_DUPFD:
         (void)arg;
@@ -120,7 +120,7 @@ int32_t sys_getdents(int32_t fd, void *dirp, uint32_t count) {
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
         return -1;
     }
-    struct file *pf = &file_table[global_fd];
+    struct file *pf = file_get(global_fd);
     if (pf->fd_inode == NULL) {
         return -1;
     }
@@ -158,10 +158,7 @@ int32_t sys_access(const char *path, int32_t mode) {
     if (proc_access(path) == 0) {
         return 0;
     }
-    struct path_search_record rec;
-    memset(&rec, 0, sizeof(rec));
-    int inode_no = search_file(path, &rec);
-    dir_close(rec.parent_dir);
+    int inode_no = search_file(path);
     if (inode_no == -1) {
         current->errno = 2;
         return -1;
@@ -188,10 +185,7 @@ int32_t sys_chmod(const char *path, uint32_t mode) {
     if (proc_access(path) == 0) {
         return 0;
     }
-    struct path_search_record rec;
-    memset(&rec, 0, sizeof(rec));
-    int inode_no = search_file(path, &rec);
-    dir_close(rec.parent_dir);
+    int inode_no = search_file(path);
     if (inode_no == -1) {
         current->errno = 2;
         return -1;

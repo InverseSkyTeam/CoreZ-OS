@@ -20,6 +20,13 @@ extern struct file file_table[MAX_FILE_OPEN];
 extern struct lock file_table_lock;
 void file_table_init(void);
 
+#define FILE_SLOT_RESERVED ((struct inode *)1)
+
+int file_table_alloc_slot(void);
+void file_table_free_slot(int idx);
+struct file *file_get(uint32_t gfd);
+void file_table_ref(uint32_t gfd);
+
 int fd_install(int32_t global_fd_idx);
 int fd_release(uint32_t local_fd);
 uint32_t fd_local2global(uint32_t local_fd);

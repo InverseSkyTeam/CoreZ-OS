@@ -6,41 +6,29 @@
 #include "../memory/pool/pool.h"
 #include "../thread/thread.h"
 int32_t is_pipe(uint32_t local_fd) {
-    uint32_t global_fd = fd_local2global(local_fd);
-    if (global_fd >= MAX_FILE_OPEN) {
+    struct file *file = file_get(fd_local2global(local_fd));
+    if (file == NULL) {
         return 0;
     }
-    return file_table[global_fd].fd_flag == PIPE_FLAG;
+    return file->fd_flag == PIPE_FLAG;
 }
 int32_t sys_pipe(int32_t pipefd[2]) {
-    /* 槽位扫描与占用必须在锁内, 防止两个任务同时建管道拿到同一槽位 */
-    lock_acquire(&file_table_lock);
-    int32_t global_fd = -1;
-    for (uint32_t i = 3; i < MAX_FILE_OPEN; i++) {
-        if (file_table[i].fd_inode == NULL) {
-            global_fd = (int32_t)i;
-            break;
-        }
-    }
+    int32_t global_fd = file_table_alloc_slot();
     if (global_fd == -1) {
-        lock_release(&file_table_lock);
         return -1;
     }
+    struct file *file = file_get((uint32_t)global_fd);
 
-    file_table[global_fd].fd_flag = PIPE_FLAG;
-    file_table[global_fd].ref_cnt = 2;
+    file->fd_flag = PIPE_FLAG;
+    file->ref_cnt = 2;
     void *buf = get_kernel_pages(1);
     if (buf == NULL) {
-        file_table[global_fd].fd_flag = 0;
-        file_table[global_fd].ref_cnt = 0;
-        lock_release(&file_table_lock);
+        file_table_free_slot(global_fd);
         return -1;
     }
     ioq_init((struct ioqueue *)buf);
-    file_table[global_fd].fd_inode = (struct inode *)buf;
-    file_table[global_fd].fd_flag = PIPE_FLAG;
-    file_table[global_fd].fd_pos = 0;
-    file_table[global_fd].ref_cnt = 2; 
+    file->fd_inode = (struct inode *)buf;
+    file->fd_pos = 0;
     pipefd[0] = fd_install(global_fd);
     pipefd[1] = fd_install(global_fd);
     if (pipefd[0] == -1 || pipefd[1] == -1) {
@@ -49,22 +37,18 @@ int32_t sys_pipe(int32_t pipefd[2]) {
         if (pipefd[1] != -1)
             fd_release((uint32_t)pipefd[1]);
         free_kernel_page((uint32_t)buf);
-        file_table[global_fd].fd_inode = NULL;
-        file_table[global_fd].fd_flag = 0;
-        file_table[global_fd].fd_pos = 0;
-        file_table[global_fd].ref_cnt = 0;
-        lock_release(&file_table_lock);
+        file_table_free_slot(global_fd);
         return -1;
     }
-    lock_release(&file_table_lock);
     return 0;
 }
 uint32_t pipe_read(int32_t fd, void *buf, uint32_t count) {
     uint32_t global_fd = fd_local2global(fd);
-    if (global_fd >= MAX_FILE_OPEN || file_table[global_fd].fd_inode == NULL) {
+    struct file *file = file_get(global_fd);
+    if (file == NULL || file->fd_inode == NULL) {
         return 0;
     }
-    struct ioqueue *ioq = (struct ioqueue *)file_table[global_fd].fd_inode;
+    struct ioqueue *ioq = (struct ioqueue *)file->fd_inode;
     uint32_t ioq_len = ioq_length(ioq);
     uint32_t size = (ioq_len > count) ? count : ioq_len;
     char *buffer = (char *)buf;
@@ -79,10 +63,11 @@ uint32_t pipe_read(int32_t fd, void *buf, uint32_t count) {
 }
 uint32_t pipe_write(int32_t fd, const void *buf, uint32_t count) {
     uint32_t global_fd = fd_local2global(fd);
-    if (global_fd >= MAX_FILE_OPEN || file_table[global_fd].fd_inode == NULL) {
+    struct file *file = file_get(global_fd);
+    if (file == NULL || file->fd_inode == NULL) {
         return 0;
     }
-    struct ioqueue *ioq = (struct ioqueue *)file_table[global_fd].fd_inode;
+    struct ioqueue *ioq = (struct ioqueue *)file->fd_inode;
     uint32_t ioq_left = BUFSIZE - ioq_length(ioq);
     uint32_t size = (ioq_left > count) ? count : ioq_left;
     const char *buffer = (const char *)buf;

@@ -18,12 +18,6 @@ enum oflags { O_RDONLY, O_WRONLY, O_RDWR, O_CREAT = 4 };
 
 enum whence { SEEK_SET = 1, SEEK_CUR, SEEK_END };
 
-struct path_search_record {
-    char searched_path[MAX_PATH_LEN];
-    struct dir *parent_dir;
-    enum file_types file_type;
-};
-
 struct stat {
     uint32_t st_ino;
     uint32_t st_size;
@@ -45,8 +39,7 @@ void inode_bitmap_free(struct partition *part, uint32_t inode_no);
 char *path_parse(char *pathname, char *name_store);
 int search_dir_entry(struct partition *part, struct dir *pdir, const char *name,
                      struct dir_entry *dir_e);
-int search_file(const char *pathname,
-                struct path_search_record *searched_record);
+int search_file(const char *pathname);
 int create_file(const char *pathname);
 int open_file(const char *pathname, uint8_t flags);
 int close_file(int fd);

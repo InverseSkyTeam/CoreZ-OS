@@ -39,37 +39,20 @@ char *path_parse(char *pathname, char *name_store) {
     }
     return pathname;
 }
-int search_file(const char *pathname,
-                struct path_search_record *searched_record) {
+
+int search_file(const char *pathname) {
     if (!strcmp(pathname, "/") || !strcmp(pathname, "/.") ||
         !strcmp(pathname, "/..")) {
-        searched_record->parent_dir = &root_dir;
-        searched_record->file_type = FT_DIRECTORY;
-        searched_record->searched_path[0] = 0;
         return 2;
     }
     if (pathname[0] != '/' || strlen(pathname) <= 1) {
-        searched_record->parent_dir = &root_dir;
-        searched_record->file_type = FT_UNKNOWN;
-        searched_record->searched_path[0] = 0;
         return -1;
     }
     uint32_t ino = 0;
     int is_dir = 0;
     if (ext2_lookup(pathname, &ino, &is_dir)) {
-        searched_record->parent_dir = &root_dir;
-        searched_record->file_type = FT_UNKNOWN;
-        searched_record->searched_path[0] = 0;
         return -1;
     }
-    uint32_t i = 0;
-    while (pathname[i] && i < MAX_PATH_LEN - 1) {
-        searched_record->searched_path[i] = pathname[i];
-        i++;
-    }
-    searched_record->searched_path[i] = 0;
-    searched_record->file_type = is_dir ? FT_DIRECTORY : FT_REGULAR;
-    searched_record->parent_dir = &root_dir;
     return (int)ino;
 }
 static int ext2_create_common(const char *pathname, uint32_t mode, int is_dir);
@@ -182,37 +165,25 @@ int open_file(const char *pathname, uint8_t flags) {
     } else if (is_dir) {
         return -1;
     }
-    lock_acquire(&file_table_lock);
-    uint32_t global_fd_idx = 0;
-    while (global_fd_idx < MAX_FILE_OPEN) {
-        if (file_table[global_fd_idx].fd_inode == NULL) {
-            break;
-        }
-        global_fd_idx++;
-    }
-    if (global_fd_idx >= MAX_FILE_OPEN) {
-        lock_release(&file_table_lock);
+    int gfd = file_table_alloc_slot();
+    if (gfd == -1) {
         return -1;
     }
-    file_table[global_fd_idx].fd_pos = 0;
-    file_table[global_fd_idx].fd_flag = flags;
-    file_table[global_fd_idx].fd_inode = inode_open(cur_part, ino);
-    if (file_table[global_fd_idx].fd_inode == NULL) {
-        file_table[global_fd_idx].fd_flag = 0;
-        lock_release(&file_table_lock);
+    struct file *file = file_get((uint32_t)gfd);
+    file->fd_pos = 0;
+    file->fd_flag = flags;
+    file->fd_inode = inode_open(cur_part, ino);
+    if (file->fd_inode == NULL) {
+        file_table_free_slot(gfd);
         return -1;
     }
-    file_table[global_fd_idx].ref_cnt = 1;
-    int fd = fd_install((int32_t)global_fd_idx);
+    file->ref_cnt = 1;
+    int fd = fd_install(gfd);
     if (fd == -1) {
-        inode_close(file_table[global_fd_idx].fd_inode);
-        file_table[global_fd_idx].fd_inode = NULL;
-        file_table[global_fd_idx].fd_flag = 0;
-        file_table[global_fd_idx].ref_cnt = 0;
-        lock_release(&file_table_lock);
+        inode_close(file->fd_inode);
+        file_table_free_slot(gfd);
         return -1;
     }
-    lock_release(&file_table_lock);
     return fd;
 }
 int close_file(int fd) {
@@ -228,7 +199,7 @@ int close_file(int fd) {
         return 0;
 
     lock_acquire(&file_table_lock);
-    struct file *file = &file_table[global_fd_idx];
+    struct file *file = file_get(global_fd_idx);
     if (file->ref_cnt > 0)
         file->ref_cnt--;
 
@@ -260,7 +231,7 @@ uint32_t read_file(int fd, void *buf, uint32_t count) {
     if (global_fd_idx == (uint32_t)-1) {
         return (uint32_t)-1;
     }
-    struct file *pf = &file_table[global_fd_idx];
+    struct file *pf = file_get(global_fd_idx);
     if (pf->proc_id != 0) {
         return proc_read(pf, buf, count);
     }
@@ -274,7 +245,7 @@ uint32_t write_file(int fd, const void *buf, uint32_t count) {
     if (global_fd_idx == (uint32_t)-1) {
         return (uint32_t)-1;
     }
-    return file_write(&file_table[global_fd_idx], buf, count);
+    return file_write(file_get(global_fd_idx), buf, count);
 }
 int32_t sys_lseek(int32_t fd, int32_t offset, uint8_t whence) {
     if (fd < 3 || fd >= MAX_FILES_OPEN_PER_PROC) {
@@ -284,7 +255,7 @@ int32_t sys_lseek(int32_t fd, int32_t offset, uint8_t whence) {
     if (global_fd_idx == (uint32_t)-1) {
         return -1;
     }
-    struct file *pf = &file_table[global_fd_idx];
+    struct file *pf = file_get(global_fd_idx);
     if (pf->proc_id != 0) {
         return proc_lseek(pf, offset, whence);
     }

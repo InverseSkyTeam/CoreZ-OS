@@ -15,13 +15,14 @@ static int32_t unmap_pages(uint32_t addr, uint32_t pages) {
 }
 static int page_is_mapped(uint32_t v) {
     uint64_t *pde = pde_ptr(v);
-    if (!(*pde & 1)) {
+    if (pde == NULL) {
         return 0;
     }
     if (*pde & 0x80) {
         return 1;
     }
-    return (*pte_ptr(v) & 1) ? 1 : 0;
+    uint64_t *pte = pte_ptr(v);
+    return (pte != NULL && (*pte & 1)) ? 1 : 0;
 }
 static uint32_t find_free_region(uint32_t pages) {
     struct task_struct *cur = current;

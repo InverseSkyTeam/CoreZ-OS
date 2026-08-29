@@ -104,7 +104,7 @@ static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
     for (uint32_t i = 0; i < occupy_pages; i++) {
         uint64_t *pde = pde_ptr(vaddr_page);
         uint64_t *pte = pte_ptr(vaddr_page);
-        if (!(*pde & 1) || (*pde & 0x80) || !(*pte & 1)) {
+        if (pde == NULL || (*pde & 0x80) || pte == NULL || !(*pte & 1)) {
             if (get_a_page(vaddr_page) == 0) {
                 return -1;
             }
@@ -354,7 +354,7 @@ int32_t sys_execv(const char *path, const char *argv[],
          sp += PAGE_SIZE) {
         uint64_t *pde = pde_ptr(sp);
         uint64_t *pte = pte_ptr(sp);
-        if (!(*pde & 1) || !(*pte & 1)) {
+        if (pde == NULL || pte == NULL || !(*pte & 1)) {
             if (get_a_page(sp) == 0) {
                 kprintf("[exec] get_a_page for user stack failed\n");
                 return -1;

@@ -192,18 +192,19 @@ static uint64_t *pte_make(uint64_t pml4_phys, uint64_t vaddr) {
     return &pt[PT_INDEX(vaddr)];
 }
 
-static uint64_t pte_zero, pde_zero;
+static uint64_t pte_zero;
 
 uint64_t *pde_ptr(uint32_t vaddr) {
-    uint64_t pml4_phys = cur_pml4();
-    uint64_t *pml4 = (uint64_t *)VIRT_OF(pml4_phys);
+    uint64_t *pml4 = (uint64_t *)VIRT_OF(cur_pml4());
     uint64_t e = pml4[PML4_INDEX(vaddr)];
     if (!(e & 1))
-        return &pde_zero;
+        return NULL;
     uint64_t *pdp = (uint64_t *)VIRT_OF(PTE_PHYS(e));
     e = pdp[PDPT_INDEX(vaddr)];
-    pde_zero = e;
-    return &pde_zero;
+    if (!(e & 1))
+        return NULL;
+    uint64_t *pd = (uint64_t *)VIRT_OF(PTE_PHYS(e));
+    return &pd[PD_INDEX(vaddr)];
 }
 
 uint64_t *pte_ptr(uint32_t vaddr) {

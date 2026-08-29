@@ -20,11 +20,6 @@ int32_t sys_clock_gettime(int32_t clk_id, struct timespec *tp);
 int32_t sys_gettimeofday(struct timeval *tv, void *tz);
 int32_t sys_nanosleep(const struct timespec *req, struct timespec *rem);
 
-struct lc_iovec {
-    uint64_t base;
-    uint64_t len;
-};
-
 static void lc_seterrno(struct task_struct *cur, int32_t val) {
     cur->errno = val;
     if (cur->tls_base != 0) {
@@ -86,15 +81,15 @@ static int32_t compat_set_thread_area(struct Registers *r,
     return 0;
 }
 
-static int32_t sys_compat_writev(int32_t fd, struct lc_iovec *iov,
+static int32_t sys_compat_writev(int32_t fd, struct LINUX_IOVEC *iov,
                                  int32_t iovcnt) {
     if (iovcnt < 0)
         return -1;
     uint32_t total = 0;
     for (int32_t i = 0; i < iovcnt; i++) {
-        if (iov[i].len == 0)
+        if (iov[i].iov_len == 0)
             continue;
-        int32_t n = compat_write(fd, (const void *)iov[i].base, iov[i].len);
+        int32_t n = compat_write(fd, (const void *)iov[i].iov_base, iov[i].iov_len);
         if (n < 0)
             return -1;
         total += (uint32_t)n;
@@ -172,7 +167,7 @@ uint32_t linux_compat_handler(struct Registers *r) {
         }
         case 9: /* LC_WRITEV */ {
             int32_t n =
-                sys_compat_writev((int32_t)a, (struct lc_iovec *)b, (int32_t)c);
+                sys_compat_writev((int32_t)a, (struct LINUX_IOVEC *)b, (int32_t)c);
             lc_seterrno(cur, n < 0 ? -n : 0);
             ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
             break;
@@ -264,7 +259,7 @@ uint32_t linux_compat_handler(struct Registers *r) {
     }
     case SYS_LINUX_writev: {
         int32_t n =
-            sys_compat_writev((int32_t)a, (struct lc_iovec *)b, (int32_t)c);
+            sys_compat_writev((int32_t)a, (struct LINUX_IOVEC *)b, (int32_t)c);
         lc_seterrno(cur, n < 0 ? -n : 0);
         ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
         break;

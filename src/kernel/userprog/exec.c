@@ -491,6 +491,7 @@ int32_t sys_execv(const char *path, const char *argv[],
             memcpy((void *)ustack_ptr, exefn, slen);
             exefn_addr = ustack_ptr;
             aux32[1] = (uint32_t)exefn_addr;
+            memcpy((void *)aux_dst, aux32, aux_bytes);
             for (e = envc - 1; e >= 0; --e) {
                 slen = strlen(env_defaults[e]) + 1;
                 ustack_ptr -= slen;
@@ -509,7 +510,6 @@ int32_t sys_execv(const char *path, const char *argv[],
                 PSTACK32(ustack_ptr, argv_user_addrs[i]);
             PSTACK32(ustack_ptr, argc);
             argv_user_base = (uint32_t)((char *)ustack_ptr + 4);
-            memcpy((void *)aux_dst, aux32, aux_bytes);
         }
 #undef A64
 #undef A32

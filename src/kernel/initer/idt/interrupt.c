@@ -70,7 +70,7 @@ static int handle_cow_fault(uint32_t fault_addr, uint32_t error_code) {
     if (new_phy == 0) {
         return 0;
     }
-    memcpy((void *)new_phy, (void *)phy, PAGE_SIZE);
+    memcpy((void *)VIRT_OF(new_phy), (void *)VIRT_OF(phy), PAGE_SIZE);
     uint64_t *pte64 = pte_ptr(fault_addr);
     *pte64 = (*pte64 & 0x000ffffffffff000ull) | pte_wx(PTE_P | PTE_U, 1, 0);
     __asm__ volatile("invlpg (%0)" : : "r"(fault_addr) : "memory");

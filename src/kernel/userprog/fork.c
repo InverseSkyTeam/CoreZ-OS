@@ -68,7 +68,7 @@ static void copy_user_space(struct task_struct *parent,
             }
             memset((void *)VIRT_OF(child_tbl), 0, PAGE_SIZE);
             uint64_t *child_pt = (uint64_t *)VIRT_OF(child_tbl);
-            for (uint32_t pte_idx = 0; pte_idx < 1024; pte_idx++) {
+            for (uint32_t pte_idx = 0; pte_idx < 512; pte_idx++) {
                 uint64_t pte = pt[pte_idx];
                 if (!(pte & 1)) {
                     continue;

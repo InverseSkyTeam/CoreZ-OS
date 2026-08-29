@@ -40,7 +40,7 @@ static void release_prog_resource(struct task_struct *release_thread) {
                     }
                     uint64_t *pt = (uint64_t *)VIRT_OF(PTE_PHYS(pd_e));
                     uint32_t pt_remaining = 0;
-                    for (uint32_t pte_idx = 0; pte_idx < 1024; pte_idx++) {
+                    for (uint32_t pte_idx = 0; pte_idx < 512; pte_idx++) {
                         if (!(pt[pte_idx] & 1)) {
                             continue;
                         }

@@ -195,39 +195,51 @@ int open_file(const char *pathname, uint8_t flags) {
     file_table[global_fd_idx].fd_flag = flags;
     file_table[global_fd_idx].fd_inode = inode_open(cur_part, ino);
     if (file_table[global_fd_idx].fd_inode == NULL) {
+        file_table[global_fd_idx].fd_flag = 0;
         return -1;
     }
+    file_table[global_fd_idx].ref_cnt = 1;
     int fd = fd_install((int32_t)global_fd_idx);
     if (fd == -1) {
         inode_close(file_table[global_fd_idx].fd_inode);
         file_table[global_fd_idx].fd_inode = NULL;
+        file_table[global_fd_idx].fd_flag = 0;
+        file_table[global_fd_idx].ref_cnt = 0;
         return -1;
     }
     return fd;
 }
 int close_file(int fd) {
-    if (fd < 3 || fd >= MAX_FILES_OPEN_PER_PROC) {
+    if (fd < 3 || fd >= MAX_FILES_OPEN_PER_PROC) 
         return -1;
-    }
+
     uint32_t global_fd_idx = current->fd_table[fd];
-    if (global_fd_idx == (uint32_t)-1) {
+    if (global_fd_idx == (uint32_t)-1) 
         return -1;
-    }
-    struct file *file = &file_table[global_fd_idx];
-    if (file->fd_flag == PIPE_FLAG) {
-        if (--file->fd_pos == 0) {
-            free_kernel_page((uint32_t)file->fd_inode);
-            file->fd_inode = NULL;
-        }
-        fd_release((uint32_t)fd);
+
+    fd_release((uint32_t)fd);
+    if (global_fd_idx >= MAX_FILE_OPEN) 
         return 0;
+
+    struct file *file = &file_table[global_fd_idx];
+    if (file->ref_cnt > 0) 
+        file->ref_cnt--;
+    
+    if (file->ref_cnt > 0)
+        return 0;
+    
+    if (file->fd_flag == PIPE_FLAG) {
+        if (file->fd_inode != NULL) {
+            free_kernel_page((uint32_t)file->fd_inode);
+        }
+    } else if (file->fd_inode != NULL) {
+        inode_close(file->fd_inode);
     }
-    inode_close(file->fd_inode);
     file->fd_inode = NULL;
     file->fd_pos = 0;
     file->fd_flag = 0;
     file->proc_id = 0;
-    fd_release((uint32_t)fd);
+    file->ref_cnt = 0;
     return 0;
 }
 uint32_t read_file(int fd, void *buf, uint32_t count) {

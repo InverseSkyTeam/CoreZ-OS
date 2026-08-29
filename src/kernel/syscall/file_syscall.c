@@ -55,6 +55,7 @@ int32_t sys_dup(int32_t oldfd) {
     if (newfd == -1) {
         return -1;
     }
+    file_table[global_fd].ref_cnt++;
     return newfd;
 }
 int32_t sys_dup2(int32_t oldfd, int32_t newfd) {
@@ -73,6 +74,7 @@ int32_t sys_dup2(int32_t oldfd, int32_t newfd) {
         close_file(newfd);
     }
     current->fd_table[newfd] = global_fd;
+    file_table[global_fd].ref_cnt++;
     return newfd;
 }
 int32_t sys_fcntl(int32_t fd, int32_t cmd, uint32_t arg) {

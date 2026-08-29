@@ -29,7 +29,8 @@ int32_t sys_pipe(int32_t pipefd[2]) {
     ioq_init((struct ioqueue *)buf);
     file_table[global_fd].fd_inode = (struct inode *)buf;
     file_table[global_fd].fd_flag = PIPE_FLAG;
-    file_table[global_fd].fd_pos = 2;
+    file_table[global_fd].fd_pos = 0;
+    file_table[global_fd].ref_cnt = 2; 
     pipefd[0] = fd_install(global_fd);
     pipefd[1] = fd_install(global_fd);
     if (pipefd[0] == -1 || pipefd[1] == -1) {
@@ -41,6 +42,7 @@ int32_t sys_pipe(int32_t pipefd[2]) {
         file_table[global_fd].fd_inode = NULL;
         file_table[global_fd].fd_flag = 0;
         file_table[global_fd].fd_pos = 0;
+        file_table[global_fd].ref_cnt = 0;
         return -1;
     }
     return 0;

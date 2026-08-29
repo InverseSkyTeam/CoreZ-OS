@@ -12,6 +12,7 @@ struct file {
     uint32_t fd_flag;
     struct inode *fd_inode;
     uint32_t proc_id;
+    uint32_t ref_cnt;
 };
 
 extern struct file file_table[MAX_FILE_OPEN];

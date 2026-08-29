@@ -74,9 +74,11 @@ int proc_open(const char *path, uint8_t flags) {
     file_table[global_fd_idx].fd_flag = flags;
     file_table[global_fd_idx].fd_inode = NULL;
     file_table[global_fd_idx].proc_id = (uint32_t)node;
+    file_table[global_fd_idx].ref_cnt = 1;
     int fd = fd_install((int32_t)global_fd_idx);
     if (fd == -1) {
         file_table[global_fd_idx].proc_id = 0;
+        file_table[global_fd_idx].ref_cnt = 0;
         return -1;
     }
     return fd;

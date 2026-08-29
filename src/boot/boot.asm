@@ -1,4 +1,3 @@
-; MBR 引导扇区
         org     0x7C00
         cli
         xor     ax, ax
@@ -50,6 +49,5 @@ dap:    db      0x10
         dw      0x0060
         dd      0, 0
 
-        times   446-($-$$) db 0
-        times   64 db 0
+        times   510-($-$$) db 0
         db      0x55, 0xAA

@@ -127,9 +127,8 @@ pid_t sys_fork(struct Registers *r) {
     for (uint32_t i = 0; i < MAX_FILES_OPEN_PER_PROC; i++) {
         child->fd_table[i] = parent->fd_table[i];
         if (child->fd_table[i] != (uint32_t)-1 &&
-            child->fd_table[i] < MAX_FILE_OPEN &&
-            file_table[child->fd_table[i]].fd_flag == PIPE_FLAG) {
-            file_table[child->fd_table[i]].fd_pos++;
+            child->fd_table[i] < MAX_FILE_OPEN) {
+            file_table[child->fd_table[i]].ref_cnt++;
         }
     }
     child->exit_status = 0;

@@ -1,5 +1,3 @@
-/* 用户指针校验实现: access_ok / copy_from_user / copy_to_user / user_strnlen.
- */
 #include "./access.h"
 #include "../lib/str/str.h"
 #define USER_VADDR_BEGIN 0x8048000u
@@ -13,7 +11,7 @@ int access_ok(const void *addr, size_t n, int write) {
         return 0;
     }
     if (a >= USER_SPACE_END) {
-        return 1;
+        return 0;
     }
     if (n > (size_t)(USER_SPACE_END - a)) {
         return 0;

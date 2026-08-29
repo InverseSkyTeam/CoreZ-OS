@@ -8,13 +8,22 @@
 #include "fs.h"
 
 struct inode *inode_open(struct partition *part, uint32_t inode_no) {
-    struct RB_NODE *found = rb_find(&part->open_inodes_rb, inode_no);
+    uint32_t old;
+    struct RB_NODE *found;
+    struct inode *inode;
+
+    old = asm_save_eflags();
+    asm_cli();
+    found = rb_find(&part->open_inodes_rb, inode_no);
     if (found != NULL) {
-        struct inode *inode = rb_entry(found, struct inode, inode_rb_node);
+        inode = rb_entry(found, struct inode, inode_rb_node);
         inode->i_open_cnt++;
+        asm_restore_eflags(old);
         return inode;
     }
-    struct inode *inode = (struct inode *)get_kernel_pages(1);
+    asm_restore_eflags(old);
+
+    inode = (struct inode *)get_kernel_pages(1);
     if (inode == NULL) {
         return NULL;
     }
@@ -26,7 +35,19 @@ struct inode *inode_open(struct partition *part, uint32_t inode_no) {
     inode->i_open_cnt = 1;
     inode->write_deny = 0;
     inode->inode_rb_node.key = inode_no;
+
+    old = asm_save_eflags();
+    asm_cli();
+    found = rb_find(&part->open_inodes_rb, inode_no);
+    if (found != NULL) {
+        struct inode *existing = rb_entry(found, struct inode, inode_rb_node);
+        existing->i_open_cnt++;
+        asm_restore_eflags(old);
+        free_kernel_page((uint32_t)inode);
+        return existing;
+    }
     rb_insert(&part->open_inodes_rb, &inode->inode_rb_node);
+    asm_restore_eflags(old);
     return inode;
 }
 

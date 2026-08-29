@@ -60,22 +60,7 @@ static int handle_cow_fault(uint32_t fault_addr, uint32_t error_code) {
     if (!(*pte & 1) || !(*pte & COW_FLAG)) {
         return 0;
     }
-    uint32_t phy = (uint32_t)(*pte & 0xfffff000);
-    if (!page_is_shared(phy)) {
-        *pte = (*pte & ~(uint64_t)COW_FLAG) | 2;
-        __asm__ volatile("invlpg (%0)" : : "r"(fault_addr) : "memory");
-        return 1;
-    }
-    uint32_t new_phy = (uint32_t)palloc(&kernel_pool);
-    if (new_phy == 0) {
-        return 0;
-    }
-    memcpy((void *)VIRT_OF(new_phy), (void *)VIRT_OF(phy), PAGE_SIZE);
-    uint64_t *pte64 = pte_ptr(fault_addr);
-    *pte64 = (*pte64 & 0x000ffffffffff000ull) | pte_wx(PTE_P | PTE_U, 1, 0);
-    __asm__ volatile("invlpg (%0)" : : "r"(fault_addr) : "memory");
-    page_free_or_decref(phy);
-    return 1;
+    return page_cow_resolve(fault_addr, *pte);
 }
 void isr_handler(struct Registers *r) {
     uint32_t n = r->int_no;

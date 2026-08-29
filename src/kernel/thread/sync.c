@@ -55,44 +55,43 @@ void lock_init(struct lock *plock) {
     plock->holder_repeat_nr = 0;
     sema_init(&plock->semaphore, 1);
 }
+
 void lock_acquire(struct lock *plock) {
-    if (plock->holder != current || plock->holder == 0) {
-        uint32_t old_holder = (uint32_t)plock->holder;
-        uint32_t sval = plock->semaphore.value;
-        void *ret = __builtin_return_address(0);
-        sema_down(&plock->semaphore);
-        plock->holder = current;
-        if (plock->holder_repeat_nr != 0) {
-            asm_cli();
-            kprintf("\n[LOCK ACQ BUG] plock=0x%x old_holder=0x%x cur=0x%x "
-                    "rn=%d sval=%d "
-                    "caller=0x%x\n",
-                    (uint32_t)plock, old_holder, (uint32_t)current,
-                    plock->holder_repeat_nr, sval, (uint32_t)ret);
-            for (;;)
-                asm_hlt();
-        }
-        plock->holder_repeat_nr = 1;
-    } else {
+    uint32_t old = asm_save_eflags();
+    asm_cli();
+    if (plock->holder == current) {
         plock->holder_repeat_nr++;
-    }
-}
-void lock_release(struct lock *plock) {
-    if (plock->holder != current) {
-        asm_cli();
-        kprintf("\n[LOCK REL BUG] plock=0x%x holder=0x%x cur=0x%x rn=%d "
-                "caller=0x%x\n",
-                (uint32_t)plock, (uint32_t)plock->holder, (uint32_t)current,
-                plock->holder_repeat_nr, (uint32_t)__builtin_return_address(0));
-        for (;;)
-            asm_hlt();
-    }
-    if (plock->holder_repeat_nr > 1) {
-        plock->holder_repeat_nr--;
+        asm_restore_eflags(old);
         return;
     }
-    ASSERT(plock->holder_repeat_nr == 1);
+    asm_restore_eflags(old);
+
+    sema_down(&plock->semaphore);
+
+    spinlock_acquire(&plock->semaphore.lock);
+    ASSERT(plock->holder == 0);
+    ASSERT(plock->holder_repeat_nr == 0);
+    plock->holder = current;
+    plock->holder_repeat_nr = 1;
+    spinlock_release(&plock->semaphore.lock);
+}
+
+void lock_release(struct lock *plock) {
+    uint32_t old = asm_save_eflags();
+    asm_cli();
+    ASSERT(plock->holder == current);
+
+    if (plock->holder_repeat_nr > 1) {
+        plock->holder_repeat_nr--;
+        asm_restore_eflags(old);
+        return;
+    }
+
+    spinlock_acquire(&plock->semaphore.lock);
     plock->holder = 0;
     plock->holder_repeat_nr = 0;
+    spinlock_release(&plock->semaphore.lock);
+    asm_restore_eflags(old);
+
     sema_up(&plock->semaphore);
 }

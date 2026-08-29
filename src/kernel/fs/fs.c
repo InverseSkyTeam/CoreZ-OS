@@ -458,8 +458,14 @@ static int get_child_dir_name(uint32_t p_inode_nr, uint32_t c_inode_nr,
     return ret;
 }
 char *sys_getcwd(char *buf, uint32_t size) {
+    if (buf == NULL || size == 0) {
+        return NULL;
+    }
     uint32_t child = current->cwd_inode_nr;
     if (child == 0 || child == 2) {
+        if (size < 2) {
+            return NULL;
+        }
         buf[0] = '/';
         buf[1] = 0;
         return buf;
@@ -476,6 +482,10 @@ char *sys_getcwd(char *buf, uint32_t size) {
     char *last_slash;
     while ((last_slash = strrchr(full_path_reverse, '/'))) {
         uint32_t len = strlen(buf);
+        uint32_t seg_len = strlen(last_slash);
+        if (len + seg_len + 1 > size) {
+            return NULL;
+        }
         strcpy(buf + len, last_slash);
         *last_slash = 0;
     }

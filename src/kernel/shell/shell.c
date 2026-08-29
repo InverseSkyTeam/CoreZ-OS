@@ -102,6 +102,7 @@ static int32_t cmd_parse(char *cmd_str, char **argv, char token) {
 }
 
 static void cmd_execute(int32_t argc, char **argv) {
+    kprintf("[cmd] '%s'\n", argv[0]);
     if (!strcmp("ls", argv[0])) {
         buildin_ls(argc, argv);
     } else if (!strcmp("cd", argv[0])) {
@@ -154,6 +155,69 @@ static void cmd_execute(int32_t argc, char **argv) {
     }
 }
 
+static void run_line(char *cmd_line) {
+    char *argv[MAX_ARG_NR];
+    int32_t argc = -1;
+
+    char *pipe_symbol = strchr(cmd_line, '|');
+    if (pipe_symbol) {
+       char *segments[MAX_ARG_NR];
+        int nseg = 0;
+        char *each_cmd = cmd_line;
+        segments[nseg++] = each_cmd;
+        while (nseg < MAX_ARG_NR && (pipe_symbol = strchr(each_cmd, '|'))) {
+            *pipe_symbol = 0;
+            each_cmd = pipe_symbol + 1;
+            segments[nseg++] = each_cmd;
+        }
+
+        int32_t prev_read_fd = -1; 
+        for (int i = 0; i < nseg; i++) {
+            int32_t wr_fd = -1;
+            int32_t next_read_fd = -1;
+            if (i < nseg - 1) {
+                int32_t pfd[2] = {-1, -1};
+                if (pipe(pfd) == -1) {
+                    printf("my_shell: pipe create failed.\n");
+                    break;
+                }
+                wr_fd = pfd[1];
+                next_read_fd = pfd[0];
+            }
+            if (prev_read_fd != -1)
+                fd_redirect(0, (uint32_t)prev_read_fd);
+            if (wr_fd != -1)
+                fd_redirect(1, (uint32_t)wr_fd);
+
+            argc = -1;
+            argc = cmd_parse(segments[i], argv, ' ');
+            if (argc != -1)
+                cmd_execute(argc, argv);
+
+            if (wr_fd != -1) {
+                fd_redirect(1, 1);
+                close(wr_fd);
+            }
+            if (prev_read_fd != -1) {
+                fd_redirect(0, 0);
+                close(prev_read_fd);
+            }
+            prev_read_fd = next_read_fd;
+        }
+        if (prev_read_fd != -1)
+            close(prev_read_fd);
+        fd_redirect(0, 0);
+        fd_redirect(1, 1);
+    } else {
+        argc = cmd_parse(cmd_line, argv, ' ');
+        if (argc == -1) {
+            printf("num of arguments exceed %d\n", MAX_ARG_NR);
+            return;
+        }
+        cmd_execute(argc, argv);
+    }
+}
+
 void my_shell(void *arg) {
     (void)arg;
     kprintf("[shell] my_shell start\n");
@@ -167,48 +231,6 @@ void my_shell(void *arg) {
         readline(cmd_line, MAX_PATH_LEN);
         if (cmd_line[0] == 0)
             continue;
-
-        char *pipe_symbol = strchr(cmd_line, '|');
-        if (pipe_symbol) {
-            int32_t fd[2] = {-1, -1};
-            if (pipe(fd) == -1) {
-                printf("my_shell: pipe create failed.\n");
-                continue;
-            }
-
-            fd_redirect(1, (uint32_t)fd[1]);
-            char *each_cmd = cmd_line;
-            pipe_symbol = strchr(each_cmd, '|');
-            *pipe_symbol = 0;
-            argc = -1;
-            argc = cmd_parse(each_cmd, argv, ' ');
-            cmd_execute(argc, argv);
-
-            each_cmd = pipe_symbol + 1;
-            fd_redirect(0, (uint32_t)fd[0]);
-            while ((pipe_symbol = strchr(each_cmd, '|'))) {
-                *pipe_symbol = 0;
-                argc = -1;
-                argc = cmd_parse(each_cmd, argv, ' ');
-                cmd_execute(argc, argv);
-                each_cmd = pipe_symbol + 1;
-            }
-
-            fd_redirect(1, 1);
-            argc = -1;
-            argc = cmd_parse(each_cmd, argv, ' ');
-            cmd_execute(argc, argv);
-
-            fd_redirect(0, 0);
-            close(fd[0]);
-            close(fd[1]);
-        } else {
-            argc = cmd_parse(cmd_line, argv, ' ');
-            if (argc == -1) {
-                printf("num of arguments exceed %d\n", MAX_ARG_NR);
-                continue;
-            }
-            cmd_execute(argc, argv);
-        }
+        run_line(cmd_line);
     }
 }

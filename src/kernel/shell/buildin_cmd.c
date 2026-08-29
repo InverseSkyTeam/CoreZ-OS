@@ -134,6 +134,7 @@ void buildin_ls(int32_t argc, char **argv) {
         printf("ls: cannot access %s: No such file or directory\n", pathname);
         return;
     }
+
     if (file_stat.st_filetype == FT_DIRECTORY) {
         struct dir *dir = opendir(pathname);
         if (dir == NULL) {

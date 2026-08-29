@@ -490,6 +490,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         ("fork_demo",   "fork_demo.c",   "_start", []),
         ("orphan",      "orphan_demo.c", "_start", []),
         ("cwd_test",    "cwd_test.c",    "_start", []),
+        ("echocat",     "echocat.c",     "_start", []),
         ("prog_pipe",   "prog_pipe.c",   "_start", []),
         ("font_demo",   "font_demo.c",   "_start", ["-Os"]),
         ("heap_demo",   "heap_demo.c",   "_start", []),

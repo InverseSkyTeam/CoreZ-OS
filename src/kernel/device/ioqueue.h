@@ -5,7 +5,7 @@
 #include "../thread/thread.h"
 #include <stdint.h>
 
-#define BUFSIZE 64
+#define BUFSIZE 1024
 
 struct ioqueue {
     struct lock lock;

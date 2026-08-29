@@ -10,3 +10,4 @@ void sys_exit(int32_t status);
 void proc_exit(struct task_struct *t, int status);
 
 #endif
+void kill_orphan_children(int32_t parent_pid);

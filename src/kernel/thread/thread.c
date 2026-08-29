@@ -8,6 +8,7 @@
 #include "../lib/str/str.h"
 #include "../memory/pool/pool.h"
 #include "../userprog/process.h"
+#include "../userprog/wait_exit.h"
 
 struct RB_ROOT ready_rb_root;
 static uint64_t global_seq = 0;
@@ -393,13 +394,8 @@ void thread_kill_pid(uint32_t pid) {
     if (t->in_ready)
         ready_remove(t);
 
-    /* 被杀线程的子进程成为孤儿, 无人 wait, 直接标记 DIED 回收 */
-    for (uint32_t i = 0; i < MAX_TASKS; i++) {
-        if (task_table[i].slot_used &&
-            task_table[i].parent_pid == (int32_t)t->pid &&
-            task_table[i].status != TASK_DIED)
-            thread_exit(&task_table[i], 0);
-    }
+    /* 被杀线程的子进程成为孤儿, 无人 wait, 直接终止并回收 */
+    kill_orphan_children((int32_t)t->pid);
     if (keyboard_ioq.consumer == t)
         keyboard_ioq.consumer = 0;
     if (keyboard_ioq.producer == t)

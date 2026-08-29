@@ -86,6 +86,21 @@ static void release_prog_resource(struct task_struct *release_thread) {
         }
     }
 }
+
+void kill_orphan_children(int32_t parent_pid) {
+    struct list_elem *e = thread_all_list.head.next;
+    while (e != &thread_all_list.tail) {
+        struct task_struct *t = list_entry(e, struct task_struct, all_list_tag);
+        struct list_elem *next = e->next;
+        if (t->parent_pid == parent_pid && t->status != TASK_DIED) {
+            if (t->status != TASK_HANGING)
+                release_prog_resource(t);
+            thread_exit(t, 0);
+        }
+        e = next;
+    }
+}
+
 static int find_hanging_child(struct list_elem *pelem, int32_t ppid) {
     struct task_struct *t = list_entry(pelem, struct task_struct, all_list_tag);
     return (t->parent_pid == ppid && t->status == TASK_HANGING);
@@ -96,6 +111,10 @@ static int find_child(struct list_elem *pelem, int32_t ppid) {
 }
 pid_t sys_wait(int32_t *status) {
     struct task_struct *parent = current;
+    int32_t ignored_status;
+    if (status == NULL) {
+        status = &ignored_status;
+    }
     for (;;) {
         struct list_elem *e = thread_all_list.head.next;
         while (e != &thread_all_list.tail) {
@@ -126,15 +145,8 @@ pid_t sys_wait(int32_t *status) {
 void proc_exit(struct task_struct *cur, int status) {
     cur->exit_status = (int8_t)status;
 
-    struct list_elem *e = thread_all_list.head.next;
-    while (e != &thread_all_list.tail) {
-        struct task_struct *t = list_entry(e, struct task_struct, all_list_tag);
-        struct list_elem *next = e->next;
-        if (t->parent_pid == (int32_t)cur->pid) {
-            thread_exit(t, 0);
-        }
-        e = next;
-    }
+    /* 孤儿进程: 父进程已退出, 不会再有人 wait 它们, 直接终止并回收 */
+    kill_orphan_children((int32_t)cur->pid);
     release_prog_resource(cur);
     struct task_struct *parent = pid2thread(cur->parent_pid);
     if (parent && parent->status == TASK_WAITING) {

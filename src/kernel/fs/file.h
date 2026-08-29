@@ -3,6 +3,7 @@
 
 #include "fs.h"
 #include "inode.h"
+#include "../thread/sync.h"
 #include <stdint.h>
 
 #define MAX_FILE_OPEN 32
@@ -16,6 +17,8 @@ struct file {
 };
 
 extern struct file file_table[MAX_FILE_OPEN];
+extern struct lock file_table_lock;
+void file_table_init(void);
 
 int fd_install(int32_t global_fd_idx);
 int fd_release(uint32_t local_fd);

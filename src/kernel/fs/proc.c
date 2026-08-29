@@ -59,6 +59,7 @@ int proc_open(const char *path, uint8_t flags) {
     if (node == PROC_NONE) {
         return -1;
     }
+    lock_acquire(&file_table_lock);
     uint32_t global_fd_idx = 0;
     while (global_fd_idx < MAX_FILE_OPEN) {
         if (file_table[global_fd_idx].fd_inode == NULL &&
@@ -68,6 +69,7 @@ int proc_open(const char *path, uint8_t flags) {
         global_fd_idx++;
     }
     if (global_fd_idx >= MAX_FILE_OPEN) {
+        lock_release(&file_table_lock);
         return -1;
     }
     file_table[global_fd_idx].fd_pos = 0;
@@ -79,8 +81,10 @@ int proc_open(const char *path, uint8_t flags) {
     if (fd == -1) {
         file_table[global_fd_idx].proc_id = 0;
         file_table[global_fd_idx].ref_cnt = 0;
+        lock_release(&file_table_lock);
         return -1;
     }
+    lock_release(&file_table_lock);
     return fd;
 }
 

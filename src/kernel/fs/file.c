@@ -1,9 +1,16 @@
 #include "file.h"
+#include "../thread/sync.h"
 #include "../thread/thread.h"
 #include "ext2.h"
 #include "fs.h"
 #include "inode.h"
 struct file file_table[MAX_FILE_OPEN];
+
+struct lock file_table_lock;
+
+void file_table_init(void) {
+    lock_init(&file_table_lock);
+}
 int fd_install(int32_t global_fd_idx) {
     uint32_t local_fd = 3;
     while (local_fd < MAX_FILES_OPEN_PER_PROC) {

@@ -124,6 +124,7 @@ pid_t sys_fork(struct Registers *r) {
     child->parent_pid = (int32_t)parent->pid;
     child->cwd_inode_nr = parent->cwd_inode_nr;
     child->user_brk = parent->user_brk;
+    lock_acquire(&file_table_lock);
     for (uint32_t i = 0; i < MAX_FILES_OPEN_PER_PROC; i++) {
         child->fd_table[i] = parent->fd_table[i];
         if (child->fd_table[i] != (uint32_t)-1 &&
@@ -131,6 +132,7 @@ pid_t sys_fork(struct Registers *r) {
             file_table[child->fd_table[i]].ref_cnt++;
         }
     }
+    lock_release(&file_table_lock);
     child->exit_status = 0;
     child->signal_mask = parent->signal_mask;
     child->signal_pending = 0;

@@ -11,6 +11,7 @@
 #include "proc.h"
 struct partition *cur_part;
 void filesys_init(void) {
+    file_table_init();
     if (ext2_init()) {
         kprintf("filesys: ext2 init failed\n");
         return;
@@ -181,6 +182,7 @@ int open_file(const char *pathname, uint8_t flags) {
     } else if (is_dir) {
         return -1;
     }
+    lock_acquire(&file_table_lock);
     uint32_t global_fd_idx = 0;
     while (global_fd_idx < MAX_FILE_OPEN) {
         if (file_table[global_fd_idx].fd_inode == NULL) {
@@ -189,6 +191,7 @@ int open_file(const char *pathname, uint8_t flags) {
         global_fd_idx++;
     }
     if (global_fd_idx >= MAX_FILE_OPEN) {
+        lock_release(&file_table_lock);
         return -1;
     }
     file_table[global_fd_idx].fd_pos = 0;
@@ -196,6 +199,7 @@ int open_file(const char *pathname, uint8_t flags) {
     file_table[global_fd_idx].fd_inode = inode_open(cur_part, ino);
     if (file_table[global_fd_idx].fd_inode == NULL) {
         file_table[global_fd_idx].fd_flag = 0;
+        lock_release(&file_table_lock);
         return -1;
     }
     file_table[global_fd_idx].ref_cnt = 1;
@@ -205,8 +209,10 @@ int open_file(const char *pathname, uint8_t flags) {
         file_table[global_fd_idx].fd_inode = NULL;
         file_table[global_fd_idx].fd_flag = 0;
         file_table[global_fd_idx].ref_cnt = 0;
+        lock_release(&file_table_lock);
         return -1;
     }
+    lock_release(&file_table_lock);
     return fd;
 }
 int close_file(int fd) {
@@ -218,16 +224,19 @@ int close_file(int fd) {
         return -1;
 
     fd_release((uint32_t)fd);
-    if (global_fd_idx >= MAX_FILE_OPEN) 
+    if (global_fd_idx >= MAX_FILE_OPEN)
         return 0;
 
+    lock_acquire(&file_table_lock);
     struct file *file = &file_table[global_fd_idx];
-    if (file->ref_cnt > 0) 
-        file->ref_cnt--;
-    
     if (file->ref_cnt > 0)
+        file->ref_cnt--;
+
+    if (file->ref_cnt > 0) {
+        lock_release(&file_table_lock);
         return 0;
-    
+    }
+
     if (file->fd_flag == PIPE_FLAG) {
         if (file->fd_inode != NULL) {
             free_kernel_page((uint32_t)file->fd_inode);
@@ -240,6 +249,7 @@ int close_file(int fd) {
     file->fd_flag = 0;
     file->proc_id = 0;
     file->ref_cnt = 0;
+    lock_release(&file_table_lock);
     return 0;
 }
 uint32_t read_file(int fd, void *buf, uint32_t count) {

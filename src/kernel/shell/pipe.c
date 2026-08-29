@@ -1,6 +1,7 @@
 #include "pipe.h"
 #include "../device/ioqueue.h"
 #include "../fs/file.h"
+#include "../thread/sync.h"
 #include "../include/asmFunc.h"
 #include "../memory/pool/pool.h"
 #include "../thread/thread.h"
@@ -12,6 +13,8 @@ int32_t is_pipe(uint32_t local_fd) {
     return file_table[global_fd].fd_flag == PIPE_FLAG;
 }
 int32_t sys_pipe(int32_t pipefd[2]) {
+    /* 槽位扫描与占用必须在锁内, 防止两个任务同时建管道拿到同一槽位 */
+    lock_acquire(&file_table_lock);
     int32_t global_fd = -1;
     for (uint32_t i = 3; i < MAX_FILE_OPEN; i++) {
         if (file_table[i].fd_inode == NULL) {
@@ -20,10 +23,17 @@ int32_t sys_pipe(int32_t pipefd[2]) {
         }
     }
     if (global_fd == -1) {
+        lock_release(&file_table_lock);
         return -1;
     }
+
+    file_table[global_fd].fd_flag = PIPE_FLAG;
+    file_table[global_fd].ref_cnt = 2;
     void *buf = get_kernel_pages(1);
     if (buf == NULL) {
+        file_table[global_fd].fd_flag = 0;
+        file_table[global_fd].ref_cnt = 0;
+        lock_release(&file_table_lock);
         return -1;
     }
     ioq_init((struct ioqueue *)buf);
@@ -43,8 +53,10 @@ int32_t sys_pipe(int32_t pipefd[2]) {
         file_table[global_fd].fd_flag = 0;
         file_table[global_fd].fd_pos = 0;
         file_table[global_fd].ref_cnt = 0;
+        lock_release(&file_table_lock);
         return -1;
     }
+    lock_release(&file_table_lock);
     return 0;
 }
 uint32_t pipe_read(int32_t fd, void *buf, uint32_t count) {

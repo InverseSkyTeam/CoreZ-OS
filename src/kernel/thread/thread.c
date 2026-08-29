@@ -112,7 +112,7 @@ struct task_struct *thread_create(char *name, uint8_t priority,
     struct thread_stack *ts =
         (struct thread_stack *)(t->kernel_stack_top -
                                 sizeof(struct thread_stack));
-    ts->rflags = 0x202;
+    ts->rflags = RFLAGS_INIT;
     ts->r15 = (uint64_t)function;
     ts->r14 = (uint64_t)arg;
     ts->r13 = ts->r12 = ts->rbx = ts->rbp = 0;
@@ -176,7 +176,7 @@ struct task_struct *thread_alloc_slot(const char *name, uint8_t priority) {
     struct thread_stack *ts =
         (struct thread_stack *)(stack + THREAD_STACK_SIZE -
                                 sizeof(struct thread_stack));
-    ts->rflags = 0x202;
+    ts->rflags = RFLAGS_INIT;
     ts->r15 = ts->r14 = ts->r13 = ts->r12 = ts->rbx = ts->rbp = 0;
     ts->rip = 0;
     t->self_kstack = (uint64_t *)ts;
@@ -278,9 +278,7 @@ void schedule(void) {
     struct task_struct *prev = current;
     set_current(next);
     process_activate(next);
-    outb(0x3F8, '<');
     switch_to(&prev->self_kstack, &next->self_kstack);
-    outb(0x3F8, '>');
 }
 
 struct fork_args {
@@ -300,7 +298,7 @@ static void build_fork_thread_stack(struct task_struct *t,
     struct thread_stack *ts =
         (struct thread_stack *)(t->kernel_stack_top -
                                 sizeof(struct thread_stack));
-    ts->rflags = 0x202;
+    ts->rflags = RFLAGS_INIT;
     ts->r15 = (uint64_t)fork_thread_entry;
     ts->r14 = (uint64_t)fa;
     ts->r13 = ts->r12 = ts->rbx = ts->rbp = 0;

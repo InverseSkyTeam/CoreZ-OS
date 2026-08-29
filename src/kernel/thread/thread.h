@@ -11,6 +11,8 @@
 #define THREAD_STACK_SIZE 0x4000
 #define MAX_TASKS 64
 #define STACK_MAGIC 0x19860726
+
+#define RFLAGS_INIT 0x202u
 #define MAX_FILES_OPEN_PER_PROC 8
 typedef int32_t pid_t;
 enum task_status {

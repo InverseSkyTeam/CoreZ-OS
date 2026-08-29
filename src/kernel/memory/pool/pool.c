@@ -342,7 +342,7 @@ void page_table_add(uint32_t vaddr, uint32_t phy_addr) {
 
 void free_kernel_page(uint32_t vaddr) {
     lock_acquire(&mem_lock);
-    uint32_t phy = vaddr - 0xC0000000u;
+    uint32_t phy = PHY_OF(vaddr);
     pfree_raw(&kernel_pool, phy);
     lock_release(&mem_lock);
 }

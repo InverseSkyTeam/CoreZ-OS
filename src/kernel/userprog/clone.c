@@ -21,7 +21,7 @@ static void build_clone_stack(struct task_struct *child,
         (struct thread_stack *)((uint8_t *)child_frame -
                                 sizeof(struct thread_stack));
     memset(ts, 0, sizeof(struct thread_stack));
-    ts->rflags = 0x202;
+    ts->rflags = RFLAGS_INIT;
     ts->rip = (void (*)(void))intr_exit;
     child->self_kstack = (uint64_t *)ts;
 }

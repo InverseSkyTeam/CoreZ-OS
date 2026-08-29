@@ -110,7 +110,7 @@ static void build_child_stack(struct task_struct *child,
         (struct thread_stack *)((uint8_t *)child_frame -
                                 sizeof(struct thread_stack));
     memset(ts, 0, sizeof(struct thread_stack));
-    ts->rflags = 0x202;
+    ts->rflags = RFLAGS_INIT;
     ts->rip = (void (*)(void))intr_exit;
     child->self_kstack = (uint64_t *)ts;
 }
@@ -150,7 +150,7 @@ pid_t sys_fork(struct Registers *r) {
             (struct thread_stack *)((uint8_t *)child->kernel_stack_top -
                                     sizeof(struct thread_stack));
         memset(ts, 0, sizeof(struct thread_stack));
-        ts->rflags = 0x202;
+        ts->rflags = RFLAGS_INIT;
         ts->r15 = (uint64_t)kthread_fork_exec;
         ts->r14 = 0;
         ts->rip = kernel_thread_entry;

@@ -62,9 +62,8 @@ int ext2_init(void) {
             inodes_per_group = sb->s_inodes_per_group;
             first_block = sb->s_first_data_block;
             total_blocks = sb->s_blocks_count;
-            struct EXT2_SURPER *sb2 = (struct EXT2_SURPER *)buf;
-            free_blocks = sb2->s_free_blocks_count;
-            free_inodes = sb2->s_free_inodes_count;
+            free_blocks = sb->s_free_blocks_count;
+            free_inodes = sb->s_free_inodes_count;
             uint8_t *gb = (uint8_t *)get_kernel_pages(1);
             if (gb == NULL) {
                 free_kernel_page((uint32_t)buf);

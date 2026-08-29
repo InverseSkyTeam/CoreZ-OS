@@ -4,7 +4,18 @@
 #include "../thread/thread.h"
 
 #define KEYBOARD_DATA 0x60
+#define KEYBOARD_STATUS 0x64
 
+void keyboard_flush_pending(void) {
+    while (inb(KEYBOARD_STATUS) & 0x01) {
+        (void)inb(KEYBOARD_DATA);
+    }
+}
+
+void keyboard_init(void) {
+    ioq_init(&keyboard_ioq);
+    keyboard_flush_pending();
+}
 #define SC_SHIFT_L_DOWN 0x2A
 #define SC_SHIFT_R_DOWN 0x36
 #define SC_SHIFT_L_UP 0xAA
@@ -49,10 +60,6 @@ static uint8_t ctrl = 0;
 static uint8_t alt = 0;
 
 static kbd_gui_hook_t gui_hook = 0;
-
-void keyboard_init(void) {
-    ioq_init(&keyboard_ioq);
-}
 
 void keyboard_set_gui_hook(kbd_gui_hook_t hook) {
     gui_hook = hook;

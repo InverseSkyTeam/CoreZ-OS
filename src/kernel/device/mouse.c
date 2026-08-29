@@ -1,6 +1,7 @@
 #include "./mouse.h"
 
 #include "../include/asmFunc.h"
+#include "./keyboard.h"
 
 #define KBD_DATA 0x60
 #define KBD_STATUS 0x64
@@ -37,6 +38,8 @@ void mouse_set_hook(mouse_hook_t cb) {
 }
 
 void mouse_init(void) {
+    keyboard_flush_pending();
+
     ctrl_wait_write();
     outb(KBD_CMD, 0xA8);
 

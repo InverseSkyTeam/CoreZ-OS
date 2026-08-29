@@ -102,7 +102,6 @@ static int32_t cmd_parse(char *cmd_str, char **argv, char token) {
 }
 
 static void cmd_execute(int32_t argc, char **argv) {
-    kprintf("[cmd] '%s'\n", argv[0]);
     if (!strcmp("ls", argv[0])) {
         buildin_ls(argc, argv);
     } else if (!strcmp("cd", argv[0])) {

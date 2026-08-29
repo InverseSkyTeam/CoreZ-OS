@@ -34,6 +34,9 @@ uint32_t palloc_pages(struct pool *pool, uint32_t cnt);
 int page_cow_resolve(uint32_t vaddr, uint64_t pte_val);
 
 #define VIRT_OF(phys) ((phys) + 0xC0000000ull)
+
+#define KERNEL_VADDR_START 0x40400000u
+#define KERNEL_VADDR_SIZE  0x1000000u
 #define PHY_OF(vaddr) ((uint32_t)((vaddr) - 0xC0000000ull))
 #define PTE_PHYS(e) ((uint64_t)(e) & 0x000ffffffffff000ull)
 

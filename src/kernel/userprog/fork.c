@@ -73,27 +73,25 @@ static void copy_user_space(struct task_struct *parent,
                 if (!(pte & 1)) {
                     continue;
                 }
-                uint32_t phy = (uint32_t)PTE_PHYS(pte);
                 uint32_t vaddr =
                     (pdp_idx << 30) + (pd_idx << 21) + (pte_idx << 12);
-                if (vaddr == phy) {
+                if (vaddr < USER_VADDR_START ||
+                    (vaddr >= KERNEL_VADDR_START &&
+                     vaddr < KERNEL_VADDR_START + KERNEL_VADDR_SIZE) ||
+                    vaddr >= 0xc0000000) {
                     continue;
                 }
-                if (pte & COW_FLAG) {
-                    page_incr_shared(phy);
-                    mark_child_bitmap(child, vaddr);
-                    child_pt[pte_idx] = pte;
-                } else if (pte & 2) {
-                    pt[pte_idx] = (pte & ~(uint64_t)2) | COW_FLAG;
-                    __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
-                    mark_child_bitmap(child, vaddr);
-                    page_incr_shared(phy);
-                    child_pt[pte_idx] = (pte & ~(uint64_t)2) | COW_FLAG;
-                } else {
-                    page_incr_shared(phy);
-                    mark_child_bitmap(child, vaddr);
-                    child_pt[pte_idx] = pte;
+                
+                uint32_t new_phy = (uint32_t)palloc(&kernel_pool);
+                if (new_phy == 0) {
+                    return;
                 }
+                memcpy((void *)VIRT_OF(new_phy), (void *)VIRT_OF(PTE_PHYS(pte)),
+                       PAGE_SIZE);
+                mark_child_bitmap(child, vaddr);
+                child_pt[pte_idx] = (uint64_t)new_phy |
+                                    (pte & (PTE_P | PTE_W | PTE_U | PTE_NX |
+                                            0x0f0));
             }
             child_pd[pd_idx] = (uint64_t)child_tbl | (pd_e & 0xfff);
         }

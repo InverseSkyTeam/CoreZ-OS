@@ -223,70 +223,19 @@ syscall_common_stub:
     iretq
 
 global syscall_entry
+extern syscall_kstack_top_data
+
 syscall_entry:
-    mov r15, rsp
-
-    xchg rcx, r11
-
-    push rax        ; [rsp+0]  syscall number
-    push rbx        ; [rsp+8]
-    push rcx        ; [rsp+16] user RIP (for sysretq)
-    push rdx        ; [rsp+24] arg3
-    push rsi        ; [rsp+32] arg2
-    push rdi        ; [rsp+40] arg1
-    push rbp        ; [rsp+48]
-    push r8         ; [rsp+56] arg5
-    push r9         ; [rsp+64] arg6
-    push r10        ; [rsp+72] arg4
-    push r11        ; [rsp+80] user RFLAGS (for sysretq)
-    push r12        ; [rsp+88]
-    push r13        ; [rsp+96]
-    push r14        ; [rsp+104]
-    push r15        ; [rsp+112] user RSP
-
-    push gs
-    push qword 0x40
-    pop gs
-
-    sub rsp, 72
-
-    mov qword [rsp + 72], 0x81
-
-    mov qword [rsp + 80], 0
-
-    mov rax, [rsp + 88]
-    mov [rsp + 96], rax
-
-    mov qword [rsp + 104], 0x33
-
-    mov rax, [rsp + 152]
-    mov [rsp + 112], rax
-
-    mov rax, [rsp + 184]
-    mov [rsp + 120], rax
-
-    mov qword [rsp + 128], 0x23
-
-    mov rdi, rsp
-    call syscall_handler
-
-    add rsp, 72
-    add rsp, 16
-    pop r15
-    pop r14
-    pop r13
-    pop r12
-    pop r11        ; user RFLAGS (for sysretq)
-    pop r10
-    pop r9
-    pop r8
-    pop rbp
-    pop rdi
-    pop rsi
-    pop rdx
-    pop rcx        ; user RIP (for sysretq)
-    pop rbx
-    pop rax
-
-    mov rsp, r15
-    sysretq
+    cli
+    mov [rel syscall_user_rsp_slot], rsp
+    mov rsp, [rel syscall_kstack_top_data]
+    push qword 0x23
+    push qword [rel syscall_user_rsp_slot]
+    push r11
+    push qword 0x33
+    push rcx
+    push qword 0
+    push qword 0x81
+    jmp syscall_common_stub
+section .data
+syscall_user_rsp_slot: dq 0

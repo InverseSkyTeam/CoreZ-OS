@@ -1,15 +1,15 @@
 #include "kernel/userprog/exec.h"
-#include "kernel/fs/fs.h"
+#include "drivers/char/console/io.h"
 #include "kernel/asm/stub.h"
 #include "kernel/asmFunc.h"
 #include "kernel/assert.h"
 #include "kernel/auxv.h"
+#include "kernel/fs/fs.h"
 #include "kernel/init/gdt/gdt.h"
-#include "drivers/char/console/io.h"
-#include "lib/str/str.h"
 #include "kernel/mm/pool/pool.h"
 #include "kernel/sched/thread.h"
 #include "kernel/userprog/process.h"
+#include "lib/str/str.h"
 #define DIV_ROUND_UP(X, STEP) ((X + STEP - 1) / STEP)
 #define PF_X 0x1
 #define EFLAGS_MBS (1 << 1)
@@ -127,7 +127,12 @@ static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
     }
     return 0;
 }
-static int32_t load(const char *pathname, int *is64, int *is_linux) {
+static int32_t load(const char *pathname, int *is64, int *is_linux,
+                    uint32_t *phdr_vaddr, uint32_t *phentsize,
+                    uint32_t *phnum) {
+    *phdr_vaddr = 0;
+    *phentsize = 0;
+    *phnum = 0;
     int32_t ret = -1;
     unsigned char ident[16];
     int32_t fd = open_file(pathname, O_RDONLY);
@@ -207,6 +212,17 @@ static int32_t load(const char *pathname, int *is64, int *is_linux) {
                           SEEK_SET);
             }
 
+            if (elf64_header.e_phoff >= prog64_header.p_offset &&
+                elf64_header.e_phoff <
+                    prog64_header.p_offset + prog64_header.p_filesz &&
+                prog64_header.p_vaddr >= USER_VADDR_START &&
+                prog64_header.p_vaddr < USER_STACK3_VADDR) {
+                *phdr_vaddr =
+                    (uint32_t)(prog64_header.p_vaddr +
+                               (elf64_header.e_phoff - prog64_header.p_offset));
+                *phentsize = elf64_header.e_phentsize;
+                *phnum = elf64_header.e_phnum;
+            }
             if (prog64_header.p_type == PT_LOAD &&
                 prog64_header.p_vaddr >= USER_VADDR_START &&
                 prog64_header.p_vaddr < USER_STACK3_VADDR) {
@@ -286,6 +302,17 @@ static int32_t load(const char *pathname, int *is64, int *is_linux) {
                           SEEK_SET);
             }
 
+            if (elf_header.e_phoff >= prog_header.p_offset &&
+                elf_header.e_phoff <
+                    prog_header.p_offset + prog_header.p_filesz &&
+                prog_header.p_vaddr >= USER_VADDR_START &&
+                prog_header.p_vaddr < USER_STACK3_VADDR) {
+                *phdr_vaddr =
+                    (uint32_t)(prog_header.p_vaddr +
+                               (elf_header.e_phoff - prog_header.p_offset));
+                *phentsize = elf_header.e_phentsize;
+                *phnum = elf_header.e_phnum;
+            }
             if (prog_header.p_type == PT_LOAD &&
                 prog_header.p_vaddr >= USER_VADDR_START &&
                 prog_header.p_vaddr < USER_STACK3_VADDR) {
@@ -317,6 +344,10 @@ int32_t sys_execv(const char *path, const char *argv[],
     struct Registers *ps;
     int is64 = 0;
     int is_linux = 0;
+    uint32_t aux_phdr_vaddr = 0;
+    uint32_t aux_phentsize = 0;
+    uint32_t aux_phnum = 0;
+    uint32_t aux_random_addr = 0;
     cur = current;
     old_pgdir = cur->pgdir;
     if (cur->pgdir == 0) {
@@ -338,7 +369,8 @@ int32_t sys_execv(const char *path, const char *argv[],
     while (argv && argv[argc] && argc < MAX_ARG_NR) {
         ++argc;
     }
-    entry_point = load(path, &is64, &is_linux);
+    entry_point = load(path, &is64, &is_linux, &aux_phdr_vaddr, &aux_phentsize,
+                       &aux_phnum);
     if (entry_point == -1) {
         if (cur->pgdir != old_pgdir) {
             cur->pgdir = old_pgdir;
@@ -370,6 +402,17 @@ int32_t sys_execv(const char *path, const char *argv[],
                 cur->pid);
     }
     ustack_ptr = USER_STACK3_VADDR + PAGE_SIZE;
+    {
+        static uint32_t boot_seed = 0x1234abcd;
+        boot_seed = boot_seed * 1103515245 + 12345;
+        ustack_ptr -= 16;
+        uint32_t *rnd = (uint32_t *)ustack_ptr;
+        rnd[0] = boot_seed;
+        rnd[1] = boot_seed ^ (boot_seed << 7);
+        rnd[2] = boot_seed + 0x9e3779b9u;
+        rnd[3] = ~boot_seed;
+        aux_random_addr = ustack_ptr;
+    }
     for (i = 0; i < MAX_ARG_NR; ++i) {
         argv_user_addrs[i] = 0;
     }
@@ -426,11 +469,12 @@ int32_t sys_execv(const char *path, const char *argv[],
             A64(AT_PAGESZ, PAGE_SIZE);
             A64(AT_CLKTCK, 100);
             A64(AT_ENTRY, (uint64_t)entry_point);
-            A64(AT_PHDR, 0);
-            A64(AT_PHENT, 0);
-            A64(AT_PHNUM, 0);
+            A64(AT_PHDR, aux_phdr_vaddr);
+            A64(AT_PHENT, aux_phentsize);
+            A64(AT_PHNUM, aux_phnum);
             A64(AT_FLAGS, 0);
             A64(AT_HWCAP, 0);
+            A64(AT_RANDOM, aux_random_addr);
             A64(AT_NULL, 0);
             aux_bytes = (uint32_t)(naw * 8);
 
@@ -472,11 +516,12 @@ int32_t sys_execv(const char *path, const char *argv[],
             A32(AT_PAGESZ, PAGE_SIZE);
             A32(AT_CLKTCK, 100);
             A32(AT_ENTRY, (uint32_t)entry_point);
-            A32(AT_PHDR, 0);
-            A32(AT_PHENT, 0);
-            A32(AT_PHNUM, 0);
+            A32(AT_PHDR, aux_phdr_vaddr);
+            A32(AT_PHENT, aux_phentsize);
+            A32(AT_PHNUM, aux_phnum);
             A32(AT_FLAGS, 0);
             A32(AT_HWCAP, 0);
+            A32(AT_RANDOM, aux_random_addr);
             A32(AT_NULL, 0);
             aux_bytes = (uint32_t)(naw * 4);
             ustack_ptr &= ~0x3u;

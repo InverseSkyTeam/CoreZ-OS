@@ -1,11 +1,11 @@
 #include "kernel/userprog/wait_exit.h"
-#include "kernel/fs/file.h"
 #include "kernel/assert.h"
-#include "lib/list/list.h"
+#include "kernel/fs/file.h"
 #include "kernel/mm/bitmap/bitmap.h"
 #include "kernel/mm/pool/pool.h"
 #include "kernel/sched/thread.h"
 #include "kernel/userprog/process.h"
+#include "lib/list/list.h"
 static int vaddr_owned_by_current(struct task_struct *t, uint32_t vaddr) {
     if (vaddr < USER_VADDR_START || vaddr >= 0xc0000000) {
         return 0;
@@ -143,9 +143,8 @@ pid_t sys_wait(int32_t *status) {
     }
 }
 void proc_exit(struct task_struct *cur, int status) {
-    cur->exit_status = (int8_t)status;
+    cur->exit_status = status;
 
-    /* 孤儿进程: 父进程已退出, 不会再有人 wait 它们, 直接终止并回收 */
     kill_orphan_children((int32_t)cur->pid);
     release_prog_resource(cur);
     struct task_struct *parent = pid2thread(cur->parent_pid);

@@ -1,25 +1,25 @@
 #include "kernel/syscall/linux_compat.h"
-#include "drivers/char/tty.h"
-#include "drivers/char/keyboard.h"
-#include "kernel/fs/fs.h"
-#include "kernel/fs/file.h"
-#include "kernel/asmFunc.h"
-#include "kernel/signal.h"
-#include "kernel/init/gdt/gdt.h"
+#include "arch/x86/interrupt/interrupt.h"
 #include "drivers/char/console/io.h"
-#include "libc/user/syscall.h"
-#include "kernel/shell/pipe.h"
+#include "drivers/char/keyboard.h"
+#include "drivers/char/tty.h"
+#include "kernel/asmFunc.h"
+#include "kernel/fs/dir.h"
+#include "kernel/fs/ext2.h"
+#include "kernel/fs/file.h"
+#include "kernel/fs/fs.h"
+#include "kernel/init/gdt/gdt.h"
+#include "kernel/init/pit/pit.h"
 #include "kernel/sched/thread.h"
-#include "kernel/userprog/process.h"
-#include "kernel/userprog/wait_exit.h"
+#include "kernel/shell/pipe.h"
+#include "kernel/signal.h"
 #include "kernel/syscall/file_syscall.h"
 #include "kernel/syscall/futex.h"
 #include "kernel/syscall/mmap.h"
-#include "kernel/fs/ext2.h"
-#include "kernel/fs/dir.h"
+#include "kernel/userprog/process.h"
+#include "kernel/userprog/wait_exit.h"
 #include "lib/str/str.h"
-#include "arch/x86/interrupt/interrupt.h"
-#include "kernel/init/pit/pit.h"
+#include "libc/user/syscall.h"
 
 uint32_t sys_brk(uint32_t addr);
 int32_t sys_clock_gettime(int32_t clk_id, struct timespec *tp);
@@ -77,11 +77,20 @@ static int32_t compat_ioctl(int32_t fd, uint32_t cmd, uint64_t arg) {
     if (fd >= 0 && fd <= 2) {
         uint32_t native = 0;
         switch (cmd) {
-        case LINUX_TCGETS: native = TTY_IOCTL_TCGETS; break;
-        case LINUX_TCSETS: native = TTY_IOCTL_TCSETS; break;
-        case LINUX_TIOCGWINSZ: native = TTY_IOCTL_TIOCGWINSZ; break;
-        case LINUX_FIONREAD: native = TTY_IOCTL_FIONREAD; break;
-        default: return -LINUX_ENOTTY;
+        case LINUX_TCGETS:
+            native = TTY_IOCTL_TCGETS;
+            break;
+        case LINUX_TCSETS:
+            native = TTY_IOCTL_TCSETS;
+            break;
+        case LINUX_TIOCGWINSZ:
+            native = TTY_IOCTL_TIOCGWINSZ;
+            break;
+        case LINUX_FIONREAD:
+            native = TTY_IOCTL_FIONREAD;
+            break;
+        default:
+            return -LINUX_ENOTTY;
         }
         int32_t rc = TTY.ioctl(native, arg);
         return rc < 0 ? -LINUX_ENOTTY : rc;
@@ -114,7 +123,8 @@ static int32_t compat_getpgid(uint32_t pid) {
     return (int32_t)t->pid;
 }
 
-static int32_t compat_readv(int32_t fd, struct LINUX_IOVEC *iov, int32_t iovcnt) {
+static int32_t compat_readv(int32_t fd, struct LINUX_IOVEC *iov,
+                            int32_t iovcnt) {
     if (iovcnt < 0 || iovcnt > 16)
         return -LINUX_EINVAL;
     int32_t total = 0;
@@ -268,7 +278,7 @@ static int32_t compat_rename(const char *oldpath, const char *newpath) {
 
 static void lc_seterrno(struct task_struct *cur, int32_t val) {
     cur->errno = val;
-    if (cur->tls_base != 0) {
+    if (cur->tls_selector == SELECTOR_TLS && cur->tls_base != 0) {
         *(volatile int32_t *)cur->tls_base = val;
     }
 }
@@ -324,7 +334,8 @@ static int32_t sys_compat_writev(int32_t fd, struct LINUX_IOVEC *iov,
     for (int32_t i = 0; i < iovcnt; i++) {
         if (iov[i].iov_len == 0)
             continue;
-        int32_t n = compat_write(fd, (const void *)iov[i].iov_base, iov[i].iov_len);
+        int32_t n =
+            compat_write(fd, (const void *)iov[i].iov_base, iov[i].iov_len);
         if (n < 0)
             return -1;
         total += (uint32_t)n;
@@ -401,10 +412,32 @@ uint32_t linux_compat_handler(struct Registers *r) {
             break;
         }
         case 9: /* LC_WRITEV */ {
-            int32_t n =
-                sys_compat_writev((int32_t)a, (struct LINUX_IOVEC *)b, (int32_t)c);
-            lc_seterrno(cur, n < 0 ? -n : 0);
-            ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
+            int32_t total = 0;
+            int32_t err = 0;
+            int32_t i;
+            if (b == 0 && c > 0) {
+                err = 14;
+            } else {
+                for (i = 0; i < (int32_t)c; i++) {
+                    uint32_t pair[2];
+                    memcpy(pair,
+                           (const void *)(uintptr_t)(b + (uint32_t)i * 8u),
+                           sizeof(pair));
+                    if (pair[1] == 0)
+                        continue;
+                    int32_t n = compat_write(
+                        (int32_t)a, (const void *)(uintptr_t)pair[0], pair[1]);
+                    if (n < 0) {
+                        err = -n;
+                        break;
+                    }
+                    total += n;
+                    if ((uint32_t)n < pair[1])
+                        break;
+                }
+            }
+            lc_seterrno(cur, err);
+            ret = err ? (uint32_t)-1 : (uint32_t)total;
             break;
         }
         default:
@@ -484,10 +517,8 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_set_tid_address: {
-        cur->tls_base = a;
-        cur->tls_selector = SELECTOR_TLS;
-        tls_desc_set_base(a);
-        *(volatile int32_t *)a = (int32_t)cur->pid;
+        if (a)
+            *(volatile int32_t *)a = (int32_t)cur->pid;
         lc_seterrno(cur, 0);
         ret = (uint32_t)cur->pid;
         break;
@@ -710,8 +741,8 @@ uint32_t linux_compat_handler(struct Registers *r) {
             memcpy(&kset, in, sizeof(kset));
         }
         sigset_t oset = 0;
-        int32_t rr = sys_sigprocmask((int32_t)how, b ? &kset : NULL,
-                                     c ? &oset : NULL);
+        int32_t rr =
+            sys_sigprocmask((int32_t)how, b ? &kset : NULL, c ? &oset : NULL);
         lc_seterrno(cur, rr < 0 ? -rr : 0);
         if (c) {
             uint8_t out[8];
@@ -785,6 +816,31 @@ uint32_t linux_compat_handler(struct Registers *r) {
         int32_t n = compat_getpgid(a);
         lc_seterrno(cur, n < 0 ? -n : 0);
         ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
+        break;
+    }
+    case SYS_LINUX_arch_prctl: {
+        const uint64_t MSR_FS_BASE = 0xC0000100;
+        const uint64_t MSR_GS_BASE = 0xC0000101;
+        uint32_t code = a;
+        uint64_t base = b;
+        if (code == 0x1002u) {
+            cur->tls_base = (uint32_t)base;
+            asm_wrmsr(MSR_FS_BASE, base);
+            lc_seterrno(cur, 0);
+            ret = 0;
+        } else if (code == 0x1001u) {
+            cur->tls_base = (uint32_t)base;
+            asm_wrmsr(MSR_GS_BASE, base);
+            lc_seterrno(cur, 0);
+            ret = 0;
+        } else if (code == 0x1003u) {
+            ret = (uint32_t)asm_rdmsr(MSR_FS_BASE);
+        } else if (code == 0x1004u) {
+            ret = (uint32_t)asm_rdmsr(MSR_GS_BASE);
+        } else {
+            lc_seterrno(cur, LINUX_EINVAL);
+            ret = (uint32_t)-1;
+        }
         break;
     }
     case SYS_LINUX_sched_yield:

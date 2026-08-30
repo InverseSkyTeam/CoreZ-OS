@@ -1,33 +1,33 @@
 #include "kernel/syscall/syscall.h"
-#include "drivers/char/ioqueue.h"
-#include "drivers/char/keyboard.h"
-#include "kernel/fs/file.h"
-#include "kernel/fs/fs.h"
-#include "drivers/char/tty.h"
-#include "kernel/gui/gui.h"
-#include "kernel/asmFunc.h"
-#include "kernel/assert.h"
-#include "kernel/init/acpi/acpi.h"
-#include "kernel/init/gdt/gdt.h"
 #include "arch/x86/interrupt/interrupt.h"
 #include "drivers/char/console/io.h"
-#include "kernel/init/pit/pit.h"
-#include "lib/str/str.h"
-#include "libc/user/syscall.h"
-#include "kernel/mm/access.h"
+#include "drivers/char/ioqueue.h"
+#include "drivers/char/keyboard.h"
+#include "drivers/char/tty.h"
 #include "drivers/net/net.h"
 #include "drivers/net/socket.h"
-#include "kernel/shell/pipe.h"
+#include "kernel/asmFunc.h"
+#include "kernel/assert.h"
+#include "kernel/fs/file.h"
+#include "kernel/fs/fs.h"
+#include "kernel/gui/gui.h"
+#include "kernel/init/acpi/acpi.h"
+#include "kernel/init/gdt/gdt.h"
+#include "kernel/init/pit/pit.h"
+#include "kernel/mm/access.h"
 #include "kernel/sched/thread.h"
+#include "kernel/shell/pipe.h"
+#include "kernel/syscall/file_syscall.h"
+#include "kernel/syscall/futex.h"
+#include "kernel/syscall/linux_compat.h"
+#include "kernel/syscall/mmap.h"
 #include "kernel/userprog/clone.h"
 #include "kernel/userprog/exec.h"
 #include "kernel/userprog/fork.h"
 #include "kernel/userprog/process.h"
 #include "kernel/userprog/wait_exit.h"
-#include "kernel/syscall/file_syscall.h"
-#include "kernel/syscall/futex.h"
-#include "kernel/syscall/linux_compat.h"
-#include "kernel/syscall/mmap.h"
+#include "lib/str/str.h"
+#include "libc/user/syscall.h"
 static uint32_t sys_getpid(void) {
     return current->pid;
 }
@@ -229,7 +229,7 @@ uint32_t syscall_handler(struct Registers *r) {
     uint32_t nr = r->eax;
     uint32_t ret = (uint32_t)-1;
     int kcaller = (r->cs & 3) == 0;
-    if (current->compat || nr >= COMPAT_SYSCALL_BASE) {
+    if (r->int_no == 0x81 || current->compat || nr >= COMPAT_SYSCALL_BASE) {
         check_pending_signals(r);
         if (r->int_no == 0x80 && nr < COMPAT_SYSCALL_BASE) {
             r->rdi = r->rbx;
@@ -318,7 +318,8 @@ uint32_t syscall_handler(struct Registers *r) {
         break;
     case SYS_STAT:
         if (!kcaller && !access_ok((const void *)r->ebx, 1, 0) ||
-            !kcaller && !access_ok((const void *)r->ecx, sizeof(struct stat), 1))
+            !kcaller &&
+                !access_ok((const void *)r->ecx, sizeof(struct stat), 1))
             break;
         ret = (uint32_t)sys_stat((const char *)r->ebx, (struct stat *)r->ecx);
         break;
@@ -338,14 +339,14 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = 0;
         break;
     case SYS_WAIT:
-        /* wait(NULL) 合法: 不关心退出码 */
         if (!kcaller && r->ebx &&
             !access_ok((const void *)r->ebx, sizeof(int32_t), 1))
             break;
         ret = (uint32_t)sys_wait((int32_t *)r->ebx);
         break;
     case SYS_PIPE:
-        if (!kcaller && !access_ok((const void *)r->ebx, 2 * sizeof(int32_t), 1))
+        if (!kcaller &&
+            !access_ok((const void *)r->ebx, 2 * sizeof(int32_t), 1))
             break;
         ret = (uint32_t)sys_pipe((int32_t *)r->ebx);
         break;
@@ -360,10 +361,10 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)sys_brk((uint32_t)r->ebx);
         break;
     case SYS_SIGACTION:
-        if ((r->ecx &&
-             !kcaller && !access_ok((const void *)r->ecx, sizeof(struct sigaction), 0)) ||
-            (r->edx &&
-             !kcaller && !access_ok((const void *)r->edx, sizeof(struct sigaction), 1)))
+        if ((r->ecx && !kcaller &&
+             !access_ok((const void *)r->ecx, sizeof(struct sigaction), 0)) ||
+            (r->edx && !kcaller &&
+             !access_ok((const void *)r->edx, sizeof(struct sigaction), 1)))
             break;
         ret = (uint32_t)sys_sigaction((int)r->ebx,
                                       (const struct sigaction *)r->ecx,
@@ -377,8 +378,10 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = 0;
         break;
     case SYS_SIGPROCMASK:
-        if ((r->ecx && !kcaller && !access_ok((const void *)r->ecx, sizeof(sigset_t), 0)) ||
-            (r->edx && !kcaller && !access_ok((const void *)r->edx, sizeof(sigset_t), 1)))
+        if ((r->ecx && !kcaller &&
+             !access_ok((const void *)r->ecx, sizeof(sigset_t), 0)) ||
+            (r->edx && !kcaller &&
+             !access_ok((const void *)r->edx, sizeof(sigset_t), 1)))
             break;
         ret = (uint32_t)sys_sigprocmask((int)r->ebx, (const sigset_t *)r->ecx,
                                         (sigset_t *)r->edx);
@@ -389,7 +392,8 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = sys_set_thread_area(r, (uint32_t)r->ebx);
         break;
     case SYS_MMAP:
-        if (!kcaller && !access_ok((const void *)r->ebx, sizeof(struct mmap_args), 0))
+        if (!kcaller &&
+            !access_ok((const void *)r->ebx, sizeof(struct mmap_args), 0))
             break;
         ret = sys_mmap((const struct mmap_args *)r->ebx);
         break;
@@ -412,7 +416,8 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)sys_clone(r);
         break;
     case SYS_FSTAT:
-        if (!kcaller && !access_ok((const void *)r->ecx, sizeof(struct stat), 1))
+        if (!kcaller &&
+            !access_ok((const void *)r->ecx, sizeof(struct stat), 1))
             break;
         ret = (uint32_t)sys_fstat((int32_t)r->ebx, (void *)r->ecx);
         break;
@@ -461,19 +466,22 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)sys_chmod((const char *)r->ebx, (uint32_t)r->ecx);
         break;
     case SYS_CLOCK_GETTIME:
-        if (!kcaller && !access_ok((const void *)r->ecx, sizeof(struct timespec), 1))
+        if (!kcaller &&
+            !access_ok((const void *)r->ecx, sizeof(struct timespec), 1))
             break;
         ret = (uint32_t)sys_clock_gettime((int32_t)r->ebx,
                                           (struct timespec *)r->ecx);
         break;
     case SYS_GETTIMEOFDAY:
-        if (!kcaller && !access_ok((const void *)r->ebx, sizeof(struct timeval), 1))
+        if (!kcaller &&
+            !access_ok((const void *)r->ebx, sizeof(struct timeval), 1))
             break;
         ret = (uint32_t)sys_gettimeofday((struct timeval *)r->ebx,
                                          (void *)r->ecx);
         break;
     case SYS_NANOSLEEP:
-        if (!kcaller && !access_ok((const void *)r->ebx, sizeof(struct timespec), 0))
+        if (!kcaller &&
+            !access_ok((const void *)r->ebx, sizeof(struct timespec), 0))
             break;
         ret = (uint32_t)sys_nanosleep((const struct timespec *)r->ebx,
                                       (struct timespec *)r->ecx);
@@ -499,7 +507,8 @@ uint32_t syscall_handler(struct Registers *r) {
                                      (uint16_t)r->edx);
         break;
     case SYS_ICMP_RECV:
-        if (!kcaller && !access_ok((const void *)r->ebx, sizeof(struct nt_ping_reply), 1))
+        if (!kcaller &&
+            !access_ok((const void *)r->ebx, sizeof(struct nt_ping_reply), 1))
             break;
         ret =
             (uint32_t)nt_icmp_recv((struct nt_ping_reply *)r->ebx, (int)r->ecx);
@@ -556,19 +565,22 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)net_shutdown((int)r->ebx, (int)r->ecx);
         break;
     case SYS_GETSOCKNAME:
-        if (!kcaller && !access_ok((void *)r->ecx, 4, 1) || !kcaller && !access_ok((void *)r->edx, 2, 1))
+        if (!kcaller && !access_ok((void *)r->ecx, 4, 1) ||
+            !kcaller && !access_ok((void *)r->edx, 2, 1))
             break;
         ret = (uint32_t)net_getsockname((int)r->ebx, (uint32_t *)r->ecx,
                                         (uint16_t *)r->edx);
         break;
     case SYS_GETPEERNAME:
-        if (!kcaller && !access_ok((void *)r->ecx, 4, 1) || !kcaller && !access_ok((void *)r->edx, 2, 1))
+        if (!kcaller && !access_ok((void *)r->ecx, 4, 1) ||
+            !kcaller && !access_ok((void *)r->edx, 2, 1))
             break;
         ret = (uint32_t)net_getpeername((int)r->ebx, (uint32_t *)r->ecx,
                                         (uint16_t *)r->edx);
         break;
     case SYS_GETSOCKOPT:
-        if (!kcaller && !access_ok((void *)r->esi, 4, 1) || !kcaller && !access_ok((void *)r->edi, 4, 1))
+        if (!kcaller && !access_ok((void *)r->esi, 4, 1) ||
+            !kcaller && !access_ok((void *)r->edi, 4, 1))
             break;
         ret = (uint32_t)net_getsockopt((int)r->ebx, (int)r->ecx, (int)r->edx,
                                        (void *)r->esi, (uint32_t *)r->edi);
@@ -601,5 +613,20 @@ uint32_t syscall_handler(struct Registers *r) {
     return ret;
 }
 void syscall_init(void) {
-    kprintf("[OK] syscall init, 0x80 registered (full table)\n");
+    extern void syscall_entry(void);
+    extern uint64_t syscall_kstack_top_data;
+    const uint64_t MSR_STAR = 0xC0000081;
+    const uint64_t MSR_LSTAR = 0xC0000082;
+    const uint64_t MSR_FMASK = 0xC0000084;
+    const uint64_t MSR_EFER = 0xC0000080;
+
+    uint64_t star = ((uint64_t)0x33 << 48) | ((uint64_t)0x08 << 32);
+    asm_wrmsr(MSR_STAR, star);
+    asm_wrmsr(MSR_LSTAR, (uint64_t)(uintptr_t)syscall_entry);
+    asm_wrmsr(MSR_FMASK, 0x5700);
+    uint64_t efer = asm_rdmsr(MSR_EFER);
+    asm_wrmsr(MSR_EFER, efer | 1);
+    syscall_kstack_top_data = 0;
+
+    kprintf("[OK] syscall init, 0x80 full table + syscall/sysret entry\n");
 }

@@ -1,14 +1,14 @@
 #include "kernel/shell/shell.h"
 
+#include "drivers/char/console/io.h"
+#include "kernel/assert.h"
 #include "kernel/fs/fs.h"
 #include "kernel/gui/gui.h"
-#include "kernel/assert.h"
-#include "drivers/char/console/io.h"
+#include "kernel/sched/thread.h"
+#include "kernel/shell/buildin_cmd.h"
 #include "lib/str/str.h"
 #include "libc/user/stdio.h"
 #include "libc/user/syscall.h"
-#include "kernel/sched/thread.h"
-#include "kernel/shell/buildin_cmd.h"
 
 #define MAX_ARG_NR 16
 
@@ -130,6 +130,10 @@ static void cmd_execute(int32_t argc, char **argv) {
         char *prog_path = final_path;
         struct stat file_stat;
         memset(&file_stat, 0, sizeof(struct stat));
+        if (stat(prog_path, &file_stat) == -1 && !strchr(argv[0], '.') &&
+            strlen(prog_path) + 4 < MAX_PATH_LEN) {
+            strcat(prog_path, ".elf");
+        }
         if (stat(prog_path, &file_stat) == -1) {
             printf("my_shell: cannot access %s: No such file or directory\n",
                    argv[0]);
@@ -158,7 +162,7 @@ static void run_line(char *cmd_line) {
 
     char *pipe_symbol = strchr(cmd_line, '|');
     if (pipe_symbol) {
-       char *segments[MAX_ARG_NR];
+        char *segments[MAX_ARG_NR];
         int nseg = 0;
         char *each_cmd = cmd_line;
         segments[nseg++] = each_cmd;
@@ -168,7 +172,7 @@ static void run_line(char *cmd_line) {
             segments[nseg++] = each_cmd;
         }
 
-        int32_t prev_read_fd = -1; 
+        int32_t prev_read_fd = -1;
         for (int i = 0; i < nseg; i++) {
             int32_t wr_fd = -1;
             int32_t next_read_fd = -1;

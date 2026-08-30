@@ -150,10 +150,13 @@ void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
     drivers_init(20, 99);
     filesys_init();
     smp_init();
-    net_init();
+    net_check_guards();
+    if (net_enable)
+        net_init();
 
     kernel_thread("shell", 4, my_shell, 0);
     for (;;) {
+        net_check_guards();
         cpu_idle();
         thread_yield();
     }

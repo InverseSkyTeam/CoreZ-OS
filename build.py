@@ -53,7 +53,7 @@ UP_CFLAGS = CFLAGS_BASE + [
     "-I", str(ROOT / "includes" / "lib"),
     "-I", str(ROOT / "includes"),
 ]
-UP_LDFLAGS = ["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_start"]
+UP_LDFLAGS = ["-s", "-m", "elf_i386", "-T", str(ROOT / "linker" / "user.ld"), "-e", "_start"]
 
 UP_CFLAGS_64 = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
@@ -61,7 +61,7 @@ UP_CFLAGS_64 = [
     "-I", str(ROOT / "includes" / "lib"),
     "-I", str(ROOT / "includes"),
 ]
-UP_LDFLAGS_64 = ["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_start"]
+UP_LDFLAGS_64 = ["-s", "-m", "elf_x86_64", "-T", str(ROOT / "linker" / "user.ld"), "-e", "_start"]
 
 MUSL64_BASE = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
@@ -378,8 +378,8 @@ def _musl_buildenv(tools: Tools) -> Optional[dict]:
     if os.name == "nt":
         return None
     sh = shutil.which("sh") or shutil.which("bash")
-    make = shutil.which("make")
-    if not sh or not make:
+    make = shutil.which("make") or "/usr/bin/make"
+    if not sh or not os.path.exists(make):
         return None
     cc = shutil.which("gcc") or shutil.which("cc")
     if cc is None:
@@ -585,7 +585,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         [BUILD_DIR / "up_start.o",
          BUILD_DIR / "shell_core.o", BUILD_DIR / "shell_cmds.o",
          BUILD_DIR / "nr_shell_main.o", *lib_objs],
-        flags=["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_start"])
+        flags=["-s", "-m", "elf_x86_64", "-T", str(ROOT / "linker" / "user.ld"), "-e", "_start"])
     tasks.append(nr_shell_elf)
     user_elves.append(nr_shell_elf)
     net_dir = ROOT / "drivers" / "net"
@@ -662,11 +662,10 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
             f"rm -rf {shlex.quote(str(MUSL_PREFIX))}; "
             f"mkdir -p {shlex.quote(str(MUSL_PREFIX))}; "
             f"cd {shlex.quote(str(MUSL_SRC))}; "
-            f"rm -rf obj; "
+            f"rm -rf obj config.mak; "
             f"mkdir -p obj/include/bits; "
             f"sed -f tools/mkalltypes.sed arch/x86_64/bits/alltypes.h.in "
             f"include/alltypes.h.in > obj/include/bits/alltypes.h; "
-            f"cp arch/x86_64/bits/syscall.h.in obj/include/bits/syscall.h; "
             f"CC={shlex.quote(cc_str)} "
             f"./configure --prefix={shlex.quote(str(MUSL_PREFIX))} "
             f"--disable-shared --enable-static --disable-option-checking; "
@@ -704,13 +703,15 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
             t.optional = True
             tasks.append(t)
         def link_musl_user(name, elf, objs):
+            ld = shutil.which("ld") or "/usr/bin/ld"
             crt1 = MUSL_LIB / "crt1.o"
             crti = MUSL_LIB / "crti.o"
             crtn = MUSL_LIB / "crtn.o"
-            cmd = [*tools.cc, "-nostdlib", "-static",
-                   "-Ttext", "0x8048000", "-e", "_start",
+            cmd = [ld, "-nostdlib", "-static",
+                   "-T", str(ROOT / "linker" / "user.ld"), "-e", "_start",
                    str(crt1), str(crti), *map(str, objs), str(crtn),
-                   "-L", str(MUSL_LIB), "--start-group", "-lc", "--end-group"]
+                   "-L", str(MUSL_LIB), "--start-group", "-lc", "--end-group",
+                   "-o", str(elf)]
             return Task(name=name, cmd=cmd, out=elf, optional=True,
                         group="musl", description=f"link {elf.name} (native musl)",
                         cwd=BUILD_DIR)
@@ -852,7 +853,7 @@ def execute_plan(plan: BuildPlan, tools: Tools, console: Console,
         console.info("musl 库未生成 (configure/make 失败或被跳过), "
                      "demo/testsuite 跳过 — 不影响内核/用户程序")
     else:
-        musl_tasks = [t for t in plan.tasks if t.group in ("cc", "link") and
+        musl_tasks = [t for t in plan.tasks if t.group in ("cc", "link", "musl") and
                       ("musl_" in t.name or "test_" in t.name or
                        "libc_tests" in t.name)]
         with console.progress(len(musl_tasks), "musl", Ansi.BR_BLU) as update:

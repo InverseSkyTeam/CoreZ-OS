@@ -13,7 +13,7 @@
 struct RB_ROOT ready_rb_root;
 static uint64_t global_seq = 0;
 
-static struct task_struct task_table[MAX_TASKS];
+struct task_struct task_table[MAX_TASKS];
 static uint32_t pid_alloc = 0;
 static uint32_t died_pending = 0;
 struct list thread_all_list;
@@ -171,7 +171,8 @@ struct task_struct *thread_alloc_slot(const char *name, uint8_t priority) {
     }
     uint64_t stack = (uint64_t)get_kernel_pages(THREAD_STACK_SIZE / PAGE_SIZE);
     if (stack == 0) {
-        kprintf("[thread] no kernel pages for stack\n");
+        kprintf("[thread] no kernel pages for stack (free pages: %d)\n",
+                (int)kernel_pool_free_count());
         return NULL;
     }
     t->slot_used = 1;

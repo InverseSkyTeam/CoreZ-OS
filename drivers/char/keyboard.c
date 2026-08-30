@@ -1,5 +1,6 @@
 #include "drivers/char/keyboard.h"
 #include "drivers/driver_ops.h"
+#include "drivers/char/tty.h"
 
 #include "kernel/asmFunc.h"
 #include "kernel/sched/thread.h"
@@ -131,7 +132,7 @@ void keyboard_handler(void) {
     }
 
     if (ctrl && sc == SC_C_DOWN) {
-        thread_kill_pid(foreground_pid);
+        tty_sigint_foreground();
         return;
     }
 

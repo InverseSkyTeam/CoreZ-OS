@@ -54,7 +54,13 @@ static void net_thread(void *arg) {
     }
 }
 
+int net_enable = 0;
+
 void net_init(void) {
+    if (!net_enable) {
+        kprintf("[NET] disabled\n");
+        return;
+    }
     arp_init();
     tcp_init();
     udp_init();

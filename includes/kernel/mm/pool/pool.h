@@ -26,6 +26,7 @@ extern uint32_t kernel_kphys;
 void pae_init(void);
 void mm_init(void);
 void *palloc(struct pool *pool);
+uint32_t kernel_pool_free_count(void);
 void pfree(struct pool *pool, uint32_t phy_addr);
 uint32_t palloc_pages(struct pool *pool, uint32_t cnt);
 

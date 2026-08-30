@@ -90,7 +90,43 @@ void mm_init(void) {
     kernel_pool.pool_bitmap.bits = kernel_pool_bitmap;
     kernel_pool.pool_bitmap.btmp_bytes_len = sizeof(kernel_pool_bitmap);
     bitmap_init(&kernel_pool.pool_bitmap);
-    mark_used(kernel_kphys, 0x200000);
+    {
+        extern char _kernel_phys_start;
+        extern char _kernel_phys_end;
+        mark_used((uint32_t)(uintptr_t)&_kernel_phys_start,
+                  (uint32_t)((uintptr_t)&_kernel_phys_end -
+                             (uintptr_t)&_kernel_phys_start));
+    }
+
+    {
+        uint64_t *pml4 = phys_to_virt(asm_read_cr3());
+        for (int i = 0; i < 512; i++) {
+            uint64_t e = pml4[i];
+            if (!(e & 1))
+                continue;
+            uint64_t pdp_phys = PTE_PHYS(e);
+            mark_used((uint32_t)pdp_phys, PAGE_SIZE);
+            uint64_t *pdp = phys_to_virt(pdp_phys);
+            for (int j = 0; j < 512; j++) {
+                uint64_t e2 = pdp[j];
+                if (!(e2 & 1))
+                    continue;
+                if (e2 & 0x80)
+                    continue;
+                uint64_t pd_phys = PTE_PHYS(e2);
+                mark_used((uint32_t)pd_phys, PAGE_SIZE);
+                uint64_t *pd = phys_to_virt(pd_phys);
+                for (int k = 0; k < 512; k++) {
+                    uint64_t e3 = pd[k];
+                    if (!(e3 & 1))
+                        continue;
+                    if (e3 & 0x80)
+                        continue;
+                    mark_used((uint32_t)PTE_PHYS(e3), PAGE_SIZE);
+                }
+            }
+        }
+    }
     mark_used(0x400000, 0x460000 - 0x400000);
     mark_used(PER_CPU_BASE, NR_CPU * PAGE_SIZE);
     kernel_vaddr.vaddr_start = KERNEL_VADDR_START;
@@ -100,6 +136,11 @@ void mm_init(void) {
 
     kernel_pml4 = asm_read_cr3();
     lock_init(&mem_lock);
+
+    /* VIRT_OF 高半区只映射了前 16MB 物理内存; 池分配必须留在
+     * 16MB 以内, 否则 VIRT_OF(phy) 指向未映射区。超出部分整体封禁,
+     * 待实现动态高半区扩展后再放开 */
+    mark_used(0x1000000u, MAX_PHYS_MEM - 0x1000000u);
 
     {
         uint64_t *pd98 = (uint64_t *)VIRT_OF(0x98000);
@@ -114,7 +155,9 @@ static uint32_t palloc_raw(struct pool *pool) {
         return 0;
     }
     bitmap_set(&pool->pool_bitmap, (uint32_t)idx, 1);
-    return pool->phy_addr_start + (uint32_t)idx * PAGE_SIZE;
+    uint32_t phy = pool->phy_addr_start + (uint32_t)idx * PAGE_SIZE;
+    ASSERT((phy & 0xfffu) == 0);
+    return phy;
 }
 
 static void pfree_raw(struct pool *pool, uint32_t phy_addr) {
@@ -122,6 +165,8 @@ static void pfree_raw(struct pool *pool, uint32_t phy_addr) {
         return;
     }
     uint32_t idx = (phy_addr - pool->phy_addr_start) / PAGE_SIZE;
+    ASSERT(idx < pool->pool_bitmap.btmp_bytes_len * 8);
+    ASSERT((phy_addr & 0xfffu) == 0);
     bitmap_set(&pool->pool_bitmap, idx, 0);
 }
 
@@ -319,6 +364,15 @@ void *palloc(struct pool *pool) {
     void *r = (void *)palloc_raw(pool);
     lock_release(&mem_lock);
     return r;
+}
+
+uint32_t kernel_pool_free_count(void) {
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < kernel_pool.pool_bitmap.btmp_bytes_len * 8; i++) {
+        if (!bitmap_scan_test(&kernel_pool.pool_bitmap, i))
+            n++;
+    }
+    return n;
 }
 
 void pfree(struct pool *pool, uint32_t phy_addr) {

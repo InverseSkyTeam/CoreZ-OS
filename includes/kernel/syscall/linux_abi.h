@@ -76,6 +76,7 @@
 #define SYS_LINUX_getegid 108
 #define SYS_LINUX_getppid 110
 #define SYS_LINUX_setpgid 109
+#define SYS_LINUX_getpgid 121
 #define SYS_LINUX_setsid 106
 #define SYS_LINUX_times 153
 #define SYS_LINUX_arch_prctl 158

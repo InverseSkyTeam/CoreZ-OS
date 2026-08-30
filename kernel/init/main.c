@@ -66,11 +66,13 @@ static void mb2_parse(uint32_t magic, void *mbi_ptr,
     }
 }
 
-void drivers_init(void) {
+void drivers_init(int min_level, int max_level) {
     struct driver_ops table[16];
     int n = 0;
     for (const struct driver_ops *d = __drivers_start;
          d != __drivers_end && n < 16; ++d) {
+        if (d->level < min_level || d->level > max_level)
+            continue;
         int j = n;
         while (j > 0 && table[j - 1].level > d->level) {
             table[j] = table[j - 1];
@@ -135,8 +137,8 @@ void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
     kprintf("[init] acpi\n");
     acpi_init();
 
-    kprintf("[init] keyboard\n");
-    drivers_init();
+    kprintf("[init] drivers char\n");
+    drivers_init(0, 19);
 
     kprintf("[init] threads\n");
     thread_init();
@@ -145,6 +147,7 @@ void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
     set_text_color(10);
     kprintf("[OK] kernel init done, enable IRQs\n");
 
+    drivers_init(20, 99);
     filesys_init();
     smp_init();
     net_init();

@@ -3,6 +3,7 @@
 #include "drivers/char/keyboard.h"
 #include "kernel/fs/file.h"
 #include "kernel/fs/fs.h"
+#include "drivers/char/tty.h"
 #include "kernel/gui/gui.h"
 #include "kernel/asmFunc.h"
 #include "kernel/assert.h"
@@ -106,9 +107,7 @@ static uint32_t sys_write(int32_t fd, char *str, uint32_t count) {
         wf->fd_flag != PIPE_FLAG) {
         return write_file(fd, str, count);
     }
-    for (uint32_t i = 0; i < count; i++) {
-        console_putc(str[i]);
-    }
+    TTY.write(str, count);
     return count;
 }
 static uint32_t sys_putchar(char c) {
@@ -126,19 +125,7 @@ static int32_t sys_read(int32_t fd, void *buf, uint32_t count) {
         return (int32_t)pipe_read(fd, buf, count);
     }
     if (fd == 0) {
-        uint8_t *p = (uint8_t *)buf;
-        uint32_t got = 0;
-        asm_cli();
-        while (got < count) {
-            char c = ioq_getchar(&keyboard_ioq);
-            asm_sti();
-            p[got++] = (uint8_t)c;
-            if (c == '\n' || c == '\r')
-                break;
-            asm_cli();
-        }
-        asm_sti();
-        return (int32_t)got;
+        return TTY.read((char *)buf, count);
     }
     if (fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC)
         return -1;

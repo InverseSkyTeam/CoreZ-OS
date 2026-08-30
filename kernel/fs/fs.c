@@ -7,6 +7,7 @@
 #include "kernel/fs/dir.h"
 #include "kernel/fs/ext2.h"
 #include "kernel/fs/file.h"
+#include "drivers/char/tty.h"
 #include "kernel/fs/inode.h"
 #include "kernel/fs/proc.h"
 struct partition *cur_part;
@@ -148,6 +149,9 @@ int open_file(const char *pathname, uint8_t flags) {
     }
     if (proc_match(pathname)) {
         return proc_open(pathname, flags);
+    }
+    if (!strcmp(pathname, "/dev/console") || !strcmp(pathname, "/dev/tty")) {
+        return tty_open();
     }
     uint32_t ino = 0;
     int is_dir = 0;
@@ -435,6 +439,7 @@ char *sys_getcwd(char *buf, uint32_t size) {
         return NULL;
     }
     uint32_t child = current->cwd_inode_nr;
+
     if (child == 0 || child == 2) {
         if (size < 2) {
             return NULL;

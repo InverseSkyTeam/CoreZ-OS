@@ -47,7 +47,6 @@ KERNEL_CFLAGS = CFLAGS_BASE + [
     "-mcmodel=large",
     "-mno-red-zone",
     "-Wall", "-Wunused-function", "-Wunused-variable",
-    "-ffunction-sections", "-fdata-sections",
 ]
 UP_CFLAGS = CFLAGS_BASE + [
     "-I", str(ROOT / "includes" / "libc" / "user"),
@@ -449,6 +448,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         ("percpu.o",     KERNEL_DIR / "sched" / "percpu.c"),
         ("smp.o",        KERNEL_DIR / "init" / "smp" / "smp.c"),
         ("ioqueue.o",    ROOT / "drivers" / "char" / "ioqueue.c"),
+        ("tty.o",        ROOT / "drivers" / "char" / "tty.c"),
         ("keyboard.o",   ROOT / "drivers" / "char" / "keyboard.c"),
         ("ide.o",        ROOT / "drivers" / "block" / "ide.c"),
         ("ext2.o",       KERNEL_DIR / "fs" / "ext2.c"),
@@ -616,7 +616,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         "apic.o", "pit.o", "stub.o", "idt.o", "interrupt.o", "pic.o",
         "assert.o", "str.o", "rbtree.o", "bitmap.o", "pool.o", "access.o", "list.o",
         "switch.o", "thread.o", "sync.o", "percpu.o", "smp.o",
-        "ap_tramp.o", "ioqueue.o", "keyboard.o",
+        "ap_tramp.o", "ioqueue.o", "tty.o", "keyboard.o",
         "ide.o", "ext2.o", "fs.o", "inode.o", "dir.o", "file.o", "proc.o",
         "gdt.o", "tss.o", "process.o", "exec.o", "shell.o",
         "buildin_cmd.o", "pipe.o", "ksyscall.o", "mmap.o", "futex.o",
@@ -632,7 +632,6 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
     tasks.append(task_link(
         "kernel.elf", kernel_elf, tools, kernel_link_objs,
         script=LINKER_DIR / "kernel.ld",
-        flags=["--gc-sections"],
     ))
     kernel_bin = BUILD_DIR / "kernel.bin"
     tasks.append(Task(

@@ -15,4 +15,4 @@ extern const struct driver_ops __drivers_end[];
             .name = (name_str), .level = (level_val), .init = (init_fn)        \
     }
 
-void drivers_init(void);
+void drivers_init(int min_level, int max_level);

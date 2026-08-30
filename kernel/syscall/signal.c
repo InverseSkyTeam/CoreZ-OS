@@ -177,6 +177,22 @@ int sys_sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
     return 0;
 }
 int sys_kill(int pid, int sig) {
+    if (pid < 0) {
+        uint32_t pgid = (uint32_t)(-pid);
+        int n = 0;
+        for (uint32_t i = 0; i < MAX_TASKS; i++) {
+            struct task_struct *t = &task_table[i];
+            if (!t->slot_used || t->status == TASK_DIED)
+                continue;
+            if (t->pid != pgid)
+                continue;
+            thread_kill_pid(t->pid);
+            t->signal_pending |= (1u << (sig & 31));
+            n++;
+        }
+        return n ? 0 : -1;
+    }
+
     if (sig < 0 || sig >= NSIG) {
         return -1;
     }

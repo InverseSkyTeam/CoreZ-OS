@@ -1,5 +1,5 @@
 #include "kernel/syscall/linux_compat.h"
-#include "drivers/char/ioqueue.h"
+#include "drivers/char/tty.h"
 #include "drivers/char/keyboard.h"
 #include "kernel/fs/fs.h"
 #include "kernel/fs/file.h"
@@ -74,37 +74,44 @@ static int32_t compat_getdents64(int32_t fd, void *dirp, uint32_t count) {
 }
 
 static int32_t compat_ioctl(int32_t fd, uint32_t cmd, uint64_t arg) {
-    if (cmd == LINUX_TCGETS || cmd == LINUX_TCSETS) {
-        if (fd < 0 || fd > 2)
-            return -LINUX_ENOTTY;
-        if (cmd == LINUX_TCGETS) {
-            struct LINUX_TERMIOS t;
-            memset(&t, 0, sizeof(t));
-            t.c_iflag = LINUX_ICRNL | LINUX_IXON;
-            t.c_oflag = LINUX_OPOST | LINUX_ONLCR;
-            t.c_cflag = LINUX_CS8;
-            t.c_lflag = LINUX_ISIG | LINUX_ICANON | LINUX_ECHO | LINUX_IEXTEN;
-            t.c_cc[LINUX_VMIN] = 1;
-            memcpy((void *)(uintptr_t)arg, &t, sizeof(t));
+    if (fd >= 0 && fd <= 2) {
+        uint32_t native = 0;
+        switch (cmd) {
+        case LINUX_TCGETS: native = TTY_IOCTL_TCGETS; break;
+        case LINUX_TCSETS: native = TTY_IOCTL_TCSETS; break;
+        case LINUX_TIOCGWINSZ: native = TTY_IOCTL_TIOCGWINSZ; break;
+        case LINUX_FIONREAD: native = TTY_IOCTL_FIONREAD; break;
+        default: return -LINUX_ENOTTY;
         }
-        return 0;
-    }
-    if (cmd == LINUX_TIOCGWINSZ) {
-        if (fd < 0 || fd > 2)
-            return -LINUX_ENOTTY;
-        struct LINUX_WINSIZE w = {25, 80, 0, 0};
-        memcpy((void *)(uintptr_t)arg, &w, sizeof(w));
-        return 0;
-    }
-    if (cmd == LINUX_FIONREAD) {
-        uint32_t avail = 0;
-        if (fd == 0)
-            avail = ioq_length(&keyboard_ioq);
-        int32_t v = (int32_t)avail;
-        memcpy((void *)(uintptr_t)arg, &v, sizeof(v));
-        return 0;
+        int32_t rc = TTY.ioctl(native, arg);
+        return rc < 0 ? -LINUX_ENOTTY : rc;
     }
     return -LINUX_ENOTTY;
+}
+
+static int32_t compat_setpgid(uint32_t pid, uint32_t pgid) {
+    if (pid >= MAX_TASKS || pgid >= MAX_TASKS)
+        return -LINUX_EINVAL;
+    struct task_struct *t = pid2thread((int32_t)pid);
+    if (t == NULL || t->status == TASK_DIED)
+        return -LINUX_ESRCH;
+    uint32_t want = pgid ? pgid : pid;
+    if (want >= MAX_TASKS)
+        return -LINUX_EINVAL;
+    struct task_struct *g = pid2thread((int32_t)want);
+    if (g == NULL)
+        return -LINUX_EPERM;
+    t->pid = want;
+    return 0;
+}
+
+static int32_t compat_getpgid(uint32_t pid) {
+    if (pid >= MAX_TASKS)
+        return -LINUX_EINVAL;
+    struct task_struct *t = pid2thread((int32_t)pid);
+    if (t == NULL)
+        return -LINUX_ESRCH;
+    return (int32_t)t->pid;
 }
 
 static int32_t compat_readv(int32_t fd, struct LINUX_IOVEC *iov, int32_t iovcnt) {
@@ -271,6 +278,8 @@ static int32_t compat_write(int32_t fd, const void *buf, uint32_t count) {
         return -1;
     if (is_pipe(fd))
         return (int32_t)pipe_write(fd, buf, count);
+    if (fd == 1 || fd == 2)
+        return TTY.write((const char *)buf, count);
     const char *s = (const char *)buf;
     for (uint32_t i = 0; i < count; i++) {
         console_putc(s[i]);
@@ -279,21 +288,8 @@ static int32_t compat_write(int32_t fd, const void *buf, uint32_t count) {
 }
 
 static int32_t compat_read(int32_t fd, void *buf, uint32_t count) {
-    if (fd == 0) {
-        uint8_t *p = (uint8_t *)buf;
-        uint32_t got = 0;
-        asm_cli();
-        while (got < count) {
-            char c = ioq_getchar(&keyboard_ioq);
-            asm_sti();
-            p[got++] = (uint8_t)c;
-            if (c == '\n' || c == '\r')
-                break;
-            asm_cli();
-        }
-        asm_sti();
-        return (int32_t)got;
-    }
+    if (fd == 0)
+        return TTY.read((char *)buf, count);
     if (is_pipe(fd))
         return (int32_t)pipe_read(fd, buf, count);
     if (fd >= 0 && fd < 3)
@@ -779,6 +775,18 @@ uint32_t linux_compat_handler(struct Registers *r) {
         sys_sigreturn(r);
         ret = 0;
         break;
+    case SYS_LINUX_setpgid: {
+        int32_t n = compat_setpgid(a, b);
+        lc_seterrno(cur, n < 0 ? -n : 0);
+        ret = n < 0 ? (uint32_t)-1 : 0;
+        break;
+    }
+    case SYS_LINUX_getpgid: {
+        int32_t n = compat_getpgid(a);
+        lc_seterrno(cur, n < 0 ? -n : 0);
+        ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
+        break;
+    }
     case SYS_LINUX_sched_yield:
         ret = 0;
         break;

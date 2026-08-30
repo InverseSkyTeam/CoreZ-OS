@@ -5,6 +5,7 @@
 #include "kernel/mm/pool/pool.h"
 #include "drivers/net/netif.h"
 #include "drivers/net/pci.h"
+#include "drivers/char/console/io.h"
 
 #define E1000_VENDOR 0x8086
 #define E1000_DEVICE 0x100E
@@ -90,7 +91,9 @@ int e1000_init(NETIF *ifp) {
     s_regs = (volatile uint8_t *)ioremap(phy, 0x20000);
     if (!s_regs)
         return -1;
+    kprintf("[e1000] resetting\n");
     e1000_reset();
+    kprintf("[e1000] reset done\n");
 
     uint32_t ral = e_reg(REG_RA);
     uint32_t rah = e_reg(REG_RA + 4);

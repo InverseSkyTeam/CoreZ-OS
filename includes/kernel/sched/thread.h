@@ -69,6 +69,7 @@ struct task_struct {
     uint64_t fd_cloexec;
     uint8_t slot_used; 
 };
+extern struct task_struct task_table[MAX_TASKS];
 extern struct task_struct *idle_thread;
 extern struct list thread_all_list;
 extern struct RB_ROOT ready_rb_root;

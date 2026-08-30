@@ -3,6 +3,7 @@
 #include "kernel/fs/dir.h"
 #include "kernel/fs/fs.h"
 #include "kernel/assert.h"
+#include "drivers/char/console/io.h"
 #include "kernel/init/acpi/acpi.h"
 #include "lib/str/str.h"
 #include "libc/user/stdio.h"
@@ -44,6 +45,7 @@ static void wash_path(char *old_abs_path, char *new_abs_path) {
 
 void make_clear_abs_path(char *path, char *final_path) {
     char abs_path[MAX_PATH_LEN] = {0};
+    
     if (path[0] != '/') {
         if (getcwd(abs_path, MAX_PATH_LEN) != NULL) {
             if (!((abs_path[0] == '/') && (abs_path[1] == 0))) {

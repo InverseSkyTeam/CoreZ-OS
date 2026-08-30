@@ -28,38 +28,39 @@ def _force_utf8_stdout() -> None:
                 pass
 _force_utf8_stdout()
 ROOT       = Path(__file__).resolve().parent
-SRC_DIR    = ROOT / "src"
-BOOT_DIR   = SRC_DIR / "boot"
-CMD_DIR    = SRC_DIR / "command"
-KERNEL_DIR = SRC_DIR / "kernel"
+BOOT_DIR   = ROOT / "arch" / "x86" / "boot"
+APPS_DIR   = ROOT / "apps"
+KERNEL_DIR = ROOT / "kernel"
 BUILD_DIR  = ROOT / "build"
 LINKER_DIR = ROOT / "linker"
 SCRIPTS    = ROOT / "scripts"
-MUSL_SRC   = SRC_DIR / "app" / "musl"
+MUSL_SRC   = ROOT / "third_modules" / "musl"
 MUSL_ARCH  = "x86_64"
-SHELL_SRC  = SRC_DIR / "app" / "mr_micro_shell"
-NRSHELL    = CMD_DIR / "nr_shell"
+SHELL_SRC  = ROOT / "third_modules" / "mr_micro_shell"
+NRSHELL    = APPS_DIR / "nr_shell"
 CFLAGS_BASE = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
+    "-I", str(ROOT / "includes"),
 ]
 CFLAGS = CFLAGS_BASE
-KERNEL_CFLAGS = [
-    "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
+KERNEL_CFLAGS = CFLAGS_BASE + [
     "-mcmodel=large",
     "-mno-red-zone",
+    "-Wall", "-Wunused-function", "-Wunused-variable",
+    "-ffunction-sections", "-fdata-sections",
 ]
 UP_CFLAGS = CFLAGS_BASE + [
-    "-I", str(KERNEL_DIR / "lib" / "user"),
-    "-I", str(KERNEL_DIR / "lib" / "str"),
-    "-I", str(KERNEL_DIR / "lib"),
+    "-I", str(ROOT / "includes" / "libc" / "user"),
+    "-I", str(ROOT / "includes" / "lib"),
+    "-I", str(ROOT / "includes"),
 ]
 UP_LDFLAGS = ["-s", "-m", "elf_i386", "-Ttext", "0x8048000", "-e", "_start"]
 
 UP_CFLAGS_64 = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
-    "-I", str(KERNEL_DIR / "lib" / "user"),
-    "-I", str(KERNEL_DIR / "lib" / "str"),
-    "-I", str(KERNEL_DIR / "lib"),
+    "-I", str(ROOT / "includes" / "libc" / "user"),
+    "-I", str(ROOT / "includes" / "lib"),
+    "-I", str(ROOT / "includes"),
 ]
 UP_LDFLAGS_64 = ["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_start"]
 
@@ -77,7 +78,7 @@ MUSL_PREFIX = BUILD_DIR / "musl"
 MUSL_INC   = MUSL_PREFIX / "include"
 MUSL_LIB   = MUSL_PREFIX / "lib"
 MUSL_DEMO_CFLAGS = MUSL64_BASE + ["-I", str(MUSL_INC)]
-LC_CFLAGS = MUSL64_BASE + ["-I", str(KERNEL_DIR / "lib" / "compat")]
+LC_CFLAGS = MUSL64_BASE + ["-I", str(ROOT / "includes")]
 class Ansi:
     RESET   = "\x1b[0m"
     BOLD    = "\x1b[1m"
@@ -402,12 +403,12 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
     for stem in ("func", "io", "stub", "entry", "switch", "idle"):
         tasks.append(task_assemble_elf64(
             f"{stem}.o",
-            KERNEL_DIR / "asmCall" / f"{stem}.asm",
+            ROOT / "arch" / "x86" / "asm" / f"{stem}.asm",
             BUILD_DIR / f"{stem}.o", tools,
         ))
     tasks.append(task_assemble_bin(
         "ap_trampoline.bin",
-        KERNEL_DIR / "asmCall" / "ap_trampoline.asm",
+        ROOT / "arch" / "x86" / "asm" / "ap_trampoline.asm",
         BUILD_DIR / "ap_trampoline.bin", tools))
     tasks.append(task_objcopy_binary(
         "ap_tramp.o", BUILD_DIR / "ap_trampoline.bin",
@@ -415,39 +416,39 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         "_binary_ap_trampoline_bin_start",
         out_fmt="elf64-x86-64", out_arch="i386:x86-64"))
     tasks.append(task_assemble_elf64(
-        "up_start.o", CMD_DIR / "start.asm", BUILD_DIR / "up_start.o", tools,
+        "up_start.o", APPS_DIR / "start.asm", BUILD_DIR / "up_start.o", tools,
     ))
     kernel_c_sources = [
-        ("ioc.o",        KERNEL_DIR / "initer" / "io" / "io.c"),
-        ("pit.o",        KERNEL_DIR / "initer" / "pit" / "pit.c"),
-        ("pic.o",        KERNEL_DIR / "initer" / "pic" / "pic.c"),
-        ("apic.o",       KERNEL_DIR / "initer" / "apic" / "apic.c"),
-        ("acpi.o",     KERNEL_DIR / "initer" / "acpi" / "acpi.c"),
-        ("idt.o",        KERNEL_DIR / "initer" / "idt" / "idt.c"),
-        ("interrupt.o",  KERNEL_DIR / "initer" / "idt" / "interrupt.c"),
-        ("kernel.o",     KERNEL_DIR / "main.c"),
-        ("assert.o",     KERNEL_DIR / "assert.c"),
-        ("str.o",        KERNEL_DIR / "lib" / "str" / "str.c"),
-        ("rbtree.o",     KERNEL_DIR / "lib" / "rbtree" / "rbtree.c"),
-        ("bitmap.o",     KERNEL_DIR / "memory" / "bitmap" / "bitmap.c"),
-        ("pool.o",       KERNEL_DIR / "memory" / "pool" / "pool.c"),
-        ("access.o",     KERNEL_DIR / "memory" / "access.c"),
-        ("list.o",       KERNEL_DIR / "lib" / "list" / "list.c"),
-        ("thread.o",     KERNEL_DIR / "thread" / "thread.c"),
-        ("sync.o",       KERNEL_DIR / "thread" / "sync.c"),
-        ("percpu.o",     KERNEL_DIR / "thread" / "percpu.c"),
-        ("smp.o",        KERNEL_DIR / "initer" / "smp" / "smp.c"),
-        ("ioqueue.o",    KERNEL_DIR / "device" / "ioqueue.c"),
-        ("keyboard.o",   KERNEL_DIR / "device" / "keyboard.c"),
-        ("ide.o",        KERNEL_DIR / "device" / "ide.c"),
+        ("ioc.o",        ROOT / "drivers" / "char" / "console" / "io.c"),
+        ("pit.o",        KERNEL_DIR / "init" / "pit" / "pit.c"),
+        ("pic.o",        KERNEL_DIR / "init" / "pic" / "pic.c"),
+        ("apic.o",       KERNEL_DIR / "init" / "apic" / "apic.c"),
+        ("acpi.o",     KERNEL_DIR / "init" / "acpi" / "acpi.c"),
+        ("idt.o",        ROOT / "arch" / "x86" / "interrupt" / "idt.c"),
+        ("interrupt.o",  ROOT / "arch" / "x86" / "interrupt" / "interrupt.c"),
+        ("kernel.o",     KERNEL_DIR / "init" / "main.c"),
+        ("assert.o",     KERNEL_DIR / "init" / "assert.c"),
+        ("str.o",        ROOT / "lib" / "str" / "str.c"),
+        ("rbtree.o",     ROOT / "lib" / "rbtree" / "rbtree.c"),
+        ("bitmap.o",     KERNEL_DIR / "mm" / "bitmap" / "bitmap.c"),
+        ("pool.o",       KERNEL_DIR / "mm" / "pool" / "pool.c"),
+        ("access.o",     KERNEL_DIR / "mm" / "access.c"),
+        ("list.o",       ROOT / "lib" / "list" / "list.c"),
+        ("thread.o",     KERNEL_DIR / "sched" / "thread.c"),
+        ("sync.o",       KERNEL_DIR / "sched" / "sync.c"),
+        ("percpu.o",     KERNEL_DIR / "sched" / "percpu.c"),
+        ("smp.o",        KERNEL_DIR / "init" / "smp" / "smp.c"),
+        ("ioqueue.o",    ROOT / "drivers" / "char" / "ioqueue.c"),
+        ("keyboard.o",   ROOT / "drivers" / "char" / "keyboard.c"),
+        ("ide.o",        ROOT / "drivers" / "block" / "ide.c"),
         ("ext2.o",       KERNEL_DIR / "fs" / "ext2.c"),
         ("fs.o",         KERNEL_DIR / "fs" / "fs.c"),
         ("inode.o",      KERNEL_DIR / "fs" / "inode.c"),
         ("dir.o",        KERNEL_DIR / "fs" / "dir.c"),
         ("file.o",       KERNEL_DIR / "fs" / "file.c"),
         ("proc.o",       KERNEL_DIR / "fs" / "proc.c"),
-        ("gdt.o",        KERNEL_DIR / "initer" / "gdt" / "gdt.c"),
-        ("tss.o",        KERNEL_DIR / "initer" / "tss" / "tss.c"),
+        ("gdt.o",        KERNEL_DIR / "init" / "gdt" / "gdt.c"),
+        ("tss.o",        KERNEL_DIR / "init" / "tss" / "tss.c"),
         ("process.o",    KERNEL_DIR / "userprog" / "process.c"),
         ("exec.o",       KERNEL_DIR / "userprog" / "exec.c"),
         ("shell.o",      KERNEL_DIR / "shell" / "shell.c"),
@@ -459,12 +460,12 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         ("mmap.o",       KERNEL_DIR / "syscall" / "mmap.c"),
         ("futex.o",      KERNEL_DIR / "syscall" / "futex.c"),
         ("linux_compat.o", KERNEL_DIR / "syscall" / "linux_compat.c"),
-        ("usyscall.o",   KERNEL_DIR / "lib" / "user" / "syscall.c"),
-        ("ustdio.o",     KERNEL_DIR / "lib" / "user" / "stdio.c"),
+        ("usyscall.o",   ROOT / "libc" / "user" / "syscall.c"),
+        ("ustdio.o",     ROOT / "libc" / "user" / "stdio.c"),
         ("wait_exit.o",  KERNEL_DIR / "userprog" / "wait_exit.c"),
         ("fork.o",       KERNEL_DIR / "userprog" / "fork.c"),
         ("clone.o",      KERNEL_DIR / "userprog" / "clone.c"),
-        ("mouse.o",      KERNEL_DIR / "device" / "mouse.c"),
+        ("mouse.o",      ROOT / "drivers" / "char" / "mouse.c"),
         ("gfx.o",        KERNEL_DIR / "gui" / "gfx.c"),
         ("shm.o",        KERNEL_DIR / "gui" / "shm.c"),
         ("guiserver.o",  KERNEL_DIR / "gui" / "server.c"),
@@ -505,11 +506,11 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         ("cow_stress",  "cow_stress.c",  "_start", []),
     ]
     user_lib_sources = [
-        (KERNEL_DIR / "lib" / "user", "stdio.c",   "up_stdio.o"),
-        (KERNEL_DIR / "lib" / "user", "syscall.c", "up_syscall.o"),
-        (KERNEL_DIR / "lib" / "str",  "str.c",     "up_str.o"),
-        (KERNEL_DIR / "lib" / "rbtree", "rbtree.c",  "up_rbtree.o"),
-        (KERNEL_DIR / "lib" / "user", "stdlib.c",  "up_stdlib.o"),
+        (ROOT / "libc" / "user", "stdio.c",   "up_stdio.o"),
+        (ROOT / "libc" / "user", "syscall.c", "up_syscall.o"),
+        (ROOT / "lib" / "str",  "str.c",     "up_str.o"),
+        (ROOT / "lib" / "rbtree", "rbtree.c",  "up_rbtree.o"),
+        (ROOT / "libc" / "user", "stdlib.c",  "up_stdlib.o"),
     ]
     def compile_user_lib(out_dir: Path) -> List[Path]:
         outs = []
@@ -530,7 +531,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
                     "clone_demo": "up_clone_demo"}
         nick = nick_map.get(prog_name, f"up_{prog_name}")
         prog_obj = BUILD_DIR / f"{nick}.o"
-        tasks.append(task_cc(nick, CMD_DIR / src_c, prog_obj, tools,
+        tasks.append(task_cc(nick, APPS_DIR / src_c, prog_obj, tools,
                              UP_CFLAGS_64 + opt_flags))
         elf_flags = list(UP_LDFLAGS_64)
         if entry_flag:
@@ -544,12 +545,12 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         tasks.append(elf_task)
         user_elves.append(elf_task)
     tasks.append(task_assemble_elf64(
-        "lc_start.o", CMD_DIR / "lc_crt0.asm", BUILD_DIR / "lc_start.o", tools,
+        "lc_start.o", APPS_DIR / "lc_crt0.asm", BUILD_DIR / "lc_start.o", tools,
     ))
-    lc_libc = task_cc("lc_libc.o", KERNEL_DIR / "lib" / "compat" / "lc_libc.c",
+    lc_libc = task_cc("lc_libc.o", ROOT / "libc" / "compat" / "lc_libc.c",
                       BUILD_DIR / "lc_libc.o", tools, LC_CFLAGS)
     tasks.append(lc_libc)
-    lc_demo_c = task_cc("lc_demo.o", CMD_DIR / "lc_demo.c",
+    lc_demo_c = task_cc("lc_demo.o", APPS_DIR / "lc_demo.c",
                         BUILD_DIR / "lc_demo.o", tools, LC_CFLAGS)
     tasks.append(lc_demo_c)
     lc_elf = task_link("lc_demo.elf", BUILD_DIR / "lc_demo.elf", tools,
@@ -577,7 +578,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         flags=["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_start"])
     tasks.append(nr_shell_elf)
     user_elves.append(nr_shell_elf)
-    net_dir = KERNEL_DIR / "net"
+    net_dir = ROOT / "drivers" / "net"
     net_cflags = KERNEL_CFLAGS + ["-I", str(net_dir)]
     net_c_sources = [
         ("rtl8139.o", net_dir / "rtl8139.c"),
@@ -597,7 +598,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
     tasks.append(task_python(
         "font_subset.ttf",
         SCRIPTS / "make_font_subset.py",
-        [str(KERNEL_DIR / "lib" / "assets" / "font.ttf"), str(font_subset)],
+        [str(ROOT / "lib" / "assets" / "font.ttf"), str(font_subset)],
         out=font_subset,
     ))
     kernel_objs_names = [
@@ -621,6 +622,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
     tasks.append(task_link(
         "kernel.elf", kernel_elf, tools, kernel_link_objs,
         script=LINKER_DIR / "kernel.ld",
+        flags=["--gc-sections"],
     ))
     kernel_bin = BUILD_DIR / "kernel.bin"
     tasks.append(Task(
@@ -671,22 +673,22 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
             group="musl-lib",
             description="configure+make+install native musl 1.2.6",
         ))
-        musl_demo_c = task_cc("musl_demo.o", CMD_DIR / "musl_demo.c",
+        musl_demo_c = task_cc("musl_demo.o", APPS_DIR / "musl_demo.c",
                               BUILD_DIR / "musl_demo.o", tools, MUSL_DEMO_CFLAGS)
         musl_demo_c.optional = True
         tasks.append(musl_demo_c)
-        libc_tests_main = task_cc("libc_tests_main.o", CMD_DIR / "libc_tests_main.c",
+        libc_tests_main = task_cc("libc_tests_main.o", APPS_DIR / "libc_tests_main.c",
                                   BUILD_DIR / "libc_tests_main.o", tools, MUSL_DEMO_CFLAGS)
         libc_tests_main.optional = True
         tasks.append(libc_tests_main)
         tests_sources = [
-            ("test_string.o", SRC_DIR / "app" / "libc-testsuite" / "string.c"),
-            ("test_qsort.o", SRC_DIR / "app" / "libc-testsuite" / "qsort.c"),
-            ("test_strtol.o", SRC_DIR / "app" / "libc-testsuite" / "strtol.c"),
-            ("test_strtod.o", SRC_DIR / "app" / "libc-testsuite" / "strtod.c"),
-            ("test_basename.o", SRC_DIR / "app" / "libc-testsuite" / "basename.c"),
-            ("test_dirname.o", SRC_DIR / "app" / "libc-testsuite" / "dirname.c"),
-            ("test_fnmatch.o", SRC_DIR / "app" / "libc-testsuite" / "fnmatch.c"),
+            ("test_string.o", ROOT / "third_modules" / "libc-testsuite" / "string.c"),
+            ("test_qsort.o", ROOT / "third_modules" / "libc-testsuite" / "qsort.c"),
+            ("test_strtol.o", ROOT / "third_modules" / "libc-testsuite" / "strtol.c"),
+            ("test_strtod.o", ROOT / "third_modules" / "libc-testsuite" / "strtod.c"),
+            ("test_basename.o", ROOT / "third_modules" / "libc-testsuite" / "basename.c"),
+            ("test_dirname.o", ROOT / "third_modules" / "libc-testsuite" / "dirname.c"),
+            ("test_fnmatch.o", ROOT / "third_modules" / "libc-testsuite" / "fnmatch.c"),
         ]
         for stem, src in tests_sources:
             t = task_cc(stem, src, BUILD_DIR / stem, tools, MUSL_DEMO_CFLAGS)

@@ -1,5 +1,5 @@
-#ifndef NITIAN_LINUX_ABI_H
-#define NITIAN_LINUX_ABI_H
+#ifndef COREZ_LINUX_ABI_H
+#define COREZ_LINUX_ABI_H
 
 #include <stdint.h>
 

@@ -11,7 +11,7 @@ extern "C" {
 #define shell_putc(x) write(1, &(x), 1)
 
 #define NR_SHELL_MAX_LINE_SZ  100
-#define NR_SHELL_PROMPT       "nitian"
+#define NR_SHELL_PROMPT       "corez"
 #define NR_SHELL_MAX_PARAM_NUM 16
 
 #define NR_SHELL_SHOW_LOGO

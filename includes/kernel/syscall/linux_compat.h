@@ -1,6 +1,6 @@
 /* "unterschied/licenses/GPL-2.0" (仅参考流程) */
-#ifndef NITIAN_LINUX_COMPAT_H
-#define NITIAN_LINUX_COMPAT_H
+#ifndef COREZ_LINUX_COMPAT_H
+#define COREZ_LINUX_COMPAT_H
 
 #include "kernel/asm/stub.h"
 #include <stdint.h>

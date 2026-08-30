@@ -205,7 +205,7 @@ class Console:
         bar = "═" * 70
         c.writeln()
         c.writeln(f"{c._c(Ansi.CYAN)}{c._c(Ansi.BOLD)}{bar}{c._c(Ansi.RESET)}")
-        c.writeln(f"{c._c(Ansi.BR_CYN)}{c._c(Ansi.BOLD)}  NiTian OS  "
+        c.writeln(f"{c._c(Ansi.BR_CYN)}{c._c(Ansi.BOLD)}  CoreZ OS   "
                   f"{c._c(Ansi.DIM)}{c._c(Ansi.GRAY)}build system  "
                   f"{c._c(Ansi.RESET)}{c._c(Ansi.DIM)}·  {version}{c._c(Ansi.RESET)}")
         c.writeln(f"{c._c(Ansi.CYAN)}{c._c(Ansi.BOLD)}{bar}{c._c(Ansi.RESET)}")
@@ -964,7 +964,7 @@ def do_run(console: Console, stats: BuildStats,
 def main(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="build.py",
-        description="Cross-platform NiTian OS build system",
+        description="Cross-platform CoreZ OS build system",
     )
     parser.add_argument("target", nargs="?", default="floppy",
                         choices=["all", "floppy", "run", "clean"],
@@ -973,7 +973,7 @@ def main(argv: Sequence[str]) -> int:
                         help="disable ANSI colour output")
     parser.add_argument("--jobs", "-j", type=int, default=1,
                         help="parallel compile jobs (default: 1)")
-    parser.add_argument("--version", action="version", version="nitian-build 1.0")
+    parser.add_argument("--version", action="version", version="corez-build 1.0")
     parser.add_argument("--sm", type=int, default=1, metavar="N",
                         help="SMP CPU 数(qemu -smp N, 多核启动验证; 默认 1)")
     parser.add_argument("--gdb", action="store_true",

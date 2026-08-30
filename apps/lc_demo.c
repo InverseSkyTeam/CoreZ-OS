@@ -5,7 +5,7 @@ int main(int argc, char **argv, char **envp) {
     (void)argv;
     (void)envp;
 
-    lc_puts("\n[NiTianOS compat shim] started\n");
+    lc_puts("\n[CoreZ compat shim] started\n");
 
     long pid = lc_getpid();
     lc_puts("  getpid() = ");

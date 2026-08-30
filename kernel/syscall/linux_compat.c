@@ -154,8 +154,8 @@ static int32_t compat_uname(void *buf) {
     struct LINUX_UTSNAME u;
     memset(&u, 0, sizeof(u));
     memcpy(u.sysname, "Linux", 6);
-    memcpy(u.nodename, "nitian-os", 10);
-    memcpy(u.release, "5.10.0-nitian", 14);
+    memcpy(u.nodename, "corez", 6);
+    memcpy(u.release, "5.10.0-corez", 13);
     memcpy(u.version, "#1 NitianOS SMP", 16);
     memcpy(u.machine, "x86_64", 7);
     memcpy(u.domainname, "(none)", 7);

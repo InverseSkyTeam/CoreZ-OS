@@ -493,6 +493,6 @@ void wm_draw_bar(struct gfx_canvas *c, struct gfx_rect *clip) {
     strcat(right, "s");
     int rx = comp_screen_w() - 4 - (int)strlen(right) * 8;
     gfx_text(c, rx, 3, right, TH_MUTED, -1);
-    int bx = rx - 6 - (int)strlen("NiTianOS") * 8;
-    gfx_text(c, bx, 3, "NiTianOS", TH_ACCENT, -1);
+    int bx = rx - 6 - (int)strlen("CoreZOS") * 8;
+    gfx_text(c, bx, 3, "CoreZOS", TH_ACCENT, -1);
 }

@@ -25,7 +25,7 @@ char *argv[MAX_ARG_NR];
 static int32_t argc = -1;
 
 void print_prompt(void) {
-    printf("[nitian@nitian-os %s]$ ", cwd_cache);
+    printf("[corez@corez %s]$ ", cwd_cache);
 }
 
 static void shell_erase(void) {

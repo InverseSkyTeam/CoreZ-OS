@@ -1,10 +1,10 @@
-# NiTianOS
+# CoreZ OS
 
 > 一个从零编写的 x86\_64 长模式操作系统内核学习项目。
 
 ## 简介
 
-NiTianOS 是一个用于学习操作系统原理的教学型内核，从 16 位实模式引导扇区起步，经
+CoreZ OS 是一个用于学习操作系统原理的教学型内核，从 16 位实模式引导扇区起步，经
 加载器进入保护模式并开启长模式，最终运行一个支持多任务、用户进程、文件系统与
 网络的 64 位内核。
 
@@ -97,7 +97,7 @@ libc-testsuite）与第三方代码（mongoose）。
 ## 目录结构
 
 ```
-NiTianOS/
+CoreZOS/
 ├── build.py                # 构建系统（探测工具链、并行编译、打包镜像、启动 QEMU）
 ├── linker/kernel.ld        # 内核链接脚本
 ├── scripts/
@@ -153,10 +153,10 @@ P2 ext2 数据分区，并写入用户程序）；`--boot-floppy` 可改用软�
 进入 shell 后可直接使用内置命令或运行用户程序，例如：
 
 ```
-nitian@nitian-os /$ ls
-nitian@nitian-os /$ fork_demo.elf
-nitian@nitian-os /$ cat.elf /proc/meminfo
-nitian@nitian-os /$ gui
+corez@corez /$ ls
+corez@corez /$ fork_demo.elf
+corez@corez /$ cat.elf /proc/meminfo
+corez@corez /$ gui
 ```
 
 QEMU 参数默认挂载 e1000 网卡 + user 网络后端（`hostfwd tcp::8765-:8765`），

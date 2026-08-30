@@ -264,6 +264,9 @@ class Console:
     def summary(self, rows: Sequence[Tuple[str, str, str]]) -> None:
         c = self
         c.writeln()
+        import json
+        with open(ROOT / "compile_commands.json", "w", encoding="utf-8") as f:
+            json.dump(COMPILE_COMMANDS, f, indent=1)
         c.writeln(f"  {c._c(Ansi.BOLD)}{c._c(Ansi.BR_WHT)}Summary{c._c(Ansi.RESET)}")
         c.writeln(f"  {c._c(Ansi.GRAY)}{'─' * 66}{c._c(Ansi.RESET)}")
         for label, value, color in rows:
@@ -328,11 +331,18 @@ def task_assemble_elf64(name: str, src: Path, out: Path, tools: Tools) -> Task:
         out=out, deps=[], description=str(src.relative_to(ROOT)),
         group="asm",
     )
+COMPILE_COMMANDS = []
+
 def task_cc(name: str, src: Path, out: Path, tools: Tools, flags: List[str], target: str = "x86_64-freestanding") -> Task:
     cmd = [*tools.cc]
     if tools.is_zig and target:
         cmd.append(f"--target={target}")
     cmd += ["-c", str(src), *flags, "-o", str(out)]
+    COMPILE_COMMANDS.append({
+        "directory": str(ROOT),
+        "arguments": cmd,
+        "file": str(src),
+    })
     return Task(
         name=name,
         cmd=cmd,

@@ -7,8 +7,11 @@
 
 struct tss tss;
 
+uint64_t syscall_kstack_top_data = 0;
+
 void update_tss_esp(struct task_struct *pthread) {
     tss.rsp0 = (uint64_t)pthread->kernel_stack_top;
+    syscall_kstack_top_data = (uint64_t)pthread->kernel_stack_top;
 }
 
 void tss_init(void) {

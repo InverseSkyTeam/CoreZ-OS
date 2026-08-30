@@ -175,10 +175,13 @@ static uint32_t palloc_pages_raw(struct pool *pool, uint32_t cnt) {
     if (idx == -1) {
         return 0;
     }
+    ASSERT(idx + cnt <= (int)(pool->pool_bitmap.btmp_bytes_len * 8));
     for (uint32_t i = 0; i < cnt; i++) {
         bitmap_set(&pool->pool_bitmap, (uint32_t)idx + i, 1);
     }
-    return pool->phy_addr_start + (uint32_t)idx * PAGE_SIZE;
+    uint32_t phy = pool->phy_addr_start + (uint32_t)idx * PAGE_SIZE;
+    ASSERT((phy & 0xfffu) == 0);
+    return phy;
 }
 
 static uint64_t cur_pml4(void) {

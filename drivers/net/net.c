@@ -2,6 +2,7 @@
 
 #include "arch/x86/interrupt/interrupt.h"
 #include "drivers/char/console/io.h"
+#include "arch/cpu.h"
 #include "kernel/init/pit/pit.h"
 #include "lib/str/str.h"
 #include "kernel/sched/thread.h"
@@ -54,7 +55,19 @@ static void net_thread(void *arg) {
     }
 }
 
+volatile uint32_t net_guard_before = 0x5A5A0001u;
 int net_enable = 0;
+volatile uint32_t net_guard_after = 0x5A5A0002u;
+
+void net_check_guards(void) {
+    if (net_guard_before != 0x5A5A0001u || net_guard_after != 0x5A5A0002u ||
+        (net_enable != 0 && net_enable != 1)) {
+        kprintf("\n[CORRUPT] net_enable=%d before=%x after=%x\n",
+                net_enable, net_guard_before, net_guard_after);
+        for (;;)
+            cpu_hlt();
+    }
+}
 
 void net_init(void) {
     if (!net_enable) {

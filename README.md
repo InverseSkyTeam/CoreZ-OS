@@ -1,127 +1,194 @@
-# NiTianOS
+# CoreZ OS
 
-> 一个从零编写的 x86 32 位保护模式操作系统内核学习项目。
+> 一个从零编写的 x86\_64 长模式操作系统内核学习项目。
 
 ## 简介
 
-` NiTianOS` 是一个用于学习操作系统原理的教学型内核。它从 16 位实模式下的引导扇区起步，经加载器进入 32 位保护模式，并最终运行一个最小化的 C 内核。项目聚焦于理解底层机制：分段、中断、中断控制器与定时器。
+CoreZ OS 是一个用于学习操作系统原理的教学型内核，从 16 位实模式引导扇区起步，经
+加载器进入保护模式并开启长模式，最终运行一个支持多任务、用户进程、文件系统与
+网络的 64 位内核。
 
-当前内核已能在 QEMU 中引导、开启分页并稳定产生定时器中断（屏幕持续打印 `tick` 计数），证明 `IDT → PIC → PIT → IRQ` 的完整中断链路工作正常。内核运行于 **Higher Half**（虚拟地址 `0xC0000000+`），低端 3GB 地址空间留给未来的用户进程。
+当前内核已能在 QEMU 中稳定引导与运行：图形化 Boot Menu（VBE 1024x768 + KASLR）、
+多任务与抢占式调度、COW fork 的用户进程、ext2 文件系统、`/proc` 伪文件系统、
+TCP/UDP 网络栈、简易 GUI 合成器，以及一个可执行内置命令与用户程序的 shell。
 
 ## 已实现功能
 
-| 模块 | 说明 |
-|------|------|
-| 引导 (Boot) | `boot.asm`：512 字节主引导扇区，加载 `loader.bin` |
-| 加载器 (Loader) | `loader.asm`：开启 VBE 图形模式、探测物理内存 (E820)、设置 GDT、进入保护模式、将内核拷贝到高位地址并跳入 |
-| 全局描述符表 (GDT) | 在 loader 中建立代码段 / 数据段描述符 |
-| 中断描述符表 (IDT) | `idt.c` 建立 256 个中断门；`stub.asm` 用宏统一生成全部入口 |
-| CPU 异常 | `isr0–isr31`（区分带 / 不带错误码），由 `isr_handler` 打印异常名与现场寄存器后停机 |
-| 硬件中断 (IRQ) | `irq0–irq15`，由 `irq_handler` 分发并发送 EOI |
-| 中断控制器 (PIC) | `pic.c` 初始化 8259A 双片，将 IRQ 重映射至 `0x20–0x2F`，放开 IRQ0/IRQ1 |
-| 定时器 (PIT) | `pit.c` 配置 8253/8254 通道 0 为 100 Hz 速率发生器，驱动 IRQ0 |
-| 屏幕输出 | `io.c` 文本模式输出与 `printf`，支持 `%d %u %x %X %c %s` |
-| 断言 (ASSERT) | `assert.h / assert.c`：失败时打印表达式、文件名、行号并停机（参考 OSDev Assertions） |
-| 字符串库 | `lib/str`：strlen/strcpy/strcmp/strcat/strchr + memcpy/memset/memmove/memcmp（参考 OSDev C Library） |
-| 位图 | `memory/bitmap`：位图分配器，高位在前（参考《操作系统真相还原》第5章） |
-| 分页 + Higher Half | `entry.asm` 物理入口建页表（恒等 256MB + 高半区内核 16MB + VRAM）→ 开分页 → 跳转 `0xC0000000+` 运行；内核虚拟地址 `0xC0280000`，物理加载 `0x280000` |
-| 内存池 | `memory/pool`：E820 探测物理内存，位图管理页框，`palloc`/`pfree`（参考《操作系统真相还原》第8章） |
-| 线程与调度 | `thread`：任务表 + 就绪队列 + 时间片调度，`kernel_thread` 创建内核线程，`switch_to` 汇编上下文切换（参考第9章） |
-| 同步机制 | `thread/sync`：信号量 `sema_down/up` 与可重入锁 `lock_acquire/release`，关中断保证原子性（参考第11章） |
-| 环形缓冲区 | `device/ioqueue`：生产者-消费者模型，满/空时阻塞等待，`ioq_putchar`/`ioq_getchar`（参考第11章） |
-| 键盘驱动 | `device/keyboard` + IRQ1 分发：8042 扫描码 → 双键位 keymap（shift/caps），字符写入键盘环形缓冲区 |
-| 任务状态段 (TSS) | `initer/gdt` 重建内核 GDT（数据/代码/TSS/用户段描述符）；`initer/tss` 传统 104 字节 TSS，`ltr` 加载 TR，为 ring3 用户进程的中断栈切换准备 esp0/ss0（参考第11章） |
-| 用户进程 | `userprog/process`：`process_execute` 创建进程（独立页目录 + 用户虚拟地址位图 + ring3 栈），`start_process` 用 `intr_exit` 模拟中断返回降特权级进入用户态，`schedule` 中 `process_activate` 切换页表并更新 TSS.esp0；PIT 中断驱动抢占式调度（参考第11章） |
-| 内核虚拟堆 | `memory/pool` 的 `get_kernel_pages`：高半区 `0xC1000000` 起虚拟地址池，任务内核栈/位图都在此处（用户进程页表可见，保证切换安全） |
+### 引导与平台
+
+| 模块           | 说明                                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------------------- |
+| 引导 (Boot)    | `boot.asm`：512 字节主引导扇区，从硬盘分区加载 loader                                                                               |
+| 加载器 (Loader) | `loader.asm`：FAT32 读取内核、VBE 图形模式、E820 内存探测、Boot Menu（倒计时/上下键选择 + 重启项）、KASLR 内核加载地址随机化、进入保护模式 → 长模式、构造 Multiboot2 信息 |
+| 中断           | `initer/idt`：256 门 IDT，ring3 异常转信号（SIGSEGV 等），COW 缺页处理                                                              |
+| 中断控制器        | `initer/apic`：Local APIC + IPI + LAPIC 定时器（校准 per-tick）；`initer/pic`/`pit`：PIC + PIT 回退路径                           |
+| ACPI         | `initer/acpi`：RSDP/RSDT/FADT 探测与 ACPI 使能                                                                            |
+| SMP          | `initer/smp`：AP trampoline（低 1MB 实模式跳板）+ INIT/SIPI 唤醒 + 每 CPU GDT/栈                                                 |
+| 屏幕输出         | `initer/io`：VBE 线性帧缓冲上绘制字库文本，`kprintf`/`console_putc`，debugcon (0xE9) 镜像输出                                          |
+
+### 内存管理
+
+| 模块       | 说明                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------ |
+| 物理内存池    | `memory/pool`：E820 探测 + 位图管理物理页框，`palloc`/`pfree`/`palloc_pages`，`mem_lock` 保护                   |
+| 内核虚拟地址池  | `KERNEL_VADDR_START` 起的 vaddr 位图，`ioremap` 设备映射（NX/PCD）                                          |
+| 内核堆      | `get_kernel_pages`：高半区（`VIRT_OF = phys + 0xC0000000`）直接映射分配                                      |
+| COW fork | `userprog/fork`：页表遍历复制，写时复制（`COW_FLAG` + 引用计数 `frame_owner`），缺页时 `page_cow_resolve` 原子完成决策/拷贝/递减 |
+| 用户地址空间   | 每进程独立 PML4 + 用户 vaddr 位图；`mmap`/`brk` 堆扩展                                                        |
+
+### 进程与调度
+
+| 模块         | 说明                                                                            |
+| ---------- | ----------------------------------------------------------------------------- |
+| 线程/进程      | `thread`：任务槽（`MAX_TASKS=64`，可回收）+ 红黑树就绪队列 + 时间片抢占调度，DIED 线程由调度器统一回收（栈/页目录/槽位） |
+| 用户进程       | `userprog/process`：ring3（`intr_exit` 模拟中断返回）、TSS、TLS（`set_thread_area`）       |
+| fork/clone | `userprog/fork`、`userprog/clone`：COW 地址空间复制；clone 共享页目录与 fd 表（线程语义）           |
+| exec       | `userprog/exec`：ELF32/ELF64 加载、辅助向量（auxv）、参数/环境入栈、W^X（可执行段 RX）                |
+| 退出/等待      | `userprog/wait_exit`：资源释放、孤儿进程自动终止回收、`wait`/`waitpid`                         |
+
+### 同步与内核服务
+
+| 模块       | 说明                                                                                                                          | <br /> |
+| -------- | --------------------------------------------------------------------------------------------------------------------------- | :----- |
+| 同步原语     | `thread/sync`：信号量、可重入锁（`holder`/`holder_repeat_nr` 由信号量自带 spinlock 保护，多核安全）、自旋锁                                             | <br /> |
+| 系统调用     | `syscall`：`int 0x80`（原生 ABI）+ `syscall` 指令路径 + musl 兼容层（`linux_compat.c`）；ring0 内核线程调用与 ring3 用户调用分别校验（`access_ok` 仅约束用户指针） | <br /> |
+| 信号       | `syscall/signal`：SIGSEGV/SIGINT 等常用信号、`sigaction`/`sigprocmask`/`sigreturn`、Ctrl+C 终止前台进程                                   | <br /> |
+| futex    | `syscall/futex`：FUTEX\_WAIT/WAKE                                                                                            | <br /> |
+| 文件系统     | `fs/ext2`：ext2 只读元数据 + 读写的完整实现（inode/块分配释放、目录项增删、间接块、truncate），全局可重入锁串行化元数据操作                                               | <br /> |
+| 伪文件系统    | `fs/proc`：`/proc/meminfo`                                                                                                   | <br /> |
+| 文件表      | `fs/file`：全局 file 表 + 每进程 fd 表，引用计数（fork/clone/dup 共享），`file_table_lock` 保护槽位分配                                             | <br /> |
+| 管道       | `shell/pipe`：ioqueue 实现的匿名管道，`pipe`/`fd_redirect`，shell 支持 \`cmd1                                                           | cmd2\` |
+| inode 缓存 | `fs/inode`：每分区红黑树缓存打开的 inode（`i_open_cnt` 引用计数，开/关中断对称保护）                                                                   | <br /> |
+
+### 设备与网络
+
+| 模块  | 说明                                                                                                                                         |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 键盘  | `device/keyboard`：8042 扫描码 → keymap（shift/caps/ctrl/alt），ioqueue 缓冲，GUI hook                                                               |
+| 鼠标  | `device/mouse`：PS/2 aux 通道，三字节包解析                                                                                                          |
+| 网卡  | `net/e1000`：PCI 探测、MMIO 寄存器、TX/RX 描述符环                                                                                                     |
+| 网络栈 | `net`：Ethernet/ARP/IP/ICMP/TCP/UDP + BSD socket API（`socket`/`bind`/`connect`/`send`/`recv`/`select`），QEMU user 网络下 DHCP 式自动配置 `10.0.2.15` |
+| GUI | `gui`：简易合成器（窗口合成、鼠标、键盘事件分发），shell 输入 `gui` 进入                                                                                              |
+
+### Shell 与用户程序
+
+内置命令：`ls` `cd` `pwd` `mkdir` `rmdir` `rm` `clear` `ps` `gui` `shutdown`；
+支持外部程序执行与管道。
+
+`src/command/` 下的用户程序（由内核 libc 编译为 ELF）：
+
+| 程序                                          | 演示内容                         |
+| ------------------------------------------- | ---------------------------- |
+| `prog_no_arg` / `prog_arg`                  | 基本执行 / 参数传递                  |
+| `fork_demo` / `orphan_demo`                 | fork / 孤儿进程回收 / `wait(NULL)` |
+| `cow_stress`                                | COW 压力测试                     |
+| `prog_pipe`                                 | 管道                           |
+| `heap_demo` / `mmap_demo` / `mmap2_demo`    | 堆与 mmap                      |
+| `signal_demo` / `futex_demo` / `clone_demo` | 信号 / futex / clone 线程        |
+| `cwd_test`                                  | `getcwd` 边界                  |
+| `cat`                                       | 文件读取（支持 `/proc/meminfo`）     |
+| `ping` / `udp_echo`                         | ICMP ping / UDP 回显服务         |
+| `nr_shell`                                  | 移植的 nr\_micro\_shell         |
+| `font_demo`                                 | TTF 字体渲染                     |
+
+`src/app/` 下另有 musl 源码（`--with-musl-lib` 构建完整 libc 并运行
+libc-testsuite）与第三方代码（mongoose）。
 
 ## 目录结构
 
 ```
-NiTianOS/
-├── Makefile                # 交叉编译构建（nasm + zig cc + ld.lld）
-├── linker/
-│   └── kernel.ld           # 内核链接脚本
+CoreZOS/
+├── build.py                # 构建系统（探测工具链、并行编译、打包镜像、启动 QEMU）
+├── linker/kernel.ld        # 内核链接脚本
 ├── scripts/
-│   ├── mkfloppy.py         # 将 boot/loader/kernel 拼成软盘镜像
-│   └── qemu_shot.py        # QEMU 无头运行并截图验证
-├── src/
-│   ├── boot/
-│   │   ├── boot.asm        # Stage 1：引导扇区
-│   │   └── loader.asm      # Stage 2：进入保护模式、建立 GDT/IDT
-│   └── kernel/
-│       ├── main.c          # 内核入口 KMain
-│       ├── assert.c        # ASSERT 实现
-│       ├── include/
-│       │   ├── assert.h
-│       │   ├── asmFunc.h   # C 调用汇编函数声明
-│       │   └── asm/stub.h  # 中断栈帧结构
-│       ├── asmCall/
-│       │   ├── entry.asm   # 内核物理入口：建页表、开分页、跳转高半区
-│       │   ├── func.asm    # 底层辅助（含 CR0/CR3 操作）
-│       │   ├── io.asm      # 端口 I/O
-│       │   └── stub.asm    # 中断入口桩
-│       ├── lib/
-│       │   ├── str/        # 字符串库
-│       │   └── assets/     # 资源文件目录
-│       ├── memory/
-│       │   ├── bitmap/     # 位图分配器
-│       │   └── pool/       # 物理内存池（palloc/pfree）
-│       └── initer/
-│           ├── io/         # 屏幕与 printf
-│           ├── pic/        # 8259A PIC
-│           ├── pit/        # 8253/8254 定时器
-│           ├── idt/        # IDT 与中断处理
-│           ├── gdt/        # 内核 GDT 表与描述符构造
-│           └── tss/        # 任务状态段（esp0/ss0，ltr 加载 TR）
-└── build/                  # 构建产物（floppy.img 等）
+│   ├── make_ext2.py        # 生成 test_hd.img（FAT32 引导分区 + ext2 数据分区）
+│   └── mkfloppy.py         # 软盘镜像
+└── src/
+    ├── boot/               # boot.asm 引导扇区 + loader.asm（VBE/KASLR/长模式）
+    ├── command/            # 用户测试程序（见上表）
+    └── kernel/
+        ├── main.c          # kmain：初始化序列（mm/gdt/tss/idt/syscall/apic/acpi/...）
+        ├── asmCall/        # entry/switch/stub/func 等汇编
+        ├── device/         # keyboard/mouse/ide/ioqueue
+        ├── fs/             # ext2/file/inode/dir/proc
+        ├── gui/            # 合成器/gfx/server/wm/clients
+        ├── include/        # 公共头（asmFunc.h、stub.h 等）
+        ├── initer/         # io/gdt/tss/idt/apic/pic/pit/acpi/smp
+        ├── lib/            # str/list/rbtree/bitmap + 用户态 libc(lib/user)
+        ├── memory/         # pool/bitmap/access(copy_from_user 等)
+        ├── net/            # e1000/eth/arp/ip/icmp/tcp/udp/socket
+        ├── shell/          # shell/pipe/buildin_cmd
+        ├── syscall/        # syscall/file_syscall/signal/futex/mmap/linux_compat
+        ├── thread/         # thread/sync/percpu
+        └── userprog/       # process/fork/clone/exec/wait_exit
 ```
 
 ## 构建与运行
 
 ### 工具链
 
-- `nasm` —— 汇编（`elf32` / `bin`）
-- `zig cc` —— C 编译（`-target x86-freestanding -ffreestanding`）
-- `ld.lld` —— 链接
-- `objcopy` —— 提取纯二进制
-- `python3` —— 镜像打包脚本
-- `qemu-system-i386` —— 运行验证
+- `nasm` —— 汇编（elf64/bin）
+- `zig cc`（或 gcc/clang 交叉）—— C 编译（freestanding）
+- `ld.lld` / `ld` —— 链接
+- `python3` —— 构建系统与镜像脚本
+- `qemu-system-x86_64` —— 运行验证
 
 ### 构建
 
 ```bash
-make          
-make clean    
+python3 build.py            # 构建内核与 floppy.img
+python3 build.py run        # 构建并在 QEMU 中启动（自动生成 test_hd.img）
+python3 build.py run --sm 2 # SMP 启动验证
+python3 build.py run --gdb  # GDB stub (-s -S)，配合 build/kernel.elf 调试
+python3 build.py clean
 ```
+
+`run` 默认以 `build/test_hd.img` 硬盘镜像引导（自动生成：P1 FAT32 引导分区 +
+P2 ext2 数据分区，并写入用户程序）；`--boot-floppy` 可改用软盘镜像。
+`--with-musl-lib` 会额外编译完整 musl libc 并构建 libc-testsuite。
 
 ### 运行
 
-```bash
-make run
-# 或者手动指定
-qemu-system-i386 -m 4G -fda build/floppy.img
+启动后进入 Boot Menu（5 秒倒计时，上下键/数字键选择，回车立即引导）。
+进入 shell 后可直接使用内置命令或运行用户程序，例如：
+
+```
+corez@corez /$ ls
+corez@corez /$ fork_demo.elf
+corez@corez /$ cat.elf /proc/meminfo
+corez@corez /$ gui
 ```
 
-内核启动后将在屏幕打印启动信息，并持续输出定时器 `tick` 计数。随后创建生产者/消费者演示线程（100 字符乒乓传输）与键盘回显线程，在 QEMU 中输入按键可在屏幕看到 `[KBD] line: ...` 行回显。
+QEMU 参数默认挂载 e1000 网卡 + user 网络后端（`hostfwd tcp::8765-:8765`），
+内核自动配置 `10.0.2.15`，可用 `ping.elf` 测试连通性。
 
-> `printf` 会同步镜像输出到 QEMU debugcon（端口 0xE9），因此 `make run` 的 `-debugcon stdio` 可在终端直接看到内核日志，便于无头调试。
+内核所有 `kprintf`/控制台输出会同步镜像到 QEMU debugcon（端口 0xE9），
+`-debugcon stdio`/`file:...` 可在终端或文件中查看内核日志，便于无头调试。
+
+## 已知问题
+
+- 用户 fork 的子进程在进入用户态后触发 SIGSEGV（退出码 139），fork 子进程侧
+  功能暂不可用；父进程路径与 COW 建页正常。与 exec 的 W^X / COW / NX 互作用有关。
+- e1000 初始化在大规模内存分配压力下可能缺页（`ioremap` 的映射丢失，原因待查），
+  正常负载下网络工作正常。
+- ext2 与 file\_table 采用粗粒度全局锁，正确性优先、吞吐串行化。
 
 ## 参考资料与致谢
 
-本项目的实现参考了以下资料：
-
-- **内存管理**（分页机制、物理内存管理、内核堆分配等的设计与实现）参考自 **《操作系统真相还原》**（于渊 著）。
-- **引导加载器（Loader）、可编程中断控制器（PIC）、中断描述符表（IDT）、全局描述符表（GDT）** 等底层机制参考自 **OSDev Wiki**：<https://wiki.osdev.org/Main_Page>。
-  - GDT：<https://wiki.osdev.org/GDT>
-  - IDT：<https://wiki.osdev.org/IDT>
-  - PIC（8259A）：<https://wiki.osdev.org/PIC>
-  - 断言：<https://wiki.osdev.org/Assertions>
+- **OSDev Wiki** <https://wiki.osdev.org> —— 引导、GDT/IDT、APIC、长模式、Multiboot2 等。
+- **musl libc** <https://musl.libc.org> —— 系统调用 ABI 兼容目标与 libc 测试套件。
 
 ## 路线图
 
-- [x] 内存管理：物理内存探测（E820）、位图、分页、Higher Half 映射、物理内存池、内核虚拟堆
-- [x] 输入输出系统：内核线程与调度、信号量与锁、环形缓冲区（生产者-消费者）、键盘驱动（IRQ1）
-- [x] 用户进程：TSS、独立页目录、ring3 特权级切换（intr_exit 模拟中断返回）、抢占式调度
-- [ ] 系统调用（int 0x80）
-- [ ] 内核堆分配器（基于内存池）
-- [ ] 文件系统
+- [x] 长模式内核：引导（VBE/KASLR/Boot Menu）、中断、APIC/ACPI、SMP 框架
+- [x] 内存管理：物理池、内核虚拟地址池、ioremap、用户地址空间
+- [x] 进程：线程/进程、抢占调度、COW fork、clone、exec（ELF32/64）、wait/孤儿回收
+- [x] 同步：信号量、可重入锁、futex、信号
+- [x] 文件系统：ext2（读写）、/proc、管道、dup/fd 引用计数
+- [x] 网络：e1000 + ARP/IP/ICMP/TCP/UDP + socket API
+- [x] GUI 合成器、shell 与用户程序集
+- [ ] 修复 fork 子进程 SIGSEGV（见已知问题）
+- [ ] 内核堆分配器（malloc 形态的细粒度分配）
+- [ ] 多核调度（AP 目前仅验证可启动，未参与调度）
+- [ ] 重新加入 musl 的构建选项
+

@@ -23,6 +23,13 @@ SECTIONS
         *(.rodata.*)
     }
 
+    .drivers ALIGN(8) : AT(ADDR(.drivers) - _kernel_virt_base)
+    {
+        __drivers_start = .;
+        KEEP(*(.drivers))
+        __drivers_end = .;
+    }
+
     .data ALIGN(4) : AT(ADDR(.data) - _kernel_virt_base)
     {
         *(.data)

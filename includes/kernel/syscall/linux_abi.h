@@ -1,0 +1,332 @@
+#ifndef COREZ_LINUX_ABI_H
+#define COREZ_LINUX_ABI_H
+
+#include <stdint.h>
+
+#define SYS_LINUX_read 0
+#define SYS_LINUX_write 1
+#define SYS_LINUX_open 2
+#define SYS_LINUX_close 3
+#define SYS_LINUX_stat 4
+#define SYS_LINUX_fstat 5
+#define SYS_LINUX_lstat 6
+#define SYS_LINUX_poll 7
+#define SYS_LINUX_lseek 8
+#define SYS_LINUX_mmap 9
+#define SYS_LINUX_mprotect 10
+#define SYS_LINUX_munmap 11
+#define SYS_LINUX_brk 12
+#define SYS_LINUX_rt_sigaction 13
+#define SYS_LINUX_rt_sigprocmask 14
+#define SYS_LINUX_rt_sigreturn 15
+#define SYS_LINUX_ioctl 16
+#define SYS_LINUX_pread64 17
+#define SYS_LINUX_pwrite64 18
+#define SYS_LINUX_readv 19
+#define SYS_LINUX_writev 20
+#define SYS_LINUX_access 21
+#define SYS_LINUX_pipe 22
+#define SYS_LINUX_select 23
+#define SYS_LINUX_sched_yield 24
+#define SYS_LINUX_dup 32
+#define SYS_LINUX_dup2 33
+#define SYS_LINUX_nanosleep 35
+#define SYS_LINUX_getpid 39
+#define SYS_LINUX_socket 41
+#define SYS_LINUX_connect 42
+#define SYS_LINUX_accept 43
+#define SYS_LINUX_sendto 44
+#define SYS_LINUX_recvfrom 45
+#define SYS_LINUX_sendmsg 46
+#define SYS_LINUX_recvmsg 47
+#define SYS_LINUX_shutdown 48
+#define SYS_LINUX_bind 49
+#define SYS_LINUX_listen 50
+#define SYS_LINUX_getsockname 51
+#define SYS_LINUX_getpeername 52
+#define SYS_LINUX_socketpair 53
+#define SYS_LINUX_setsockopt 54
+#define SYS_LINUX_getsockopt 55
+#define SYS_LINUX_clone 56
+#define SYS_LINUX_fork 57
+#define SYS_LINUX_vfork 58
+#define SYS_LINUX_execve 59
+#define SYS_LINUX_exit 60
+#define SYS_LINUX_wait4 61
+#define SYS_LINUX_kill 62
+#define SYS_LINUX_uname 63
+#define SYS_LINUX_fcntl 72
+#define SYS_LINUX_ftruncate 77
+#define SYS_LINUX_getcwd 79
+#define SYS_LINUX_chdir 80
+#define SYS_LINUX_rename 82
+#define SYS_LINUX_mkdir 83
+#define SYS_LINUX_rmdir 84
+#define SYS_LINUX_creat 85
+#define SYS_LINUX_link 86
+#define SYS_LINUX_unlink 87
+#define SYS_LINUX_symlink 88
+#define SYS_LINUX_readlink 89
+#define SYS_LINUX_chmod 90
+#define SYS_LINUX_chown 92
+#define SYS_LINUX_gettimeofday 96
+#define SYS_LINUX_getuid 102
+#define SYS_LINUX_getgid 104
+#define SYS_LINUX_geteuid 107
+#define SYS_LINUX_getegid 108
+#define SYS_LINUX_getppid 110
+#define SYS_LINUX_setpgid 109
+#define SYS_LINUX_getpgid 121
+#define SYS_LINUX_setsid 106
+#define SYS_LINUX_times 153
+#define SYS_LINUX_arch_prctl 158
+#define SYS_LINUX_sysinfo 179
+#define SYS_LINUX_futex 202
+#define SYS_LINUX_getdents64 217
+#define SYS_LINUX_set_tid_address 218
+#define SYS_LINUX_clock_gettime 227
+#define SYS_LINUX_clock_getres 228
+#define SYS_LINUX_clock_nanosleep 230
+#define SYS_LINUX_exit_group 231
+#define SYS_LINUX_set_thread_area 234
+#define SYS_LINUX_openat 257
+#define SYS_LINUX_newfstatat 262
+#define SYS_LINUX_unlinkat 263
+#define SYS_LINUX_getrandom 318
+
+#define LINUX_O_RDONLY 0
+#define LINUX_O_WRONLY 1
+#define LINUX_O_RDWR 2
+#define LINUX_O_CREAT 0x40
+#define LINUX_O_EXCL 0x80
+#define LINUX_O_NOCTTY 0x100
+#define LINUX_O_TRUNC 0x200
+#define LINUX_O_APPEND 0x400
+#define LINUX_O_NONBLOCK 0x800
+#define LINUX_O_DIRECTORY 0x10000
+#define LINUX_O_CLOEXEC 0x80000
+
+#define LINUX_AT_FDCWD -100
+#define LINUX_AT_SYMLINK_NOFOLLOW 0x100
+#define LINUX_AT_REMOVEDIR 0x200
+#define LINUX_AT_EMPTY_PATH 0x1000
+
+#define LINUX_F_DUPFD 0
+#define LINUX_F_GETFD 1
+#define LINUX_F_SETFD 2
+#define LINUX_F_GETFL 3
+#define LINUX_F_SETFL 4
+#define LINUX_FD_CLOEXEC 1
+
+#define LINUX_SIGHUP 1
+#define LINUX_SIGINT 2
+#define LINUX_SIGQUIT 3
+#define LINUX_SIGILL 4
+#define LINUX_SIGABRT 6
+#define LINUX_SIGFPE 8
+#define LINUX_SIGKILL 9
+#define LINUX_SIGSEGV 11
+#define LINUX_SIGPIPE 13
+#define LINUX_SIGALRM 14
+#define LINUX_SIGTERM 15
+#define LINUX_SIGCHLD 17
+#define LINUX_SIGCONT 18
+#define LINUX_SIGSTOP 19
+#define LINUX_SIGTSTP 20
+#define LINUX_SIGTTIN 21
+#define LINUX_SIGTTOU 22
+#define LINUX_SIGUSR1 10
+#define LINUX_SIGUSR2 12
+
+#define LINUX_SIG_BLOCK 0
+#define LINUX_SIG_SETMASK 1
+#define LINUX_SIG_UNBLOCK 2
+
+#define LINUX_SA_NOCLDSTOP 1
+#define LINUX_SA_NOCLDWAIT 2
+#define LINUX_SA_SIGINFO 4
+#define LINUX_SA_ONSTACK 0x08000000
+#define LINUX_SA_RESTART 0x10000000
+#define LINUX_SA_NODEFER 0x40000000
+#define LINUX_SA_RESTORER 0x04000000
+
+#define LINUX_WNOHANG 1
+#define LINUX_WUNTRACED 2
+#define LINUX_WCONTINUED 8
+
+#define LINUX_WIFEXITED(s) (((s) & 0x7f) == 0)
+#define LINUX_WEXITSTATUS(s) (((s) & 0xff00) >> 8)
+#define LINUX_WTERMSIG(s) ((s) & 0x7f)
+#define LINUX_WIFSIGNALED(s) (((s) & 0x7f) != 0 && ((s) & 0x7f) != 0x7f)
+#define LINUX_WIFSTOPPED(s) (((s) & 0xff) == 0x7f)
+
+#define LINUX_TCGETS 0x5401
+#define LINUX_TCSETS 0x5402
+#define LINUX_TCSETSW 0x5403
+#define LINUX_TCSETSF 0x5404
+#define LINUX_TIOCGPGRP 0x540f
+#define LINUX_TIOCSPGRP 0x5410
+#define LINUX_TIOCGWINSZ 0x5413
+#define LINUX_FIONREAD 0x541b
+
+#define LINUX_NCCS 32
+#define LINUX_VTIME 5
+#define LINUX_VMIN 6
+
+#define LINUX_MAP_SHARED 1
+#define LINUX_MAP_PRIVATE 2
+#define LINUX_MAP_ANONYMOUS 0x20
+#define LINUX_PROT_READ 1
+#define LINUX_PROT_WRITE 2
+#define LINUX_PROT_EXEC 4
+
+#define LINUX_EPERM 1
+#define LINUX_ENOENT 2
+#define LINUX_ESRCH 3
+#define LINUX_EINTR 4
+#define LINUX_EIO 5
+#define LINUX_EBADF 9
+#define LINUX_EAGAIN 11
+#define LINUX_ENOMEM 12
+#define LINUX_EACCES 13
+#define LINUX_EFAULT 14
+#define LINUX_EBUSY 16
+#define LINUX_EEXIST 17
+#define LINUX_ENOTDIR 20
+#define LINUX_EISDIR 21
+#define LINUX_EINVAL 22
+#define LINUX_ENFILE 23
+#define LINUX_EMFILE 24
+#define LINUX_ENOSPC 28
+#define LINUX_EPIPE 32
+#define LINUX_ERANGE 34
+#define LINUX_ENOSYS 38
+#define LINUX_ENOTTY 25
+#define LINUX_ECHILD 10
+#define LINUX_ENOTEMPTY 39
+#define LINUX_ELOOP 40
+#define LINUX_ENOTSOCK 88
+
+#define LINUX_NAME_MAX 255
+#define LINUX_PATH_MAX 4096
+
+#define LINUX_DT_FIFO 1
+#define LINUX_DT_CHR 2
+#define LINUX_DT_DIR 4
+#define LINUX_DT_BLK 6
+#define LINUX_DT_REG 8
+#define LINUX_DT_LNK 10
+
+#define LINUX_CLOCK_REALTIME 0
+#define LINUX_CLOCK_MONOTONIC 1
+#define LINUX_CLOCK_BOOTTIME 7
+
+#define LINUX_ICRNL 0x100
+#define LINUX_IXON 0x400
+#define LINUX_OPOST 1
+#define LINUX_ONLCR 4
+#define LINUX_CS8 0x30
+#define LINUX_ISIG 1
+#define LINUX_ICANON 2
+#define LINUX_ECHO 8
+#define LINUX_IEXTEN 0x8000
+
+struct LINUX_IOVEC {
+    void *iov_base;
+    uint64_t iov_len;
+};
+
+struct LINUX_DIRENT64 {
+    uint64_t d_ino;
+    int64_t d_off;
+    uint16_t d_reclen;
+    uint8_t d_type;
+    char d_name[];
+};
+
+struct LINUX_SIGACTION {
+    uint64_t sa_handler;
+    uint64_t sa_flags;
+    uint64_t sa_restorer;
+    uint64_t sa_mask;
+};
+
+struct LINUX_TERMIOS {
+    uint32_t c_iflag;
+    uint32_t c_oflag;
+    uint32_t c_cflag;
+    uint32_t c_lflag;
+    uint8_t c_line;
+    uint8_t c_cc[LINUX_NCCS];
+    uint32_t c_ispeed;
+    uint32_t c_ospeed;
+};
+
+struct LINUX_WINSIZE {
+    uint16_t ws_row;
+    uint16_t ws_col;
+    uint16_t ws_xpixel;
+    uint16_t ws_ypixel;
+};
+
+struct LINUX_TIMESPEC {
+    int64_t tv_sec;
+    int64_t tv_nsec;
+};
+
+struct LINUX_TIMEVAL {
+    int64_t tv_sec;
+    int64_t tv_usec;
+};
+
+struct LINUX_STAT {
+    uint64_t st_dev;
+    uint64_t st_ino;
+    uint32_t st_nlink;
+    uint32_t st_mode;
+    uint32_t st_uid;
+    uint32_t st_gid;
+    uint32_t __pad0;
+    uint64_t st_rdev;
+    int64_t st_size;
+    int64_t st_blksize;
+    int64_t st_blocks;
+    struct LINUX_TIMESPEC st_atim;
+    struct LINUX_TIMESPEC st_mtim;
+    struct LINUX_TIMESPEC st_ctim;
+    int64_t unused[3];
+};
+
+struct LINUX_SYSINFO {
+    int64_t uptime;
+    uint64_t loads[3];
+    uint64_t totalram;
+    uint64_t freeram;
+    uint64_t sharedram;
+    uint64_t bufferram;
+    uint64_t totalswap;
+    uint64_t freeswap;
+    uint16_t procs;
+    uint64_t totalhigh;
+    uint64_t freehigh;
+    uint32_t mem_unit;
+    char _f[20 - 16 - 4];
+};
+
+struct LINUX_TMS {
+    int64_t utime;
+    int64_t stime;
+    int64_t cutime;
+    int64_t cstime;
+};
+
+struct LINUX_UTSNAME {
+    char sysname[65];
+    char nodename[65];
+    char release[65];
+    char version[65];
+    char machine[65];
+    char domainname[65];
+};
+
+#endif

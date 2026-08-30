@@ -2,3 +2,4 @@ build/
 .zig-cache/
 .zig-tmp/
 __pycache__/
+compile_commands.json

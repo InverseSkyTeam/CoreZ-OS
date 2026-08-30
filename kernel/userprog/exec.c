@@ -516,6 +516,12 @@ int32_t sys_execv(const char *path, const char *argv[],
 #undef PSTACK32
 #undef PSTACK64
     }
+    for (int32_t fd = 3; fd < MAX_FILES_OPEN_PER_PROC; ++fd) {
+        if (cur->fd_table[fd] != (uint32_t)-1 && (cur->fd_cloexec >> fd) & 1) {
+            cur->fd_cloexec &= ~(1ull << fd);
+            close_file(fd);
+        }
+    }
     if (regs != NULL) {
         memset(regs, 0, sizeof(struct Registers));
         regs->rip = (uint64_t)(uint32_t)entry_point;

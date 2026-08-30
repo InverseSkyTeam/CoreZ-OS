@@ -99,9 +99,12 @@ int32_t sys_fcntl(int32_t fd, int32_t cmd, uint32_t arg) {
         (void)arg;
         return sys_dup(fd);
     case F_GETFD:
-        return 0;
+        return (int32_t)((current->fd_cloexec >> fd) & 1);
     case F_SETFD:
-        (void)arg;
+        if (arg & 1)
+            current->fd_cloexec |= (1ull << fd);
+        else
+            current->fd_cloexec &= ~(1ull << fd);
         return 0;
     case F_GETFL:
         return (int32_t)pf->fd_flag;

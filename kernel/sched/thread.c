@@ -67,6 +67,7 @@ static void init_task_struct_basic(struct task_struct *t, int32_t parent_pid) {
     init_fd_table(t);
     t->parent_pid = parent_pid;
     t->stack_magic = STACK_MAGIC;
+    t->fd_cloexec = 0;
     t->tls_base = 0;
     t->tls_selector = 0;
     t->errno = 0;
@@ -139,6 +140,7 @@ void thread_init(void) {
     init_fd_table(&task_table[0]);
     task_table[0].parent_pid = -1;
     task_table[0].stack_magic = STACK_MAGIC;
+    task_table[0].fd_cloexec = 0;
     task_table[0].tls_base = 0;
     task_table[0].tls_selector = 0;
     task_table[0].errno = 0;

@@ -56,6 +56,7 @@
 #define SYS_LINUX_kill 62
 #define SYS_LINUX_uname 63
 #define SYS_LINUX_fcntl 72
+#define SYS_LINUX_ftruncate 77
 #define SYS_LINUX_getcwd 79
 #define SYS_LINUX_chdir 80
 #define SYS_LINUX_rename 82
@@ -199,12 +200,35 @@
 #define LINUX_EPIPE 32
 #define LINUX_ERANGE 34
 #define LINUX_ENOSYS 38
+#define LINUX_ENOTTY 25
+#define LINUX_ECHILD 10
 #define LINUX_ENOTEMPTY 39
 #define LINUX_ELOOP 40
 #define LINUX_ENOTSOCK 88
 
 #define LINUX_NAME_MAX 255
 #define LINUX_PATH_MAX 4096
+
+#define LINUX_DT_FIFO 1
+#define LINUX_DT_CHR 2
+#define LINUX_DT_DIR 4
+#define LINUX_DT_BLK 6
+#define LINUX_DT_REG 8
+#define LINUX_DT_LNK 10
+
+#define LINUX_CLOCK_REALTIME 0
+#define LINUX_CLOCK_MONOTONIC 1
+#define LINUX_CLOCK_BOOTTIME 7
+
+#define LINUX_ICRNL 0x100
+#define LINUX_IXON 0x400
+#define LINUX_OPOST 1
+#define LINUX_ONLCR 4
+#define LINUX_CS8 0x30
+#define LINUX_ISIG 1
+#define LINUX_ICANON 2
+#define LINUX_ECHO 8
+#define LINUX_IEXTEN 0x8000
 
 struct LINUX_IOVEC {
     void *iov_base;
@@ -270,6 +294,29 @@ struct LINUX_STAT {
     struct LINUX_TIMESPEC st_mtim;
     struct LINUX_TIMESPEC st_ctim;
     int64_t unused[3];
+};
+
+struct LINUX_SYSINFO {
+    int64_t uptime;
+    uint64_t loads[3];
+    uint64_t totalram;
+    uint64_t freeram;
+    uint64_t sharedram;
+    uint64_t bufferram;
+    uint64_t totalswap;
+    uint64_t freeswap;
+    uint16_t procs;
+    uint64_t totalhigh;
+    uint64_t freehigh;
+    uint32_t mem_unit;
+    char _f[20 - 16 - 4];
+};
+
+struct LINUX_TMS {
+    int64_t utime;
+    int64_t stime;
+    int64_t cutime;
+    int64_t cstime;
 };
 
 struct LINUX_UTSNAME {

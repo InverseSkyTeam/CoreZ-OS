@@ -66,6 +66,7 @@ struct task_struct {
     int32_t errno;
     uint32_t compat;
     uint32_t stack_magic;
+    uint64_t fd_cloexec;
     uint8_t slot_used; 
 };
 extern struct task_struct *idle_thread;

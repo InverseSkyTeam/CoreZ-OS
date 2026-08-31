@@ -26,7 +26,8 @@ DATA_START = ITABLE_BLK + ITABLE_BLOCKS
 FILES = [
     "prog_no_arg.elf", "prog_arg.elf", "cat.elf", "fork_demo.elf",
     "prog_pipe.elf", "font_demo.elf", "heap_demo.elf", "signal_demo.elf",
-    "orphan.elf", "cow_stress.elf", "cwd_test.elf", "echocat.elf",
+    "orphan.elf", "tls_test.elf", "cow_stress.elf", "cwd_test.elf",
+    "echocat.elf",
     "font_subset.ttf", "nr_shell.elf", "ping.elf",
     "lc_demo.elf", "libc_testsuite.elf", "musl_demo.elf", "udp_echo.elf"
 ]

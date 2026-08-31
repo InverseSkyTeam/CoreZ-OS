@@ -1,4 +1,5 @@
 #include "kernel/syscall/linux_compat.h"
+#include "kernel/mm/access.h"
 #include "arch/x86/interrupt/interrupt.h"
 #include "drivers/char/console/io.h"
 #include "drivers/char/keyboard.h"
@@ -317,7 +318,7 @@ static uint32_t compat_brk_alloc(struct task_struct *cur, uint32_t len) {
 
 static int32_t compat_set_thread_area(struct Registers *r,
                                       struct task_struct *cur, uint32_t base) {
-    if (base == 0)
+    if (base == 0 || !user_range_writable(base, sizeof(int32_t)))
         return -1;
     cur->tls_base = base;
     cur->tls_selector = SELECTOR_TLS;

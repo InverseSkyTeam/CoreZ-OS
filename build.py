@@ -503,6 +503,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         ("cat",         "cat.c",         "_start", []),
         ("fork_demo",   "fork_demo.c",   "_start", []),
         ("orphan",      "orphan_demo.c", "_start", []),
+        ("tls_test",    "tls_test.c",    "_start", []),
         ("cwd_test",    "cwd_test.c",    "_start", []),
         ("echocat",     "echocat.c",     "_start", []),
         ("prog_pipe",   "prog_pipe.c",   "_start", []),

@@ -233,7 +233,7 @@ uint32_t sys_brk(uint32_t addr) {
     return new_brk;
 }
 static uint32_t sys_set_thread_area(struct Registers *r, uint32_t base) {
-    if (base == 0)
+    if (base == 0 || !user_range_writable(base, sizeof(int32_t)))
         return (uint32_t)-1;
     current->tls_base = base;
     current->tls_selector = SELECTOR_TLS;

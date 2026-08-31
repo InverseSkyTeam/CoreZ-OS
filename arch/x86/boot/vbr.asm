@@ -29,7 +29,7 @@ FAT_BUF equ 0x0A00
         jmp     short start
         nop
 
-        db      "NITIAN  "      ; +3  OEM
+        db      "COREZ   "      ; +3  OEM
         dw      512             ; +11 bytes/sector
         db      SPC             ; +13 sectors/cluster
         dw      RESERVED_SECT   ; +14 reserved sectors
@@ -53,7 +53,7 @@ FAT_BUF equ 0x0A00
         db      0               ; +65 reserved
         db      0x29            ; +66 boot signature
         dd      0x12345678      ; +67 volume id
-        db      "NITIAN    "    ; +71 volume label (11)
+        db      "COREZ     "    ; +71 volume label (11)
         db      "FAT32   "      ; +82 fs type (8)
 
 start:

@@ -18,7 +18,7 @@ void tcp_init(void) {
 }
 
 static uint32_t tcp_iss(void) {
-    return net_ms() ^ ((uint32_t)s_pcb[0].iss << 3);
+    return net_now_ms() ^ ((uint32_t)s_pcb[0].iss << 3);
 }
 
 static inline int seq_lt(uint32_t a, uint32_t b) {
@@ -138,7 +138,7 @@ static void tcp_fire(NETIF *ifp, struct TCP_PCB *pcb) {
     }
     if (cursor > pcb->snd_nxt) {
         pcb->snd_nxt = cursor;
-        pcb->tmo = net_ms() + TCP_INIT_RTO;
+        pcb->tmo = net_now_ms() + TCP_INIT_RTO;
         if (pcb->retry < TCP_MAX_RETRY)
             pcb->retry++;
     }
@@ -168,7 +168,7 @@ int tcp_connect(struct TCP_PCB *pcb, uint32_t ip, uint16_t port) {
     extern NETIF g_netif;
     pcb->local_ip = g_netif.ip;
     if (!pcb->local_port) {
-        uint32_t p = (uint16_t)((net_ms() ^ (uint32_t)&pcb) & 0x7FFF) + 1024;
+        uint32_t p = (uint16_t)((net_now_ms() ^ (uint32_t)&pcb) & 0x7FFF) + 1024;
         pcb->local_port = (uint16_t)(p % 20000 + 10000);
     }
     pcb->remote_ip = ip;
@@ -179,7 +179,7 @@ int tcp_connect(struct TCP_PCB *pcb, uint32_t ip, uint16_t port) {
     pcb->rcv_nxt = 0;
     pcb->state = TCP_SYN_SENT;
     pcb->tx_len = 0;
-    pcb->tmo = net_ms() + TCP_INIT_RTO;
+    pcb->tmo = net_now_ms() + TCP_INIT_RTO;
     pcb->retry = 0;
     return tcp_emit(&g_netif, pcb, pcb->iss, 0, TCP_FLAG_SYN, 0, 0);
 }
@@ -256,7 +256,7 @@ int tcp_close(struct TCP_PCB *pcb) {
         tcp_emit(&g_netif, pcb, pcb->snd_nxt, pcb->rcv_nxt,
                  TCP_FLAG_FIN | TCP_FLAG_ACK, 0, 0);
         pcb->snd_nxt++;
-        pcb->tmo = net_ms() + TCP_INIT_RTO;
+        pcb->tmo = net_now_ms() + TCP_INIT_RTO;
         pcb->retry = 0;
         return 0;
     }
@@ -276,7 +276,7 @@ int tcp_shutdown(struct TCP_PCB *pcb, int how) {
             tcp_emit(&g_netif, pcb, pcb->snd_nxt, pcb->rcv_nxt,
                      TCP_FLAG_FIN | TCP_FLAG_ACK, 0, 0);
             pcb->snd_nxt++;
-            pcb->tmo = net_ms() + TCP_INIT_RTO;
+            pcb->tmo = net_now_ms() + TCP_INIT_RTO;
             pcb->retry = 0;
             pcb->state = TCP_FIN_WAIT1;
         } else if (pcb->state == TCP_CLOSE_WAIT) {
@@ -284,7 +284,7 @@ int tcp_shutdown(struct TCP_PCB *pcb, int how) {
             tcp_emit(&g_netif, pcb, pcb->snd_nxt, pcb->rcv_nxt,
                      TCP_FLAG_FIN | TCP_FLAG_ACK, 0, 0);
             pcb->snd_nxt++;
-            pcb->tmo = net_ms() + TCP_INIT_RTO;
+            pcb->tmo = net_now_ms() + TCP_INIT_RTO;
             pcb->retry = 0;
             pcb->state = TCP_LAST_ACK;
         }
@@ -312,7 +312,7 @@ static void tcp_accept_child(NETIF *ifp, struct TCP_PCB *listener,
     child->snd_nxt = child->iss + 1;
     child->rcv_nxt = seq + 1;
     child->rx_head = child->rx_tail = 0;
-    child->tmo = net_ms() + TCP_INIT_RTO;
+    child->tmo = net_now_ms() + TCP_INIT_RTO;
     child->retry = 0;
     tcp_emit(ifp, child, child->iss, child->rcv_nxt,
              TCP_FLAG_SYN | TCP_FLAG_ACK, 0, 0);
@@ -463,18 +463,18 @@ void tcp_input(NETIF *ifp, uint32_t src, const uint8_t *pkt, uint32_t len) {
         tcp_emit(ifp, pcb, pcb->snd_nxt, pcb->rcv_nxt,
                  TCP_FLAG_ACK | TCP_FLAG_FIN, 0, 0);
         pcb->state = TCP_TIME_WAIT;
-        pcb->tmo = net_ms() + 2000;
+        pcb->tmo = net_now_ms() + 2000;
     } else if (pcb->state == TCP_FIN_WAIT2 && (flags & TCP_FLAG_FIN)) {
         pcb->rcv_nxt = ack + 1;
         tcp_emit(ifp, pcb, pcb->snd_nxt, pcb->rcv_nxt, TCP_FLAG_ACK, 0, 0);
         pcb->state = TCP_TIME_WAIT;
-        pcb->tmo = net_ms() + 2000;
+        pcb->tmo = net_now_ms() + 2000;
     } else if (pcb->state == TCP_CLOSE_WAIT) {
         pcb->state = TCP_LAST_ACK;
         tcp_emit(ifp, pcb, pcb->snd_nxt, pcb->rcv_nxt,
                  TCP_FLAG_ACK | TCP_FLAG_FIN, 0, 0);
         pcb->snd_nxt++;
-        pcb->tmo = net_ms() + TCP_INIT_RTO;
+        pcb->tmo = net_now_ms() + TCP_INIT_RTO;
         pcb->retry = 0;
     } else if (pcb->state == TCP_LAST_ACK && (flags & TCP_FLAG_ACK)) {
         pcb->active = 0;
@@ -483,7 +483,7 @@ void tcp_input(NETIF *ifp, uint32_t src, const uint8_t *pkt, uint32_t len) {
 }
 
 void tcp_tick(NETIF *ifp) {
-    uint32_t now = net_ms();
+    uint32_t now = net_now_ms();
     asm_cli();
     for (int i = 0; i < MAX_TCP_PCB; i++) {
         struct TCP_PCB *pcb = &s_pcb[i];

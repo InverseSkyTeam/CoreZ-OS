@@ -521,7 +521,7 @@ int32_t sys_execv(const char *path, const char *argv[],
     uint32_t argc;
     int32_t entry_point;
     struct task_struct *cur;
-    uint32_t old_pgdir;
+    uint32_t old_pml4_phys;
     uint32_t ustack_ptr;
     uint32_t argv_user_addrs[MAX_ARG_NR];
     uint32_t slens[MAX_ARG_NR];
@@ -538,9 +538,9 @@ int32_t sys_execv(const char *path, const char *argv[],
     uint32_t aux_bias = 0;
     uint32_t aux_brk_base = 0;
     cur = current;
-    old_pgdir = cur->pgdir;
-    if (cur->pgdir == 0) {
-        cur->pgdir = (uint32_t)create_page_dir();
+    old_pml4_phys = cur->pml4_phys;
+    if (cur->pml4_phys == 0) {
+        cur->pml4_phys = (uint32_t)create_page_dir();
         process_activate(cur);
     }
     if (cur->userprog_v_addr.vaddr_bitmap.bits != NULL) {
@@ -580,8 +580,8 @@ int32_t sys_execv(const char *path, const char *argv[],
     entry_point = load(path, &is64, &is_linux, &aux_phdr_vaddr, &aux_phentsize,
                        &aux_phnum, &aux_bias, &aux_brk_base);
     if (entry_point == -1) {
-        if (cur->pgdir != old_pgdir) {
-            cur->pgdir = old_pgdir;
+        if (cur->pml4_phys != old_pml4_phys) {
+            cur->pml4_phys = old_pml4_phys;
             page_dir_activate(cur);
         }
         return -1;

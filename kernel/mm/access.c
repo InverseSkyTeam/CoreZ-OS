@@ -16,14 +16,14 @@ int access_ok(const void *addr, size_t n, int write) {
 }
 static int user_page_readable(uint32_t a) {
     uint64_t *pde = pde_ptr(a);
-    if (pde == NULL || !(*pde & 1)) {
+    if (pde == NULL || !(*pde & PTE_P)) {
         return 0;
     }
-    if (*pde & 0x80) {
+    if (*pde & PTE_PS) {
         return (*pde & PTE_U) != 0;
     }
     uint64_t *pte = pte_ptr(a);
-    return (*pte & 1) && (*pte & PTE_U);
+    return (*pte & PTE_P) && (*pte & PTE_U);
 }
 int copy_str_from_user(char *dst, const char *src, uint32_t max) {
     if (src == NULL || max == 0) {
@@ -88,27 +88,27 @@ static int user_range_walk(uint32_t addr, uint32_t len, int write) {
     }
     uint32_t first = addr & ~0xFFFu;
     uint32_t last = (addr + len - 1) & ~0xFFFu;
-    for (uint32_t p = first;; p += PAGE_SIZE) {
-        uint64_t *pde = pde_ptr(p);
-        if (pde == NULL || !(*pde & 1)) {
+    for (uint32_t page = first;; page += PAGE_SIZE) {
+        uint64_t *pde = pde_ptr(page);
+        if (pde == NULL || !(*pde & PTE_P)) {
             return 0;
         }
-        if (*pde & 0x80) {
+        if (*pde & PTE_PS) {
             uint64_t need = PTE_U | (write ? PTE_W : 0);
             if ((*pde & need) != need) {
                 return 0;
             }
         } else {
-            uint64_t *pte = pte_ptr(p);
-            if (!(*pte & 1) || !(*pte & PTE_U)) {
+            uint64_t *pte = pte_ptr(page);
+            if (!(*pte & PTE_P) || !(*pte & PTE_U)) {
                 return 0;
             }
             if (write && !(*pte & PTE_W) &&
-                (!(*pte & COW_FLAG) || !page_cow_resolve(p, *pte))) {
+                (!(*pte & COW_FLAG) || !page_cow_resolve(page, *pte))) {
                 return 0;
             }
         }
-        if (p == last) {
+        if (page == last) {
             return 1;
         }
     }

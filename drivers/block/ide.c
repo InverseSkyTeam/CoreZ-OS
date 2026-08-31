@@ -110,7 +110,7 @@ static void wait_bsy_clear(struct ide_channel *channel) {
     }
 }
 
-static void cmd_out(struct ide_channel *channel, uint8_t cmd) {
+static void channel_send_cmd(struct ide_channel *channel, uint8_t cmd) {
     wait_bsy_clear(channel);
     channel->expecting_intr = 1;
     outb(reg_cmd(channel), cmd);
@@ -158,7 +158,7 @@ void ide_read(struct disk *hd, uint32_t lba, void *buf, uint32_t sec_cnt) {
     uint32_t secs_done = 0;
     while (secs_done < sec_cnt) {
         select_sector(hd, lba + secs_done, 1);
-        cmd_out(hd->my_channel, CMD_READ_SECTOR);
+        channel_send_cmd(hd->my_channel, CMD_READ_SECTOR);
 
         if (!busy_wait(hd)) {
             char error[64];
@@ -183,7 +183,7 @@ void ide_write(struct disk *hd, uint32_t lba, void *buf, uint32_t sec_cnt) {
     uint32_t secs_done = 0;
     while (secs_done < sec_cnt) {
         select_sector(hd, lba + secs_done, 1);
-        cmd_out(hd->my_channel, CMD_WRITE_SECTOR);
+        channel_send_cmd(hd->my_channel, CMD_WRITE_SECTOR);
         if (!busy_wait(hd)) {
             char error[64];
             sprintf(error, "%s write sector %d failed!!!!!!", hd->name,
@@ -221,7 +221,7 @@ static void swap_pairs_bytes(const char *dst, char *buf, uint32_t len) {
 static void identify_disk(struct disk *hd) {
     char id_info[512];
     select_disk(hd);
-    cmd_out(hd->my_channel, CMD_IDENTIFY);
+    channel_send_cmd(hd->my_channel, CMD_IDENTIFY);
 
     if (!busy_wait(hd)) {
         char error[64];

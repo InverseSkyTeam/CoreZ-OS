@@ -185,8 +185,8 @@ static uint32_t palloc_pages_raw(struct pool *pool, uint32_t cnt) {
 }
 
 static uint64_t cur_pml4(void) {
-    if (current && current->pgdir) {
-        return (uint64_t)current->pgdir;
+    if (current && current->pml4_phys) {
+        return (uint64_t)current->pml4_phys;
     }
     return asm_read_cr3();
 }
@@ -212,29 +212,29 @@ static uint64_t *pte_make(uint64_t pml4_phys, uint64_t vaddr) {
     uint64_t *pml4 = (uint64_t *)VIRT_OF(pml4_phys);
     uint32_t idx = PML4_INDEX(vaddr);
     if (!(pml4[idx] & 1)) {
-        uint32_t p = palloc_raw(&kernel_pool);
-        if (p == 0)
+        uint32_t pa = palloc_raw(&kernel_pool);
+        if (pa == 0)
             return 0;
-        pml4[idx] = p | 7;
-        memset((void *)VIRT_OF(p), 0, PAGE_SIZE);
+        pml4[idx] = pa | PTE_P | PTE_W | PTE_U;
+        memset((void *)VIRT_OF(pa), 0, PAGE_SIZE);
     }
     uint64_t *pdp = (uint64_t *)VIRT_OF(PTE_PHYS(pml4[idx]));
     idx = PDPT_INDEX(vaddr);
     if (!(pdp[idx] & 1)) {
-        uint32_t p = palloc_raw(&kernel_pool);
-        if (p == 0)
+        uint32_t pa = palloc_raw(&kernel_pool);
+        if (pa == 0)
             return 0;
-        pdp[idx] = p | 7;
-        memset((void *)VIRT_OF(p), 0, PAGE_SIZE);
+        pdp[idx] = pa | PTE_P | PTE_W | PTE_U;
+        memset((void *)VIRT_OF(pa), 0, PAGE_SIZE);
     }
     uint64_t *pd = (uint64_t *)VIRT_OF(PTE_PHYS(pdp[idx]));
     idx = PD_INDEX(vaddr);
     if (!(pd[idx] & 1)) {
-        uint32_t p = palloc_raw(&kernel_pool);
-        if (p == 0)
+        uint32_t pa = palloc_raw(&kernel_pool);
+        if (pa == 0)
             return 0;
-        pd[idx] = p | 7;
-        memset((void *)VIRT_OF(p), 0, PAGE_SIZE);
+        pd[idx] = pa | PTE_P | PTE_W | PTE_U;
+        memset((void *)VIRT_OF(pa), 0, PAGE_SIZE);
     }
     uint64_t *pt = (uint64_t *)VIRT_OF(PTE_PHYS(pd[idx]));
     return &pt[PT_INDEX(vaddr)];

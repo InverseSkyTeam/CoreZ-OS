@@ -46,6 +46,7 @@ int page_cow_resolve(uint32_t vaddr, uint64_t pte_val);
 #define PTE_P   (1ull << 0)   /* present */
 #define PTE_W   (1ull << 1)   /* writable */
 #define PTE_U   (1ull << 2)   /* user */
+#define PTE_PS  (1ull << 7)   /* page size (2MB leaf) */
 #define PTE_NX  (1ull << 63)  /* no-execute */
 
 /* NXE 读回验证通过才为 1; 否则 bit63 是保留位, 触发 RSVD #PF */

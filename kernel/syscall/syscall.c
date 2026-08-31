@@ -161,14 +161,14 @@ static int ps_action(struct task_struct *t, void *arg) {
         if (v == 0) {
             buf[n++] = '0';
         } else {
-            char tmp[12];
+            char digits[12];
             int m = 0;
             while (v) {
-                tmp[m++] = (char)('0' + v % 10);
+                digits[m++] = (char)('0' + v % 10);
                 v /= 10;
             }
             while (m--)
-                buf[n++] = tmp[m];
+                buf[n++] = digits[m];
         }
         buf[n] = 0;
         parent = buf;
@@ -214,19 +214,19 @@ uint32_t sys_brk(uint32_t addr) {
     uint32_t old_page = (cur_brk + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     uint32_t new_page = (new_brk + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     if (new_page > old_page) {
-        for (uint32_t p = old_page; p < new_page; p += PAGE_SIZE) {
-            if (brk_page_in_use(p)) {
-                kprintf("[brk] collision at 0x%x, keep 0x%x\n", p, cur_brk);
+        for (uint32_t page = old_page; page < new_page; page += PAGE_SIZE) {
+            if (brk_page_in_use(page)) {
+                kprintf("[brk] collision at 0x%x, keep 0x%x\n", page, cur_brk);
                 return cur_brk;
             }
-            if (get_a_page(p) == 0) {
+            if (get_a_page(page) == 0) {
                 kprintf("[brk] OOM, keep 0x%x\n", cur_brk);
                 return cur_brk;
             }
         }
     } else if (new_page < old_page) {
-        for (uint32_t p = new_page; p < old_page; p += PAGE_SIZE) {
-            free_user_page(p);
+        for (uint32_t page = new_page; page < old_page; page += PAGE_SIZE) {
+            free_user_page(page);
         }
     }
     cur->user_brk = new_brk;

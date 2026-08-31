@@ -2,7 +2,7 @@
 #include "kernel/syscall/mmap.h"
 #include "syscall.h"
 
-static unsigned int raw(unsigned int nr, unsigned int a, unsigned int b,
+static unsigned int raw_syscall(unsigned int nr, unsigned int a, unsigned int b,
                         unsigned int c) {
     unsigned int ret;
     __asm__ volatile("int $0x80"
@@ -15,7 +15,7 @@ static unsigned int raw(unsigned int nr, unsigned int a, unsigned int b,
 int main(void) {
     static char buf[64];
     int ok = 1;
-    unsigned int fd = raw(SYS_OPEN, (unsigned int)"/font_subset.ttf", 0, 0);
+    unsigned int fd = raw_syscall(SYS_OPEN, (unsigned int)"/font_subset.ttf", 0, 0);
     struct {
         unsigned int nr;
         unsigned int a, b, c;
@@ -36,7 +36,7 @@ int main(void) {
     };
     for (unsigned int i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         unsigned int got =
-            raw(cases[i].nr, cases[i].a, cases[i].b, cases[i].c);
+            raw_syscall(cases[i].nr, cases[i].a, cases[i].b, cases[i].c);
         printf("badptr: case %d got %d want %d\n", (int)i, (int)got,
                (int)cases[i].want);
         if (got != cases[i].want) {
@@ -44,24 +44,24 @@ int main(void) {
         }
     }
     if (fd != 0xFFFFFFFFu) {
-        raw(SYS_CLOSE, fd, 0, 0);
+        raw_syscall(SYS_CLOSE, fd, 0, 0);
     }
-    unsigned int h = raw(SYS_OPENDIR, (unsigned int)"/", 0, 0);
+    unsigned int h = raw_syscall(SYS_OPENDIR, (unsigned int)"/", 0, 0);
     if (h == 0 || h == 0xFFFFFFFFu) {
         printf("badptr: opendir broken\n");
         ok = 0;
     } else {
-        if (raw(SYS_READDIR, 0x12345678u, 0, 0) != 0) {
+        if (raw_syscall(SYS_READDIR, 0x12345678u, 0, 0) != 0) {
             printf("badptr: bogus readdir not rejected\n");
             ok = 0;
         }
-        if (raw(SYS_READDIR, h, 0, 0) == 0) {
+        if (raw_syscall(SYS_READDIR, h, 0, 0) == 0) {
             printf("badptr: valid readdir broken\n");
             ok = 0;
         }
-        raw(SYS_REWINDDIR, 0x12345678u, 0, 0);
-        raw(SYS_REWINDDIR, h, 0, 0);
-        raw(SYS_CLOSEDIR, h, 0, 0);
+        raw_syscall(SYS_REWINDDIR, 0x12345678u, 0, 0);
+        raw_syscall(SYS_REWINDDIR, h, 0, 0);
+        raw_syscall(SYS_CLOSEDIR, h, 0, 0);
     }
     unsigned int margs[6];
     margs[0] = 0x30000000u;
@@ -70,11 +70,11 @@ int main(void) {
     margs[3] = 0x10u;
     margs[4] = 0xFFFFFFFFu;
     margs[5] = 0;
-    if (raw(SYS_MMAP, (unsigned int)margs, 0, 0) != 0x30000000u) {
+    if (raw_syscall(SYS_MMAP, (unsigned int)margs, 0, 0) != 0x30000000u) {
         printf("badptr: valid mmap broken\n");
         ok = 0;
     }
-    if (raw(SYS_MUNMAP, 0x30000000u, 4096u, 0) != 0) {
+    if (raw_syscall(SYS_MUNMAP, 0x30000000u, 4096u, 0) != 0) {
         printf("badptr: valid munmap broken\n");
         ok = 0;
     }
@@ -90,14 +90,14 @@ int main(void) {
     };
     margs[0] = 0xC0000000u;
     for (unsigned int i = 0; i < sizeof(edge) / sizeof(edge[0]); i++) {
-        unsigned int got = raw(edge[i].nr, edge[i].a, edge[i].b, edge[i].c);
+        unsigned int got = raw_syscall(edge[i].nr, edge[i].a, edge[i].b, edge[i].c);
         printf("badptr: edge %d got %d want %d\n", (int)i, (int)got,
                (int)edge[i].want);
         if (got != edge[i].want) {
             ok = 0;
         }
     }
-    printf("badptr: getpid=%d\n", (int)raw(SYS_GETPID, 0, 0, 0));
+    printf("badptr: getpid=%d\n", (int)raw_syscall(SYS_GETPID, 0, 0, 0));
     printf("badptr: %s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

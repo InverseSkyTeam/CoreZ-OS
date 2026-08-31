@@ -52,7 +52,7 @@ pid_t sys_clone(struct Registers *r) {
     for (int i = 0; i < NSIG; i++) {
         child->sigactions[i] = parent->sigactions[i];
     }
-    child->pgdir = parent->pgdir;
+    child->pml4_phys = parent->pml4_phys;
     child->tls_base = parent->tls_base;
     child->tls_selector = parent->tls_selector;
     if (child_user_stack == 0) {

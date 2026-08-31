@@ -8,7 +8,7 @@
 
 extern NETIF g_netif;
 
-extern uint32_t net_ms(void);
+extern uint32_t net_now_ms(void);
 
 static struct nt_ping_reply s_ping_q[PING_QUEUE_MAX];
 static uint32_t s_ping_head;
@@ -24,7 +24,7 @@ static void ping_push(uint32_t src, uint16_t id, uint16_t seq) {
     r->src = src;
     r->id = id;
     r->seq = seq;
-    r->rtt_ms = net_ms() - s_ping_tmo;
+    r->rtt_ms = net_now_ms() - s_ping_tmo;
     s_ping_tail = (s_ping_tail + 1) % PING_QUEUE_MAX;
     s_ping_cnt++;
     s_ping_active = 0;
@@ -64,7 +64,7 @@ int nt_icmp_send(uint32_t dst, uint16_t id, uint16_t seq) {
     for (uint32_t i = ICMP_HDR_LEN; i < rlen; i++)
         req[i] = (uint8_t)(0x41 + (i & 0x1F));
     net_put16(req + 2, ip_csum(req, rlen));
-    s_ping_tmo = net_ms();
+    s_ping_tmo = net_now_ms();
     s_ping_active = 1;
     return ip_output(&g_netif, dst, IPPROTO_ICMP, req, rlen);
 }

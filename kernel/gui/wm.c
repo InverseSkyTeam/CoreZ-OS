@@ -444,14 +444,14 @@ static void bar_itoa(uint32_t v, char *buf) {
     if (v == 0) {
         buf[n++] = '0';
     } else {
-        char tmp[12];
+        char digits[12];
         int m = 0;
         while (v) {
-            tmp[m++] = (char)('0' + v % 10);
+            digits[m++] = (char)('0' + v % 10);
             v /= 10;
         }
         while (m--)
-            buf[n++] = tmp[m];
+            buf[n++] = digits[m];
     }
     buf[n] = 0;
 }

@@ -84,11 +84,11 @@ static int sock_block(struct SOCKET *s, uint8_t wtype, uint32_t timeout_ms) {
     s->wtype = wtype;
     if (s->nonblock)
         return sock_ready(s) ? 0 : -EAGAIN;
-    uint32_t deadline = timeout_ms ? net_ms() + timeout_ms : 0;
+    uint32_t deadline = timeout_ms ? net_now_ms() + timeout_ms : 0;
     for (;;) {
         if (sock_ready(s))
             return 0;
-        if (timeout_ms && (int32_t)(net_ms() - deadline) >= 0)
+        if (timeout_ms && (int32_t)(net_now_ms() - deadline) >= 0)
             return -1;
         s->waiter = current;
         thread_block_with_status(TASK_BLOCKED);
@@ -389,7 +389,7 @@ int net_shutdown(int fd, int how) {
 int net_select(int nfds, uint32_t *rfds, uint32_t *wfds, uint32_t *efds,
                int timeout_ms) {
     int limit = nfds < MAX_SOCKET ? nfds : MAX_SOCKET;
-    uint32_t deadline = timeout_ms > 0 ? net_ms() + (uint32_t)timeout_ms : 0;
+    uint32_t deadline = timeout_ms > 0 ? net_now_ms() + (uint32_t)timeout_ms : 0;
     for (;;) {
         for (int fd = 0; fd < limit; fd++) {
             struct SOCKET *s = &s_sock[fd];
@@ -422,7 +422,7 @@ int net_select(int nfds, uint32_t *rfds, uint32_t *wfds, uint32_t *efds,
         }
         if (total)
             return total;
-        if (timeout_ms >= 0 && (int32_t)(net_ms() - deadline) >= 0)
+        if (timeout_ms >= 0 && (int32_t)(net_now_ms() - deadline) >= 0)
             return 0;
         mtime_sleep(1);
     }

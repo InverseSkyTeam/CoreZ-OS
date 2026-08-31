@@ -15,7 +15,7 @@ const char *layout_name(enum layout_kind kind) {
     }
 }
 
-static void shrink(struct gfx_rect *r, int gap) {
+static void rect_inset(struct gfx_rect *r, int gap) {
     r->x += gap / 2;
     r->y += gap / 2;
     r->w -= gap;
@@ -34,7 +34,7 @@ void layout_arrange(const struct layout_params *p, int n, struct gfx_rect area,
     if (n == 1 || p->kind == LAYOUT_MONOCLE) {
         for (int i = 0; i < n; i++) {
             out[i] = area;
-            shrink(&out[i], p->gap);
+            rect_inset(&out[i], p->gap);
         }
         return;
     }
@@ -47,7 +47,7 @@ void layout_arrange(const struct layout_params *p, int n, struct gfx_rect area,
         out[0].y = area.y;
         out[0].w = mw;
         out[0].h = area.h;
-        shrink(&out[0], p->gap);
+        rect_inset(&out[0], p->gap);
 
         int sx = area.x + mw;
         int sw = area.w - mw;
@@ -59,7 +59,7 @@ void layout_arrange(const struct layout_params *p, int n, struct gfx_rect area,
             out[i + 1].y = area.y + i * each;
             out[i + 1].w = sw;
             out[i + 1].h = each + (i == cnt - 1 ? rem : 0);
-            shrink(&out[i + 1], p->gap);
+            rect_inset(&out[i + 1], p->gap);
         }
         break;
     }
@@ -71,7 +71,7 @@ void layout_arrange(const struct layout_params *p, int n, struct gfx_rect area,
             out[i].y = area.y;
             out[i].w = each + (i == n - 1 ? rem : 0);
             out[i].h = area.h;
-            shrink(&out[i], p->gap);
+            rect_inset(&out[i], p->gap);
         }
         break;
     }
@@ -83,14 +83,14 @@ void layout_arrange(const struct layout_params *p, int n, struct gfx_rect area,
             out[i].y = area.y + i * each;
             out[i].w = area.w;
             out[i].h = each + (i == n - 1 ? rem : 0);
-            shrink(&out[i], p->gap);
+            rect_inset(&out[i], p->gap);
         }
         break;
     }
     default:
         for (int i = 0; i < n; i++) {
             out[i] = area;
-            shrink(&out[i], p->gap);
+            rect_inset(&out[i], p->gap);
         }
         break;
     }

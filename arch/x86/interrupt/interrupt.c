@@ -53,7 +53,7 @@ static int handle_cow_fault(uint32_t fault_addr, uint32_t error_code) {
     if (!(error_code & 0x2)) {
         return 0;
     }
-    if (current == 0 || current->pgdir == 0) {
+    if (current == 0 || current->pml4_phys == 0) {
         return 0;
     }
     uint64_t *pte = pte_ptr(fault_addr);
@@ -86,7 +86,7 @@ void isr_handler(struct Registers *r) {
         }
         signal_terminate(current, SIGSEGV);
     }
-    if (n == 14 && current != NULL && current->pgdir != 0) {
+    if (n == 14 && current != NULL && current->pml4_phys != 0) {
         uint64_t cr2v;
         __asm__ volatile("mov %%cr2, %0" : "=r"(cr2v));
         uint32_t fa = (uint32_t)cr2v;

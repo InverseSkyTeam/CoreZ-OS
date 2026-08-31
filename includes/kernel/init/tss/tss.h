@@ -19,7 +19,7 @@ struct tss {
 } __attribute__((packed));
 
 void tss_init(void);
-void update_tss_esp(struct task_struct *pthread);
+void tss_update_rsp0(struct task_struct *task);
 
 extern struct tss tss;
 

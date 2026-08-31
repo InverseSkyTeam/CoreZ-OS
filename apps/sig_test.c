@@ -21,7 +21,7 @@ static void fill_frame(void) {
     frame[22] = 0;
 }
 
-static void attack(void) {
+static void forge_sigreturn(void) {
     __asm__ volatile("mov %0, %%rsp\n\t"
                      "mov %1, %%eax\n\t"
                      "int $0x80\n\t"
@@ -47,7 +47,7 @@ int main(void) {
                 frame[4] = 0x3202;
                 printf("sig_test: firing forged IOPL=3 frame\n");
             }
-            attack();
+            forge_sigreturn();
         }
         int st = -1;
         wait(&st);

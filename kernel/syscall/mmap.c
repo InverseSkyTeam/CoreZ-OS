@@ -82,8 +82,8 @@ uint32_t sys_mmap(const struct mmap_args *a) {
             return (uint32_t)-1;
         }
         for (uint32_t i = 0; i < pages; i++) {
-            uint32_t p = a->addr + i * PAGE_SIZE;
-            if (get_a_page(p) == 0) {
+            uint32_t page = a->addr + i * PAGE_SIZE;
+            if (get_a_page(page) == 0) {
                 unmap_pages(a->addr, i);
                 return (uint32_t)-1;
             }

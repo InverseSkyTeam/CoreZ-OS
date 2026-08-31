@@ -65,17 +65,17 @@ static uint8_t *s_rx_buf;
 static uint32_t s_tx_cur;
 static uint32_t s_rx_cur;
 
-static inline uint32_t e_reg(uint32_t off) {
+static inline uint32_t e1000_reg_read(uint32_t off) {
     return *(volatile uint32_t *)(s_regs + off);
 }
-static inline void e_wreg(uint32_t off, uint32_t v) {
+static inline void e1000_reg_write(uint32_t off, uint32_t v) {
     *(volatile uint32_t *)(s_regs + off) = v;
 }
 
 static void e1000_reset(void) {
-    e_wreg(REG_CTRL, e_reg(REG_CTRL) | (1 << 26));
+    e1000_reg_write(REG_CTRL, e1000_reg_read(REG_CTRL) | (1 << 26));
     for (uint32_t i = 0; i < 10000; i++) {
-        if (!(e_reg(REG_CTRL) & (1 << 26)))
+        if (!(e1000_reg_read(REG_CTRL) & (1 << 26)))
             break;
     }
 }
@@ -95,8 +95,8 @@ int e1000_init(NETIF *ifp) {
     e1000_reset();
     kprintf("[e1000] reset done\n");
 
-    uint32_t ral = e_reg(REG_RA);
-    uint32_t rah = e_reg(REG_RA + 4);
+    uint32_t ral = e1000_reg_read(REG_RA);
+    uint32_t rah = e1000_reg_read(REG_RA + 4);
     ifp->mac[0] = (uint8_t)(ral & 0xFF);
     ifp->mac[1] = (uint8_t)((ral >> 8) & 0xFF);
     ifp->mac[2] = (uint8_t)((ral >> 16) & 0xFF);
@@ -104,7 +104,7 @@ int e1000_init(NETIF *ifp) {
     ifp->mac[4] = (uint8_t)(rah & 0xFF);
     ifp->mac[5] = (uint8_t)((rah >> 8) & 0xFF);
 
-    e_wreg(REG_IMC, 0xFFFFFFFF);
+    e1000_reg_write(REG_IMC, 0xFFFFFFFF);
 
     s_tx = (struct E1000_TX_DESC *)get_kernel_pages(1);
     s_tx_buf = (uint8_t *)get_kernel_pages(TX_DESC_N * RX_BUF_LEN / PAGE_SIZE);
@@ -113,13 +113,13 @@ int e1000_init(NETIF *ifp) {
         s_tx[i].cmd = 0;
         s_tx[i].status = 0x01;
     }
-    e_wreg(REG_TDBAL, V2P(s_tx));
-    e_wreg(REG_TDBAH, 0);
-    e_wreg(REG_TDLEN, TX_DESC_N * 16);
-    e_wreg(REG_TDH, 0);
-    e_wreg(REG_TDT, 0);
-    e_wreg(REG_TCTL, 0x10000 | 0x400 | 0x8 | 0x2);
-    e_wreg(REG_TIPG, 0x18);
+    e1000_reg_write(REG_TDBAL, V2P(s_tx));
+    e1000_reg_write(REG_TDBAH, 0);
+    e1000_reg_write(REG_TDLEN, TX_DESC_N * 16);
+    e1000_reg_write(REG_TDH, 0);
+    e1000_reg_write(REG_TDT, 0);
+    e1000_reg_write(REG_TCTL, 0x10000 | 0x400 | 0x8 | 0x2);
+    e1000_reg_write(REG_TIPG, 0x18);
 
     s_rx = (struct E1000_RX_DESC *)get_kernel_pages(1);
     s_rx_buf = (uint8_t *)get_kernel_pages(RX_DESC_N * RX_BUF_LEN / PAGE_SIZE);
@@ -127,12 +127,12 @@ int e1000_init(NETIF *ifp) {
         s_rx[i].addr = V2P(s_rx_buf) + (uint64_t)i * RX_BUF_LEN;
         s_rx[i].status = 0;
     }
-    e_wreg(REG_RDBAL, V2P(s_rx));
-    e_wreg(REG_RDBAH, 0);
-    e_wreg(REG_RDLEN, RX_DESC_N * 16);
-    e_wreg(REG_RDH, 0);
-    e_wreg(REG_RDT, RX_DESC_N - 1);
-    e_wreg(REG_RCTL, 0x2 | 0x8000 | 0x04000000);
+    e1000_reg_write(REG_RDBAL, V2P(s_rx));
+    e1000_reg_write(REG_RDBAH, 0);
+    e1000_reg_write(REG_RDLEN, RX_DESC_N * 16);
+    e1000_reg_write(REG_RDH, 0);
+    e1000_reg_write(REG_RDT, RX_DESC_N - 1);
+    e1000_reg_write(REG_RCTL, 0x2 | 0x8000 | 0x04000000);
 
     s_tx_cur = s_rx_cur = 0;
     return 0;
@@ -152,7 +152,7 @@ int e1000_tx(NETIF *ifp, const void *frame, uint32_t len) {
     s_tx[slot].cmd = 0x01 | 0x02 | 0x08;
     s_tx[slot].status = 0;
     s_tx_cur++;
-    e_wreg(REG_TDT, s_tx_cur % TX_DESC_N);
+    e1000_reg_write(REG_TDT, s_tx_cur % TX_DESC_N);
     for (uint32_t i = 0; i < 100000; i++) {
         if (s_tx[slot].status & 0x01)
             break;
@@ -175,6 +175,6 @@ int e1000_rx(NETIF *ifp, void *buf, uint32_t maxlen) {
     uint32_t done = s_rx_cur;
     s_rx[s_rx_cur].status = 0;
     s_rx_cur = (s_rx_cur + 1) % RX_DESC_N;
-    e_wreg(REG_RDT, done);
+    e1000_reg_write(REG_RDT, done);
     return (int)got;
 }

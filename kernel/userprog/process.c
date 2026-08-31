@@ -16,7 +16,7 @@
 
 void start_process(void *arg) {
     char *path = (char *)arg;
-    if (current->pgdir != 0) {
+    if (current->pml4_phys != 0) {
         process_activate(current);
     }
     const char *argv[] = {path, (const char *)0};
@@ -25,21 +25,21 @@ void start_process(void *arg) {
     }
     thread_exit_current();
 }
-void page_dir_activate(struct task_struct *pthread) {
-    if (pthread->pgdir == 0)
+void page_dir_activate(struct task_struct *task) {
+    if (task->pml4_phys == 0)
         return;
-    asm_write_cr3((uint64_t)pthread->pgdir);
+    asm_write_cr3((uint64_t)task->pml4_phys);
 }
-void process_activate(struct task_struct *pthread) {
-    if (pthread->pgdir != 0) {
-        page_dir_activate(pthread);
-        if (pthread->tls_selector != 0) {
-            tls_desc_set_base(pthread->tls_base);
+void process_activate(struct task_struct *task) {
+    if (task->pml4_phys != 0) {
+        page_dir_activate(task);
+        if (task->tls_selector != 0) {
+            tls_desc_set_base(task->tls_base);
         }
     } else {
         asm_write_cr3(kernel_pml4);
     }
-    update_tss_esp(pthread);
+    tss_update_rsp0(task);
 }
 
 uint32_t *create_page_dir(void) {
@@ -123,9 +123,9 @@ void process_execute(char *path, char *name) {
     ts->rbp = 0;
     ts->rip = kernel_thread_entry;
     create_user_vaddr_bitmap(thread);
-    thread->pgdir = (uint32_t)create_page_dir();
+    thread->pml4_phys = (uint32_t)create_page_dir();
     thread->user_brk = 0;
-    kprintf("[procexec] '%s' pid=%d pgdir=0x%x\n", path, thread->pid,
-            thread->pgdir);
+    kprintf("[procexec] '%s' pid=%d pml4_phys=0x%x\n", path, thread->pid,
+            thread->pml4_phys);
     thread_ready(thread);
 }

@@ -9,6 +9,7 @@
 #include "kernel/fs/fs.h"
 #include "kernel/init/gdt/gdt.h"
 #include "kernel/mm/pool/pool.h"
+#include "kernel/mm/access.h"
 #include "kernel/sched/thread.h"
 #include "kernel/userprog/process.h"
 #include "lib/rand/rand.h"
@@ -19,6 +20,7 @@
 #define EFLAGS_IF_1 (1 << 9)
 #define EFLAGS_IOPL_0 0
 #define MAX_ARG_NR 16
+#define MAX_ARG_STR_LEN 256
 #define HEAP_ASLR_PAGES 2048 /* brk 相对镜像尾部的随机间隙上限: 8MB */
 
 struct Elf64_Nhdr {
@@ -522,6 +524,7 @@ int32_t sys_execv(const char *path, const char *argv[],
     uint32_t old_pgdir;
     uint32_t ustack_ptr;
     uint32_t argv_user_addrs[MAX_ARG_NR];
+    uint32_t slens[MAX_ARG_NR];
     uint32_t argv_user_base;
     int32_t i;
     uint32_t slen;
@@ -551,9 +554,28 @@ int32_t sys_execv(const char *path, const char *argv[],
         cur->userprog_v_addr.vaddr_bitmap.bits = NULL;
     }
     create_user_vaddr_bitmap(cur);
-    argc = 0;
-    while (argv && argv[argc] && argc < MAX_ARG_NR) {
-        ++argc;
+    {
+        int kcaller = (regs != NULL) ? ((regs->cs & 3) == 0) : 1;
+        argc = 0;
+        if (argv != NULL) {
+            while (argc < MAX_ARG_NR) {
+                if (!kcaller && !user_range_readable(
+                                    (uint32_t)(uintptr_t)&argv[argc],
+                                    sizeof(char *))) {
+                    return -1;
+                }
+                if (argv[argc] == NULL) {
+                    break;
+                }
+                int n = kcaller ? (int)strlen(argv[argc])
+                                : user_strnlen(argv[argc], MAX_ARG_STR_LEN);
+                if (n < 0) {
+                    return -1;
+                }
+                slens[argc] = (uint32_t)n + 1;
+                argc++;
+            }
+        }
     }
     entry_point = load(path, &is64, &is_linux, &aux_phdr_vaddr, &aux_phentsize,
                        &aux_phnum, &aux_bias, &aux_brk_base);
@@ -613,7 +635,7 @@ int32_t sys_execv(const char *path, const char *argv[],
     }
     if (argc > 0) {
         for (i = (int32_t)argc - 1; i >= 0; --i) {
-            slen = strlen(argv[i]) + 1;
+            slen = slens[i];
             ustack_ptr -= slen;
             ustack_ptr &= ~(is64 ? 0x7u : 0x3u);
             if (ustack_ptr < cur->stack_bottom) {

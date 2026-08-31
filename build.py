@@ -308,6 +308,21 @@ class Task:
                 p = base / p
             if p.exists() and p.is_file():
                 yield p
+        if self.out is not None and any(t == "-c" for t in self.cmd):
+            dfile = self.out.with_suffix(".d")
+            if dfile.exists():
+                text = dfile.read_text(errors="replace")
+                for line in text.splitlines():
+                    if ":" not in line:
+                        continue
+                    for tok in line.split(":", 1)[1].replace("\\\n", " ").split():
+                        if not tok:
+                            continue
+                        p = Path(tok)
+                        if not p.is_absolute():
+                            p = base / p
+                        if p.exists() and p.is_file():
+                            yield p
 @dataclass
 class BuildStats:
     compiled: int = 0
@@ -338,7 +353,7 @@ def task_cc(name: str, src: Path, out: Path, tools: Tools, flags: List[str], tar
     cmd = [*tools.cc]
     if tools.is_zig and target:
         cmd.append(f"--target={target}")
-    cmd += ["-c", str(src), *flags, "-o", str(out)]
+    cmd += ["-c", str(src), *flags, "-MMD", "-MP", "-o", str(out)]
     COMPILE_COMMANDS.append({
         "directory": str(ROOT),
         "arguments": cmd,
@@ -505,6 +520,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         ("orphan",      "orphan_demo.c", "_start", []),
         ("tls_test",    "tls_test.c",    "_start", []),
         ("sig_test",    "sig_test.c",    "_start", []),
+        ("badptr_test", "badptr_test.c", "_start", []),
         ("cwd_test",    "cwd_test.c",    "_start", []),
         ("echocat",     "echocat.c",     "_start", []),
         ("prog_pipe",   "prog_pipe.c",   "_start", []),

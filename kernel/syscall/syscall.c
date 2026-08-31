@@ -287,25 +287,37 @@ uint64_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)sys_getcwd((char *)r->ebx, (uint32_t)r->ecx);
         break;
     case SYS_CHDIR:
-        if (!kcaller && !access_ok((const void *)r->ebx, 1, 0))
-            break;
-        ret = (uint32_t)sys_chdir((const char *)r->ebx);
-        break;
     case SYS_MKDIR:
-        if (!kcaller && !access_ok((const void *)r->ebx, 1, 0))
-            break;
-        ret = (uint32_t)sys_mkdir((const char *)r->ebx);
+    case SYS_RMDIR: {
+        const char *p = (const char *)r->ebx;
+        char kpath[MAX_PATH_LEN];
+        if (!kcaller) {
+            if (copy_str_from_user(kpath, p, MAX_PATH_LEN) != 0) {
+                break;
+            }
+            p = kpath;
+        }
+        if (nr == SYS_CHDIR) {
+            ret = (uint32_t)sys_chdir(p);
+        } else if (nr == SYS_MKDIR) {
+            ret = (uint32_t)sys_mkdir(p);
+        } else {
+            ret = (uint32_t)sys_rmdir(p);
+        }
         break;
-    case SYS_RMDIR:
-        if (!kcaller && !access_ok((const void *)r->ebx, 1, 0))
-            break;
-        ret = (uint32_t)sys_rmdir((const char *)r->ebx);
+    }
+    case SYS_OPEN: {
+        const char *p = (const char *)r->ebx;
+        char kpath[MAX_PATH_LEN];
+        if (!kcaller) {
+            if (copy_str_from_user(kpath, p, MAX_PATH_LEN) != 0) {
+                break;
+            }
+            p = kpath;
+        }
+        ret = (uint32_t)open_file(p, (uint8_t)r->ecx);
         break;
-    case SYS_OPEN:
-        if (!kcaller && !access_ok((const void *)r->ebx, 1, 0))
-            break;
-        ret = (uint32_t)open_file((const char *)r->ebx, (uint8_t)r->ecx);
-        break;
+    }
     case SYS_CLOSE:
         ret = (uint32_t)close_file((int)r->ebx);
         break;
@@ -313,16 +325,30 @@ uint64_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)sys_lseek((int32_t)r->ebx, (int32_t)r->ecx,
                                   (uint8_t)r->edx);
         break;
-    case SYS_UNLINK:
-        if (!kcaller && !access_ok((const void *)r->ebx, 1, 0))
-            break;
-        ret = (uint32_t)sys_unlink((const char *)r->ebx);
+    case SYS_UNLINK: {
+        const char *p = (const char *)r->ebx;
+        char kpath[MAX_PATH_LEN];
+        if (!kcaller) {
+            if (copy_str_from_user(kpath, p, MAX_PATH_LEN) != 0) {
+                break;
+            }
+            p = kpath;
+        }
+        ret = (uint32_t)sys_unlink(p);
         break;
-    case SYS_OPENDIR:
-        if (!kcaller && !access_ok((const void *)r->ebx, 1, 0))
-            break;
-        ret = (uint32_t)sys_opendir((const char *)r->ebx);
+    }
+    case SYS_OPENDIR: {
+        const char *p = (const char *)r->ebx;
+        char kpath[MAX_PATH_LEN];
+        if (!kcaller) {
+            if (copy_str_from_user(kpath, p, MAX_PATH_LEN) != 0) {
+                break;
+            }
+            p = kpath;
+        }
+        ret = (uint32_t)sys_opendir(p);
         break;
+    }
     case SYS_CLOSEDIR:
         ret = (uint32_t)sys_closedir((struct dir *)r->ebx);
         break;
@@ -333,24 +359,35 @@ uint64_t syscall_handler(struct Registers *r) {
         sys_rewinddir((struct dir *)r->ebx);
         ret = 0;
         break;
-    case SYS_STAT:
-        if (!kcaller && !access_ok((const void *)r->ebx, 1, 0) ||
-            !kcaller &&
-                !access_ok((const void *)r->ecx, sizeof(struct stat), 1))
-            break;
-        ret = (uint32_t)sys_stat((const char *)r->ebx, (struct stat *)r->ecx);
+    case SYS_STAT: {
+        const char *p = (const char *)r->ebx;
+        char kpath[MAX_PATH_LEN];
+        if (!kcaller) {
+            if (copy_str_from_user(kpath, p, MAX_PATH_LEN) != 0 ||
+                !access_ok((const void *)r->ecx, sizeof(struct stat), 1)) {
+                break;
+            }
+            p = kpath;
+        }
+        ret = (uint32_t)sys_stat(p, (struct stat *)r->ecx);
         break;
+    }
     case SYS_PS:
         sys_ps();
         ret = 0;
         break;
-    case SYS_EXECV:
-        if (!kcaller && !access_ok((const void *)r->ebx, 1, 0) ||
-            !kcaller && !access_ok((const void *)r->ecx, sizeof(void *), 0))
-            break;
-        ret =
-            (uint32_t)sys_execv((const char *)r->ebx, (const char **)r->ecx, r);
+    case SYS_EXECV: {
+        const char *p = (const char *)r->ebx;
+        char kpath[MAX_PATH_LEN];
+        if (!kcaller) {
+            if (copy_str_from_user(kpath, p, MAX_PATH_LEN) != 0) {
+                break;
+            }
+            p = kpath;
+        }
+        ret = (uint32_t)sys_execv(p, (const char **)r->ecx, r);
         break;
+    }
     case SYS_EXIT:
         sys_exit((int32_t)r->ebx);
         ret = 0;
@@ -425,6 +462,9 @@ uint64_t syscall_handler(struct Registers *r) {
                                      (uint32_t)r->edx);
         break;
     case SYS_FUTEX:
+        if (!kcaller && !access_ok((const void *)r->ebx, 4, 0)) {
+            break;
+        }
         ret = (uint32_t)sys_futex((uint32_t)r->ebx, (uint32_t)r->ecx,
                                   (uint32_t)r->edx, (uint32_t)r->esi);
         break;

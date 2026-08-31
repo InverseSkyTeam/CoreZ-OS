@@ -86,6 +86,21 @@ void isr_handler(struct Registers *r) {
         }
         signal_terminate(current, SIGSEGV);
     }
+    if (n == 14 && current != NULL && current->pgdir != 0) {
+        uint64_t cr2v;
+        __asm__ volatile("mov %%cr2, %0" : "=r"(cr2v));
+        uint32_t fa = (uint32_t)cr2v;
+        if (fa >= USER_VADDR_START && fa < 0xc0000000u &&
+            (fa < 0x40000000u || fa >= 0x80200000u)) {
+            set_text_color(14);
+            kprintf("[pf] kernel touched unmapped user addr 0x%x, killing "
+                    "pid %d (%s)\n",
+                    fa, current->pid, current->name);
+            set_text_color(7);
+            signal_terminate(current, SIGSEGV);
+            return;
+        }
+    }
     set_text_color(12);
     kprintf("\n*** EXCEPTION ***\n");
     if (n < 32) {

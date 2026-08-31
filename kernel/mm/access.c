@@ -20,7 +20,7 @@ int access_ok(const void *addr, size_t n, int write) {
     return 1;
 }
 
-int user_range_writable(uint32_t addr, uint32_t len) {
+static int user_range_walk(uint32_t addr, uint32_t len, int write) {
     if (addr < USER_VADDR_BEGIN || len == 0 ||
         len > USER_SPACE_END - USER_VADDR_BEGIN ||
         addr > USER_SPACE_END - len) {
@@ -34,15 +34,16 @@ int user_range_writable(uint32_t addr, uint32_t len) {
             return 0;
         }
         if (*pde & 0x80) {
-            if ((*pde & (PTE_U | PTE_W)) != (PTE_U | PTE_W)) {
+            uint64_t need = PTE_U | (write ? PTE_W : 0);
+            if ((*pde & need) != need) {
                 return 0;
             }
         } else {
             uint64_t *pte = pte_ptr(p);
-            if (!(*pte & 1)) {
+            if (!(*pte & 1) || !(*pte & PTE_U)) {
                 return 0;
             }
-            if (!(*pte & PTE_W) &&
+            if (write && !(*pte & PTE_W) &&
                 (!(*pte & COW_FLAG) || !page_cow_resolve(p, *pte))) {
                 return 0;
             }
@@ -51,4 +52,10 @@ int user_range_writable(uint32_t addr, uint32_t len) {
             return 1;
         }
     }
+}
+int user_range_readable(uint32_t addr, uint32_t len) {
+    return user_range_walk(addr, len, 0);
+}
+int user_range_writable(uint32_t addr, uint32_t len) {
+    return user_range_walk(addr, len, 1);
 }

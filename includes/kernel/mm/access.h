@@ -8,6 +8,7 @@
 #define USER_SPACE_END 0xc0000000u
 
 int access_ok(const void *addr, size_t n, int write);
+int user_range_readable(uint32_t addr, uint32_t len);
 int user_range_writable(uint32_t addr, uint32_t len);
 
 #endif

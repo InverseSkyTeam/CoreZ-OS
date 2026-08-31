@@ -2,6 +2,7 @@
 #include "kernel/asmFunc.h"
 #include "kernel/assert.h"
 #include "kernel/init/gdt/gdt.h"
+#include "kernel/mm/access.h"
 #include "kernel/syscall_nr.h"
 #include "drivers/char/console/io.h"
 #include "lib/str/str.h"
@@ -83,6 +84,26 @@ struct sigframe64 {
     uint64_t r15;
     uint64_t old_mask;
 };
+static int sigframe_valid(uint64_t cs, uint64_t rip, uint64_t rsp,
+                          uint64_t ss, uint64_t rflags) {
+    if (cs != SELECTOR_USER64_CODE && cs != SELECTOR_U_CODE) {
+        return 0;
+    }
+    if (ss != SELECTOR_U_DATA) {
+        return 0;
+    }
+    if (rip < USER_VADDR_START || rip >= USER_SPACE_END) {
+        return 0;
+    }
+    if (rsp < USER_VADDR_START || rsp >= USER_SPACE_END) {
+        return 0;
+    }
+    if ((rflags >> 32) != 0 || (rflags & 0x1AF028ull) != 0 ||
+        (rflags & 0x202ull) != 0x202ull) {
+        return 0;
+    }
+    return 1;
+}
 static void deliver_signal64(struct task_struct *cur, struct Registers *r,
                              int sig, struct sigaction *sa) {
     struct sigframe64 frame;
@@ -300,7 +321,19 @@ int sys_kill(int pid, int sig) {
 uint64_t sys_sigreturn(struct Registers *r) {
     struct task_struct *cur = current;
     if (r->cs == SELECTOR_USER64_CODE) {
-        struct sigframe64 *sf = (struct sigframe64 *)(r->user_rsp - 8);
+        uint64_t faddr = r->user_rsp - 8;
+        if (faddr < USER_VADDR_START ||
+            faddr > USER_SPACE_END - sizeof(struct sigframe64) ||
+            !user_range_readable((uint32_t)faddr,
+                                 sizeof(struct sigframe64))) {
+            signal_terminate(cur, SIGSEGV);
+            return (uint64_t)-1;
+        }
+        struct sigframe64 *sf = (struct sigframe64 *)faddr;
+        if (!sigframe_valid(sf->cs, sf->rip, sf->rsp, sf->ss, sf->rflags)) {
+            signal_terminate(cur, SIGSEGV);
+            return (uint64_t)-1;
+        }
         r->rip = sf->rip;
         r->cs = sf->cs;
         r->rflags = sf->rflags;
@@ -325,7 +358,18 @@ uint64_t sys_sigreturn(struct Registers *r) {
         cur->signal_mask &= ~((1u << SIGKILL) | (1u << SIGSTOP));
         return sf->rax;
     }
-    struct sigframe *sf = (struct sigframe *)(r->user_esp - 4);
+    uint64_t faddr = r->user_esp - 4;
+    if (faddr < USER_VADDR_START ||
+        faddr > USER_SPACE_END - sizeof(struct sigframe) ||
+        !user_range_readable((uint32_t)faddr, sizeof(struct sigframe))) {
+        signal_terminate(cur, SIGSEGV);
+        return (uint64_t)-1;
+    }
+    struct sigframe *sf = (struct sigframe *)faddr;
+    if (!sigframe_valid(sf->cs, sf->eip, sf->user_esp, sf->ss, sf->eflags)) {
+        signal_terminate(cur, SIGSEGV);
+        return (uint64_t)-1;
+    }
     r->eip = sf->eip;
     r->cs = sf->cs;
     r->eflags = sf->eflags;

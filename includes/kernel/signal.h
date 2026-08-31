@@ -75,7 +75,7 @@ void signal_reset_user(struct task_struct *t);
 int sys_sigaction(int sig, const struct sigaction *act, struct sigaction *old);
 int sys_kill(int pid, int sig);
 int sys_sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
-void sys_sigreturn(struct Registers *r);
+uint64_t sys_sigreturn(struct Registers *r);
 
 void check_pending_signals(struct Registers *r);
 

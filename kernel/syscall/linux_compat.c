@@ -29,7 +29,7 @@ int32_t sys_wait(int32_t *status);
 int32_t sys_sigaction(int sig, const struct sigaction *act,
                       struct sigaction *old);
 int32_t sys_sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
-void sys_sigreturn(struct Registers *r);
+uint64_t sys_sigreturn(struct Registers *r);
 
 static int32_t compat_read(int32_t fd, void *buf, uint32_t count);
 static int32_t compat_write(int32_t fd, const void *buf, uint32_t count);
@@ -803,8 +803,7 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_rt_sigreturn:
-        sys_sigreturn(r);
-        ret = 0;
+        ret = (uint32_t)sys_sigreturn(r);
         break;
     case SYS_LINUX_setpgid: {
         int32_t n = compat_setpgid(a, b);

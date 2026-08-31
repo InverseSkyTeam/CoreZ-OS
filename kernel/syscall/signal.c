@@ -1,6 +1,7 @@
 #include "kernel/asm/stub.h"
 #include "kernel/asmFunc.h"
 #include "kernel/assert.h"
+#include "kernel/init/gdt/gdt.h"
 #include "kernel/syscall_nr.h"
 #include "drivers/char/console/io.h"
 #include "lib/str/str.h"
@@ -57,8 +58,84 @@ void signal_terminate(struct task_struct *t, int sig) {
 static void signal_stop_current(void) {
     thread_block_with_status(TASK_STOPPED);
 }
+struct sigframe64 {
+    uint64_t restorer;
+    uint64_t signo;
+    uint64_t rip;
+    uint64_t cs;
+    uint64_t rflags;
+    uint64_t rsp;
+    uint64_t ss;
+    uint64_t rax;
+    uint64_t rbx;
+    uint64_t rcx;
+    uint64_t rdx;
+    uint64_t rsi;
+    uint64_t rdi;
+    uint64_t rbp;
+    uint64_t r8;
+    uint64_t r9;
+    uint64_t r10;
+    uint64_t r11;
+    uint64_t r12;
+    uint64_t r13;
+    uint64_t r14;
+    uint64_t r15;
+    uint64_t old_mask;
+};
+static void deliver_signal64(struct task_struct *cur, struct Registers *r,
+                             int sig, struct sigaction *sa) {
+    struct sigframe64 frame;
+    frame.restorer = (uint64_t)sa->sa_restorer;
+    frame.signo = (uint64_t)sig;
+    frame.rip = r->rip;
+    frame.cs = r->cs;
+    frame.rflags = r->rflags & ~(1ull << 8);
+    frame.rsp = r->user_rsp;
+    frame.ss = r->ss;
+    frame.rax = r->rax;
+    frame.rbx = r->rbx;
+    frame.rcx = r->rcx;
+    frame.rdx = r->rdx;
+    frame.rsi = r->rsi;
+    frame.rdi = r->rdi;
+    frame.rbp = r->rbp;
+    frame.r8 = r->r8;
+    frame.r9 = r->r9;
+    frame.r10 = r->r10;
+    frame.r11 = r->r11;
+    frame.r12 = r->r12;
+    frame.r13 = r->r13;
+    frame.r14 = r->r14;
+    frame.r15 = r->r15;
+    frame.old_mask = cur->signal_mask;
+    uint64_t sp = r->user_rsp - 128;
+    sp -= sizeof(struct sigframe64);
+    sp &= ~0xfULL;
+    sp -= 8;
+    uint32_t stack_low =
+        (cur->stack_bottom != 0) ? cur->stack_bottom : USER_STACK_BOTTOM;
+    if (sp < stack_low) {
+        signal_terminate(cur, sig);
+        return;
+    }
+    memcpy((void *)sp, &frame, sizeof(frame));
+    if (!(sa->sa_flags & SA_NODEFER)) {
+        cur->signal_mask |= (1u << sig);
+    }
+    cur->signal_mask |= sa->sa_mask;
+    cur->signal_mask &= ~((1u << SIGKILL) | (1u << SIGSTOP));
+    r->user_rsp = sp;
+    r->rip = (uint64_t)sa->sa_handler;
+    r->rdi = (uint64_t)sig;
+    r->rax = 0;
+}
 static void deliver_signal(struct task_struct *cur, struct Registers *r,
                            int sig, struct sigaction *sa) {
+    if (r->cs == SELECTOR_USER64_CODE) {
+        deliver_signal64(cur, r, sig, sa);
+        return;
+    }
     struct sigframe frame;
     frame.restorer = (uint32_t)sa->sa_restorer;
     frame.signo = (uint32_t)sig;
@@ -220,8 +297,34 @@ int sys_kill(int pid, int sig) {
     t->signal_pending |= (1u << sig);
     return 0;
 }
-void sys_sigreturn(struct Registers *r) {
+uint64_t sys_sigreturn(struct Registers *r) {
     struct task_struct *cur = current;
+    if (r->cs == SELECTOR_USER64_CODE) {
+        struct sigframe64 *sf = (struct sigframe64 *)(r->user_rsp - 8);
+        r->rip = sf->rip;
+        r->cs = sf->cs;
+        r->rflags = sf->rflags;
+        r->user_rsp = sf->rsp;
+        r->ss = sf->ss;
+        r->rax = sf->rax;
+        r->rbx = sf->rbx;
+        r->rcx = sf->rcx;
+        r->rdx = sf->rdx;
+        r->rsi = sf->rsi;
+        r->rdi = sf->rdi;
+        r->rbp = sf->rbp;
+        r->r8 = sf->r8;
+        r->r9 = sf->r9;
+        r->r10 = sf->r10;
+        r->r11 = sf->r11;
+        r->r12 = sf->r12;
+        r->r13 = sf->r13;
+        r->r14 = sf->r14;
+        r->r15 = sf->r15;
+        cur->signal_mask = sf->old_mask;
+        cur->signal_mask &= ~((1u << SIGKILL) | (1u << SIGSTOP));
+        return sf->rax;
+    }
     struct sigframe *sf = (struct sigframe *)(r->user_esp - 4);
     r->eip = sf->eip;
     r->cs = sf->cs;
@@ -237,4 +340,5 @@ void sys_sigreturn(struct Registers *r) {
     r->ebp = sf->ebp;
     cur->signal_mask = sf->old_mask;
     cur->signal_mask &= ~((1u << SIGKILL) | (1u << SIGSTOP));
+    return sf->eax;
 }

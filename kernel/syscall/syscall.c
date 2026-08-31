@@ -242,9 +242,9 @@ static uint32_t sys_set_thread_area(struct Registers *r, uint32_t base) {
     *(volatile int32_t *)base = 0;
     return 0;
 }
-uint32_t syscall_handler(struct Registers *r) {
+uint64_t syscall_handler(struct Registers *r) {
     uint32_t nr = r->eax;
-    uint32_t ret = (uint32_t)-1;
+    uint64_t ret = (uint32_t)-1;
     int kcaller = (r->cs & 3) == 0;
     if (r->int_no == 0x81 || current->compat || nr >= COMPAT_SYSCALL_BASE) {
         check_pending_signals(r);
@@ -391,8 +391,7 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)sys_kill((int)r->ebx, (int)r->ecx);
         break;
     case SYS_SIGRETURN:
-        sys_sigreturn(r);
-        ret = 0;
+        ret = sys_sigreturn(r);
         break;
     case SYS_SIGPROCMASK:
         if ((r->ecx && !kcaller &&
@@ -626,6 +625,7 @@ uint32_t syscall_handler(struct Registers *r) {
         ret = (uint32_t)-1;
         break;
     }
+    r->rax = ret;
     check_pending_signals(r);
     return ret;
 }

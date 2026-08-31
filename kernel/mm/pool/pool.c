@@ -334,7 +334,9 @@ void *ioremap(uint32_t phy_addr, uint32_t size) {
 void *get_a_page(uint32_t vaddr) {
     struct task_struct *cur = current;
     uint32_t bit_idx = (vaddr - cur->userprog_v_addr.vaddr_start) / PAGE_SIZE;
-    ASSERT(bit_idx < cur->userprog_v_addr.vaddr_bitmap.btmp_bytes_len * 8);
+    if (bit_idx >= cur->userprog_v_addr.vaddr_bitmap.btmp_bytes_len * 8) {
+        return 0;
+    }
     lock_acquire(&mem_lock);
     bitmap_set(&cur->userprog_v_addr.vaddr_bitmap, bit_idx, 1);
     uint32_t phy = palloc_raw(&kernel_pool);

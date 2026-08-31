@@ -1,4 +1,5 @@
 #include "libc/user/stdio.h"
+#include "kernel/syscall/mmap.h"
 #include "syscall.h"
 
 static unsigned int raw(unsigned int nr, unsigned int a, unsigned int b,
@@ -61,6 +62,40 @@ int main(void) {
         raw(SYS_REWINDDIR, 0x12345678u, 0, 0);
         raw(SYS_REWINDDIR, h, 0, 0);
         raw(SYS_CLOSEDIR, h, 0, 0);
+    }
+    unsigned int margs[6];
+    margs[0] = 0x30000000u;
+    margs[1] = 4096u;
+    margs[2] = 3u;
+    margs[3] = 0x10u;
+    margs[4] = 0xFFFFFFFFu;
+    margs[5] = 0;
+    if (raw(SYS_MMAP, (unsigned int)margs, 0, 0) != 0x30000000u) {
+        printf("badptr: valid mmap broken\n");
+        ok = 0;
+    }
+    if (raw(SYS_MUNMAP, 0x30000000u, 4096u, 0) != 0) {
+        printf("badptr: valid munmap broken\n");
+        ok = 0;
+    }
+    struct {
+        unsigned int nr, a, b, c, want;
+    } edge[] = {
+        {SYS_MMAP, (unsigned int)margs, 0, 0, 0xFFFFFFFFu},
+        {SYS_MUNMAP, 0xC0000000u, 4096u, 0, 0xFFFFFFFFu},
+        {SYS_MUNMAP, 0x40000000u, 4096u, 0, 0xFFFFFFFFu},
+        {SYS_MUNMAP, 0xFFFFF000u, 0x100000u, 0, 0xFFFFFFFFu},
+        {SYS_MPROTECT, 0x40000000u, 4096u, 3, 0xFFFFFFFFu},
+        {SYS_WRITE, 999u, (unsigned int)buf, 1, 0xFFFFFFFFu},
+    };
+    margs[0] = 0xC0000000u;
+    for (unsigned int i = 0; i < sizeof(edge) / sizeof(edge[0]); i++) {
+        unsigned int got = raw(edge[i].nr, edge[i].a, edge[i].b, edge[i].c);
+        printf("badptr: edge %d got %d want %d\n", (int)i, (int)got,
+               (int)edge[i].want);
+        if (got != edge[i].want) {
+            ok = 0;
+        }
     }
     printf("badptr: getpid=%d\n", (int)raw(SYS_GETPID, 0, 0, 0));
     printf("badptr: %s\n", ok ? "PASS" : "FAIL");

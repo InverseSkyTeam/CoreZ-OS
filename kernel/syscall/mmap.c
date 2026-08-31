@@ -6,6 +6,7 @@
 #include "kernel/mm/pool/pool.h"
 #include "kernel/sched/thread.h"
 #include "kernel/userprog/process.h"
+#include "kernel/mm/access.h"
 static int32_t unmap_pages(uint32_t addr, uint32_t pages) {
     struct task_struct *cur = current;
     for (uint32_t i = 0; i < pages; i++) {
@@ -74,6 +75,9 @@ uint32_t sys_mmap(const struct mmap_args *a) {
         a->addr >= cur->userprog_v_addr.vaddr_start) {
 
         uint32_t end = a->addr + pages * PAGE_SIZE;
+        if (end > USER_SPACE_END) {
+            return (uint32_t)-1;
+        }
         if (a->addr < USER_HIGH_MMIO_END && end > USER_LOW_CEILING) {
             return (uint32_t)-1;
         }
@@ -116,7 +120,15 @@ int32_t sys_munmap(uint32_t addr, uint32_t len) {
     if (addr & (PAGE_SIZE - 1)) {
         return -1;
     }
+    if (addr < USER_VADDR_START || addr >= USER_SPACE_END ||
+        len > USER_SPACE_END - addr) {
+        return -1;
+    }
     uint32_t pages = (len + PAGE_SIZE - 1) / PAGE_SIZE;
+    if (addr < USER_HIGH_MMIO_END &&
+        addr + pages * PAGE_SIZE > USER_LOW_CEILING) {
+        return -1;
+    }
     unmap_pages(addr, pages);
     return 0;
 }
@@ -130,7 +142,15 @@ int32_t sys_mprotect(uint32_t addr, uint32_t len, uint32_t prot) {
     if (len == 0) {
         return 0;
     }
+    if (addr < USER_VADDR_START || addr >= USER_SPACE_END ||
+        len > USER_SPACE_END - addr) {
+        return -1;
+    }
     uint32_t pages = (len + PAGE_SIZE - 1) / PAGE_SIZE;
+    if (addr < USER_HIGH_MMIO_END &&
+        addr + pages * PAGE_SIZE > USER_LOW_CEILING) {
+        return -1;
+    }
     for (uint32_t i = 0; i < pages; i++) {
         uint32_t v = addr + i * PAGE_SIZE;
         if (!page_is_mapped(v)) {

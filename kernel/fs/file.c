@@ -72,6 +72,9 @@ int fd_release(uint32_t local_fd) {
     return 0;
 }
 uint32_t fd_local2global(uint32_t local_fd) {
+    if (local_fd >= MAX_FILES_OPEN_PER_PROC) {
+        return (uint32_t)-1;
+    }
     return current->fd_table[local_fd];
 }
 uint32_t file_read(struct file *file, void *buf, uint32_t count) {

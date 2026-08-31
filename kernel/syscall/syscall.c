@@ -95,7 +95,7 @@ static uint32_t sys_shutdown(void) {
     return 0;
 }
 static uint32_t sys_write(int32_t fd, char *str, uint32_t count) {
-    if (fd < 0) {
+    if (fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return (uint32_t)-1;
     }
     if (is_pipe(fd)) {

@@ -2,13 +2,14 @@ ENTRY(_start)
 
 PHDRS
 {
-    text  PT_LOAD FLAGS(5);
-    data  PT_LOAD FLAGS(6);
+    text    PT_LOAD FLAGS(5);
+    data    PT_LOAD FLAGS(6);
+    dynamic PT_DYNAMIC;
 }
 
 SECTIONS
 {
-    . = 0x8048000;
+    . = 0;
 
     .text : {
         *(.text.unlikely)
@@ -26,19 +27,23 @@ SECTIONS
 
     . = ALIGN(0x1000);
 
+    .rela.dyn : { *(.rela.dyn) } :data
+    .rela.got : { *(.rela.got) } :data
+    .relr.dyn : { *(.relr.dyn) } :data
+    .rel.dyn : { *(.rel.dyn) } :data
+    .rel.got : { *(.rel.got) } :data
+
     .data : {
         *(.data)
         *(.data.*)
         *(.tdata)
         *(.got)
         *(.got.*)
-        *(.rela.dyn)
-        *(.rela.got)
-        *(.rel.dyn)
-        *(.rel.got)
         *(.init_array*)
         *(.fini_array*)
     } :data
+
+    .dynamic : { *(.dynamic) } :data :dynamic
 
     .bss : {
         *(.bss)
@@ -51,9 +56,10 @@ SECTIONS
         *(.note*)
         *(.comment)
         *(.eh_frame*)
-        *(.gnu.hash)
         *(.dynsym)
         *(.dynstr)
-        *(.dynamic)
+        *(.hash)
+        *(.gnu.hash)
+        *(.gnu.version*)
     }
 }

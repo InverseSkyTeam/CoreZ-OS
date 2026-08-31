@@ -20,6 +20,7 @@
 #include "kernel/mm/pool/pool.h"
 #include "drivers/net/net.h"
 #include "kernel/shell/shell.h"
+#include "lib/rand/rand.h"
 #include "kernel/syscall/futex.h"
 #include "kernel/syscall/syscall.h"
 #include "kernel/sched/thread.h"
@@ -154,6 +155,7 @@ void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
     if (net_enable)
         net_init();
 
+    rand_init();
     kernel_thread("shell", 4, my_shell, 0);
     for (;;) {
         net_check_guards();

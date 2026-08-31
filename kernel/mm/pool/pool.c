@@ -20,7 +20,7 @@ struct virtual_addr kernel_vaddr;
 #define FRAME_IDX(phy) (((phy) - MEMORY_BASE) / PAGE_SIZE)
 #define FRAME_IDX_MAX ((MAX_PHYS_MEM - MEMORY_BASE) / PAGE_SIZE)
 static uint8_t frame_owner[FRAME_IDX_MAX];
-static uint64_t kernel_pml4;
+uint64_t kernel_pml4;
 uint32_t kernel_kphys;
 
 #define KERNEL_VADDR_START 0x40400000

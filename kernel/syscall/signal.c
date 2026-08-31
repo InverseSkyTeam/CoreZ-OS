@@ -77,7 +77,9 @@ static void deliver_signal(struct task_struct *cur, struct Registers *r,
     frame.old_mask = cur->signal_mask;
     uint32_t frame_size = sizeof(struct sigframe);
     uint32_t new_esp = (r->user_esp - frame_size) & ~3u;
-    if (new_esp < USER_STACK3_VADDR) {
+    uint32_t stack_low =
+        (cur->stack_bottom != 0) ? cur->stack_bottom : USER_STACK_BOTTOM;
+    if (new_esp < stack_low) {
         signal_terminate(cur, sig);
     }
     memcpy((void *)new_esp, &frame, frame_size);

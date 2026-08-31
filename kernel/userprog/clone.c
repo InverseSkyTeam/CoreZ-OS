@@ -37,6 +37,8 @@ pid_t sys_clone(struct Registers *r) {
     child->parent_pid = (int32_t)parent->pid;
     child->cwd_inode_nr = parent->cwd_inode_nr;
     child->user_brk = parent->user_brk;
+    child->brk_base = parent->brk_base;
+    child->stack_bottom = parent->stack_bottom;
     for (uint32_t i = 0; i < MAX_FILES_OPEN_PER_PROC; i++) {
         child->fd_table[i] = parent->fd_table[i];
         if (child->fd_table[i] != (uint32_t)-1 &&
@@ -54,7 +56,25 @@ pid_t sys_clone(struct Registers *r) {
     child->tls_base = parent->tls_base;
     child->tls_selector = parent->tls_selector;
     if (child_user_stack == 0) {
-        child_user_stack = (uint32_t)get_a_page(USER_STACK3_VADDR) + PAGE_SIZE;
+        for (uint32_t v = USER_STACK_BOTTOM - PAGE_SIZE; v > USER_VADDR_START;
+             v -= PAGE_SIZE) {
+            uint64_t *pde = pde_ptr(v);
+            uint64_t *pte = pte_ptr(v);
+            if (pde != NULL && (*pde & 0x80)) {
+                continue;
+            }
+            if (pte != NULL && (*pte & 1)) {
+                continue;
+            }
+            void *p = get_a_page(v);
+            if (p != 0) {
+                child_user_stack = v + PAGE_SIZE;
+            }
+            break;
+        }
+        if (child_user_stack == 0) {
+            return -1;
+        }
     }
     build_clone_stack(child, r, child_user_stack);
     child->status = TASK_BLOCKED;

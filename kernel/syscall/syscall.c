@@ -182,13 +182,26 @@ static uint32_t sys_ps(void) {
     thread_traverse_all(ps_action, NULL);
     return 0;
 }
+static int brk_page_in_use(uint32_t v) {
+    uint64_t *pde = pde_ptr(v);
+    if (pde == NULL) {
+        return 0;
+    }
+    if (*pde & 0x80) {
+        return 1;
+    }
+    uint64_t *pte = pte_ptr(v);
+    return (pte != NULL && (*pte & 1)) ? 1 : 0;
+}
 uint32_t sys_brk(uint32_t addr) {
     struct task_struct *cur = current;
+    uint32_t base = (cur->brk_base != 0) ? cur->brk_base : USER_HEAP_BASE;
     if (cur->user_brk == 0) {
-        cur->user_brk = USER_HEAP_BASE;
+        cur->user_brk = base;
     }
-    uint32_t base = USER_HEAP_BASE;
-    uint32_t limit = USER_HEAP_LIMIT;
+
+    uint32_t limit = (base < USER_LOW_CEILING) ? USER_LOW_CEILING
+                                               : USER_HEAP_LIMIT;
     uint32_t cur_brk = cur->user_brk;
     if (addr == 0) {
         return cur_brk;
@@ -202,6 +215,10 @@ uint32_t sys_brk(uint32_t addr) {
     uint32_t new_page = (new_brk + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     if (new_page > old_page) {
         for (uint32_t p = old_page; p < new_page; p += PAGE_SIZE) {
+            if (brk_page_in_use(p)) {
+                kprintf("[brk] collision at 0x%x, keep 0x%x\n", p, cur_brk);
+                return cur_brk;
+            }
             if (get_a_page(p) == 0) {
                 kprintf("[brk] OOM, keep 0x%x\n", cur_brk);
                 return cur_brk;

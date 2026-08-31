@@ -56,6 +56,8 @@ struct task_struct {
     uint32_t pgdir;
     struct virtual_addr userprog_v_addr;
     uint32_t user_brk;
+    uint32_t brk_base;
+    uint32_t stack_bottom;
     uint32_t signal_pending;
     uint32_t signal_mask;
     struct sigaction sigactions[NSIG];

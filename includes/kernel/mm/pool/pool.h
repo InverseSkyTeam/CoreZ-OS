@@ -21,6 +21,7 @@ struct virtual_addr {
 
 extern struct pool kernel_pool;
 extern struct virtual_addr kernel_vaddr;
+extern uint64_t kernel_pml4;
 extern uint32_t kernel_kphys;
 
 void pae_init(void);

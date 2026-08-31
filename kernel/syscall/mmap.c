@@ -1,6 +1,7 @@
 #include "kernel/syscall/mmap.h"
 #include "kernel/assert.h"
 #include "lib/str/str.h"
+#include "lib/rand/rand.h"
 #include "kernel/mm/bitmap/bitmap.h"
 #include "kernel/mm/pool/pool.h"
 #include "kernel/sched/thread.h"
@@ -27,10 +28,23 @@ static int page_is_mapped(uint32_t v) {
 static uint32_t find_free_region(uint32_t pages) {
     struct task_struct *cur = current;
     uint32_t start = cur->userprog_v_addr.vaddr_start;
-    uint32_t limit = USER_STACK3_VADDR;
+
+    uint32_t limit = USER_LOW_CEILING;
+    uint32_t total = (limit - start) / PAGE_SIZE;
+    if (pages == 0 || pages > total) {
+        return 0;
+    }
+
+    uint32_t offset = rand_u32() % total;
     uint32_t run = 0;
     uint32_t base = 0;
-    for (uint32_t v = start; v < limit; v += PAGE_SIZE) {
+    for (uint32_t i = 0; i < total; i++) {
+        uint32_t v = start + ((offset + total - 1 - i) % total) * PAGE_SIZE;
+        if (pages > (limit - v) / PAGE_SIZE) {
+            run = 0;
+            base = 0;
+            continue;
+        }
         if (page_is_mapped(v)) {
             run = 0;
             base = 0;
@@ -58,6 +72,11 @@ uint32_t sys_mmap(const struct mmap_args *a) {
     struct task_struct *cur = current;
     if ((a->flags & MAP_FIXED) && (a->addr & (PAGE_SIZE - 1)) == 0 &&
         a->addr >= cur->userprog_v_addr.vaddr_start) {
+
+        uint32_t end = a->addr + pages * PAGE_SIZE;
+        if (a->addr < USER_HIGH_MMIO_END && end > USER_LOW_CEILING) {
+            return (uint32_t)-1;
+        }
         for (uint32_t i = 0; i < pages; i++) {
             uint32_t p = a->addr + i * PAGE_SIZE;
             if (get_a_page(p) == 0) {

@@ -56,15 +56,17 @@ UP_CFLAGS = CFLAGS_BASE + [
 UP_LDFLAGS = ["-s", "-m", "elf_i386", "-T", str(ROOT / "linker" / "user.ld"), "-e", "_start"]
 
 UP_CFLAGS_64 = [
-    "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
+    "-ffreestanding", "-fno-builtin", "-fno-sanitize=all", "-fPIE",
     "-I", str(ROOT / "includes" / "libc" / "user"),
     "-I", str(ROOT / "includes" / "lib"),
     "-I", str(ROOT / "includes"),
 ]
-UP_LDFLAGS_64 = ["-s", "-m", "elf_x86_64", "-T", str(ROOT / "linker" / "user.ld"), "-e", "_start"]
+UP_LDFLAGS_64 = ["-s", "-m", "elf_x86_64", "-T", str(ROOT / "linker" / "user.ld"),
+                 "-e", "_start", "-static", "-pie", "--no-dynamic-linker",
+                 "-z", "pack-relative-relocs"]
 
 MUSL64_BASE = [
-    "-ffreestanding", "-fno-builtin", "-fno-sanitize=all",
+    "-ffreestanding", "-fno-builtin", "-fno-sanitize=all", "-fPIE",
 ]
 MUSL_CFLAGS = MUSL64_BASE + [
     "-I", str(MUSL_SRC / "arch" / "x86_64"),
@@ -438,6 +440,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         ("kernel.o",     KERNEL_DIR / "init" / "main.c"),
         ("assert.o",     KERNEL_DIR / "init" / "assert.c"),
         ("str.o",        ROOT / "lib" / "str" / "str.c"),
+        ("rand.o",       ROOT / "lib" / "rand" / "rand.c"),
         ("rbtree.o",     ROOT / "lib" / "rbtree" / "rbtree.c"),
         ("bitmap.o",     KERNEL_DIR / "mm" / "bitmap" / "bitmap.c"),
         ("pool.o",       KERNEL_DIR / "mm" / "pool" / "pool.c"),
@@ -566,7 +569,9 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
     lc_elf = task_link("lc_demo.elf", BUILD_DIR / "lc_demo.elf", tools,
                        [BUILD_DIR / "lc_start.o", BUILD_DIR / "lc_demo.o",
                         BUILD_DIR / "lc_libc.o"],
-                       flags=["-s", "-m", "elf_x86_64", "-Ttext", "0x8048000", "-e", "_lc_start"])
+       flags=["-s", "-m", "elf_x86_64", "-T", str(ROOT / "linker" / "user.ld"),
+              "-e", "_lc_start", "-static", "-pie", "--no-dynamic-linker",
+              "-z", "pack-relative-relocs"])
     tasks.append(lc_elf)
     user_elves.append(lc_elf)
     shell_cflags = UP_CFLAGS_64 + [
@@ -585,7 +590,9 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         [BUILD_DIR / "up_start.o",
          BUILD_DIR / "shell_core.o", BUILD_DIR / "shell_cmds.o",
          BUILD_DIR / "nr_shell_main.o", *lib_objs],
-        flags=["-s", "-m", "elf_x86_64", "-T", str(ROOT / "linker" / "user.ld"), "-e", "_start"])
+        flags=["-s", "-m", "elf_x86_64", "-T", str(ROOT / "linker" / "user.ld"), "-e", "_start",
+               "-static", "-pie", "--no-dynamic-linker",
+               "-z", "pack-relative-relocs"])
     tasks.append(nr_shell_elf)
     user_elves.append(nr_shell_elf)
     net_dir = ROOT / "drivers" / "net"
@@ -614,7 +621,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
     kernel_objs_names = [
         "entry.o", "kernel.o", "func.o", "ioc.o", "io.o", "idle.o", "acpi.o",
         "apic.o", "pit.o", "stub.o", "idt.o", "interrupt.o", "pic.o",
-        "assert.o", "str.o", "rbtree.o", "bitmap.o", "pool.o", "access.o", "list.o",
+        "assert.o", "str.o", "rand.o", "rbtree.o", "bitmap.o", "pool.o", "access.o", "list.o",
         "switch.o", "thread.o", "sync.o", "percpu.o", "smp.o",
         "ap_tramp.o", "ioqueue.o", "tty.o", "keyboard.o",
         "ide.o", "ext2.o", "fs.o", "inode.o", "dir.o", "file.o", "proc.o",
@@ -707,7 +714,8 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
             crt1 = MUSL_LIB / "crt1.o"
             crti = MUSL_LIB / "crti.o"
             crtn = MUSL_LIB / "crtn.o"
-            cmd = [ld, "-nostdlib", "-static",
+            cmd = [ld, "-nostdlib", "-static", "-pie", "--no-dynamic-linker",
+                   "-z", "pack-relative-relocs",
                    "-T", str(ROOT / "linker" / "user.ld"), "-e", "_start",
                    str(crt1), str(crti), *map(str, objs), str(crtn),
                    "-L", str(MUSL_LIB), "--start-group", "-lc", "--end-group",

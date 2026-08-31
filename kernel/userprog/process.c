@@ -36,8 +36,10 @@ void process_activate(struct task_struct *pthread) {
         if (pthread->tls_selector != 0) {
             tls_desc_set_base(pthread->tls_base);
         }
-        update_tss_esp(pthread);
+    } else {
+        asm_write_cr3(kernel_pml4);
     }
+    update_tss_esp(pthread);
 }
 
 uint32_t *create_page_dir(void) {

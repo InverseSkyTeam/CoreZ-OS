@@ -1,4 +1,6 @@
 #include "kernel/userprog/exec.h"
+#include "arch/cpu.h"
+#include "arch/x86/interrupt/interrupt.h"
 #include "drivers/char/console/io.h"
 #include "kernel/asm/stub.h"
 #include "kernel/asmFunc.h"
@@ -9,6 +11,7 @@
 #include "kernel/mm/pool/pool.h"
 #include "kernel/sched/thread.h"
 #include "kernel/userprog/process.h"
+#include "lib/rand/rand.h"
 #include "lib/str/str.h"
 #define DIV_ROUND_UP(X, STEP) ((X + STEP - 1) / STEP)
 #define PF_X 0x1
@@ -16,6 +19,7 @@
 #define EFLAGS_IF_1 (1 << 9)
 #define EFLAGS_IOPL_0 0
 #define MAX_ARG_NR 16
+#define HEAP_ASLR_PAGES 2048 /* brk 相对镜像尾部的随机间隙上限: 8MB */
 
 struct Elf64_Nhdr {
     uint32_t namesz;
@@ -92,8 +96,102 @@ struct Elf64_Phdr {
     Elf64_Xword p_memsz;
     Elf64_Xword p_align;
 };
+struct Elf64_Dyn {
+    int64_t d_tag;
+    uint64_t d_val;
+};
+struct Elf64_Rela {
+    Elf64_Addr r_offset;
+    Elf64_Xword r_info;
+    int64_t r_addend;
+};
+#define DT_NULL 0
+#define DT_RELA 7
+#define DT_RELASZ 8
+#define DT_RELAENT 9
+#define DT_RELRSZ 35
+#define DT_RELR 36
+#define DT_RELRENT 37
+#define ELF64_R_TYPE(i) ((i) & 0xffffffffu)
+#define R_X86_64_RELATIVE 8
+
+struct wx_range {
+    uint32_t base;
+    uint32_t pages;
+};
+
+static void apply_rx(uint32_t base, uint32_t pages) {
+    for (uint32_t i = 0; i < pages; i++) {
+        uint32_t pg = base + i * PAGE_SIZE;
+        uint64_t *pte = pte_ptr(pg);
+        if (pte != NULL && (*pte & PTE_P)) {
+            *pte = (*pte & 0x000ffffffffff000ull) |
+                   pte_wx(PTE_P | PTE_U, 0, 1);
+            __asm__ volatile("invlpg (%0)" : : "r"(pg) : "memory");
+        }
+    }
+}
+
+static void apply_relocs(uint32_t bias, uint32_t dyn_vaddr) {
+    if (bias == 0 || dyn_vaddr == 0)
+        return;
+    struct Elf64_Dyn *d = (struct Elf64_Dyn *)(uintptr_t)(bias + dyn_vaddr);
+    uint64_t rela = 0, relasz = 0, relaent = sizeof(struct Elf64_Rela);
+    uint64_t relr = 0, relrsz = 0;
+    for (int i = 0; d[i].d_tag != DT_NULL; i++) {
+        if (d[i].d_tag == DT_RELA)
+            rela = d[i].d_val;
+        else if (d[i].d_tag == DT_RELASZ)
+            relasz = d[i].d_val;
+        else if (d[i].d_tag == DT_RELAENT)
+            relaent = d[i].d_val;
+        else if (d[i].d_tag == DT_RELR)
+            relr = d[i].d_val;
+        else if (d[i].d_tag == DT_RELRSZ)
+            relrsz = d[i].d_val;
+    }
+    if (rela != 0 && relasz != 0) {
+        for (uint64_t off = 0; off < relasz; off += relaent) {
+            struct Elf64_Rela *r =
+                (struct Elf64_Rela *)(uintptr_t)(bias + rela + off);
+            if (ELF64_R_TYPE(r->r_info) == R_X86_64_RELATIVE)
+                *(uint64_t *)(uintptr_t)(bias + r->r_offset) =
+                    bias + r->r_addend;
+        }
+    }
+    if (relr == 0 || relrsz == 0)
+        return;
+    uint64_t where = 0;
+    for (uint64_t off = 0; off < relrsz; off += sizeof(uint64_t)) {
+        uint64_t w = *(uint64_t *)(uintptr_t)(bias + relr + off);
+        if ((w & 1) == 0) {
+            where = w;
+            *(uint64_t *)(uintptr_t)(bias + where) = bias + where;
+            where += sizeof(uint64_t);
+        } else {
+            uint64_t bitmap = w >> 1;
+            for (int b = 0; b < 63; b++) {
+                if (bitmap & (1ull << b)) {
+                    uint64_t a = where + (uint64_t)b * sizeof(uint64_t);
+                    *(uint64_t *)(uintptr_t)(bias + a) = bias + a;
+                }
+            }
+            where += 63 * sizeof(uint64_t);
+        }
+    }
+}
+
+static uint32_t pick_brk_base(uint32_t image_end) {
+    uint32_t brk_end = (image_end + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    uint32_t gap = (rand_u32() % HEAP_ASLR_PAGES) * PAGE_SIZE;
+    uint32_t brk_base = brk_end + gap;
+    if (brk_base > USER_LOW_CEILING || brk_base < brk_end)
+        brk_base = USER_LOW_CEILING;
+    return brk_base;
+}
+
 static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
-                            uint32_t memsz, uint32_t vaddr, int executable) {
+                            uint32_t memsz, uint32_t vaddr) {
     uint32_t vaddr_first_page = vaddr & 0xfffff000;
     uint32_t size_in_first_page = PAGE_SIZE - (vaddr & 0x00000fff);
     uint32_t occupy_pages =
@@ -113,27 +211,20 @@ static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
     }
     sys_lseek(fd, offset, SEEK_SET);
     read_file(fd, (void *)vaddr, filesz);
-    if (executable) {
-        /* W^X: 可执行段 -> RX (清 W 与 NX), 不可再写入 */
-        for (uint32_t pg = vaddr_first_page;
-             pg < vaddr_first_page + occupy_pages * PAGE_SIZE;
-             pg += PAGE_SIZE) {
-            uint64_t *pte = pte_ptr(pg);
-            if (*pte & PTE_P) {
-                *pte = (*pte & 0x000ffffffffff000ull) | PTE_P | PTE_U;
-                __asm__ volatile("invlpg (%0)" : : "r"(pg) : "memory");
-            }
-        }
-    }
     return 0;
 }
+
 static int32_t load(const char *pathname, int *is64, int *is_linux,
                     uint32_t *phdr_vaddr, uint32_t *phentsize,
-                    uint32_t *phnum) {
+                    uint32_t *phnum, uint32_t *bias_out,
+                    uint32_t *brk_base_out) {
     *phdr_vaddr = 0;
     *phentsize = 0;
     *phnum = 0;
+    *bias_out = 0;
+    *brk_base_out = 0;
     int32_t ret = -1;
+    uint32_t image_end = 0;
     unsigned char ident[16];
     int32_t fd = open_file(pathname, O_RDONLY);
     if (fd == -1) {
@@ -157,12 +248,44 @@ static int32_t load(const char *pathname, int *is64, int *is_linux,
             sizeof(elf64_header)) {
             goto done;
         }
-        if (elf64_header.e_type != 2 || elf64_header.e_machine != EM_X86_64 ||
+        int is_dyn = (elf64_header.e_type == 3);
+        if ((elf64_header.e_type != 2 && !is_dyn) ||
+            elf64_header.e_machine != EM_X86_64 ||
             elf64_header.e_version != 1 || elf64_header.e_phnum > 1024 ||
             elf64_header.e_phentsize != sizeof(struct Elf64_Phdr)) {
             goto done;
         }
 
+        uint32_t bias = 0;
+        uint32_t dyn_vaddr = 0;
+        if (is_dyn) {
+            uint32_t min_v = 0xffffffffu, max_e = 0;
+            Elf64_Off pho = elf64_header.e_phoff;
+            for (uint32_t i = 0; i < elf64_header.e_phnum; i++) {
+                struct Elf64_Phdr ph;
+                sys_lseek(fd, pho, SEEK_SET);
+                if (read_file(fd, &ph, sizeof(ph)) != sizeof(ph))
+                    goto done;
+                pho += elf64_header.e_phentsize;
+                if (ph.p_type != PT_LOAD)
+                    continue;
+                if ((uint32_t)ph.p_vaddr < min_v)
+                    min_v = (uint32_t)ph.p_vaddr;
+                uint32_t e = (uint32_t)(ph.p_vaddr + ph.p_memsz);
+                if (e > max_e)
+                    max_e = e;
+            }
+            uint32_t span = max_e - min_v;
+            uint32_t avail = USER_LOW_CEILING - USER_VADDR_START;
+            if (min_v > max_e || span >= avail)
+                goto done;
+            uint32_t off = rand_u32() % (avail - span);
+            off &= ~(PAGE_SIZE - 1);
+            bias = USER_VADDR_START + off;
+        }
+
+        struct wx_range wx[16];
+        int wxn = 0;
         Elf64_Off prog_header_offset = elf64_header.e_phoff;
         for (uint32_t prog_idx = 0; prog_idx < elf64_header.e_phnum;
              prog_idx++) {
@@ -171,6 +294,9 @@ static int32_t load(const char *pathname, int *is64, int *is_linux,
             sys_lseek(fd, prog_header_offset, SEEK_SET);
             if (read_file(fd, &prog64_header, sizeof(prog64_header)) !=
                 sizeof(prog64_header)) {
+                goto done;
+            }
+            if (prog64_header.p_type == PT_INTERP) {
                 goto done;
             }
 
@@ -212,31 +338,67 @@ static int32_t load(const char *pathname, int *is64, int *is_linux,
                           SEEK_SET);
             }
 
+            if (prog64_header.p_type == PT_DYNAMIC)
+                dyn_vaddr = (uint32_t)prog64_header.p_vaddr;
+
             if (elf64_header.e_phoff >= prog64_header.p_offset &&
                 elf64_header.e_phoff <
-                    prog64_header.p_offset + prog64_header.p_filesz &&
-                prog64_header.p_vaddr >= USER_VADDR_START &&
-                prog64_header.p_vaddr < USER_STACK3_VADDR) {
-                *phdr_vaddr =
-                    (uint32_t)(prog64_header.p_vaddr +
-                               (elf64_header.e_phoff - prog64_header.p_offset));
-                *phentsize = elf64_header.e_phentsize;
-                *phnum = elf64_header.e_phnum;
+                    prog64_header.p_offset + prog64_header.p_filesz) {
+                if ((is_dyn && prog64_header.p_vaddr < USER_STACK3_VADDR) ||
+                    (!is_dyn && prog64_header.p_vaddr >= USER_VADDR_START &&
+                     prog64_header.p_vaddr < USER_STACK3_VADDR)) {
+                    *phdr_vaddr = (uint32_t)(prog64_header.p_vaddr +
+                                             (elf64_header.e_phoff -
+                                              prog64_header.p_offset));
+                    *phentsize = elf64_header.e_phentsize;
+                    *phnum = elf64_header.e_phnum;
+                }
             }
-            if (prog64_header.p_type == PT_LOAD &&
-                prog64_header.p_vaddr >= USER_VADDR_START &&
-                prog64_header.p_vaddr < USER_STACK3_VADDR) {
+            if (prog64_header.p_type == PT_LOAD) {
+                uint32_t va = (uint32_t)prog64_header.p_vaddr;
+                if (!is_dyn &&
+                    (va < USER_VADDR_START || va >= USER_STACK3_VADDR)) {
+                    prog_header_offset += elf64_header.e_phentsize;
+                    continue;
+                }
+                uint32_t map_at = va + bias;
+                if (map_at >= USER_STACK3_VADDR)
+                    goto done;
                 if (segment_load(fd, (uint32_t)prog64_header.p_offset,
                                  (uint32_t)prog64_header.p_filesz,
                                  (uint32_t)prog64_header.p_memsz,
-                                 (uint32_t)prog64_header.p_vaddr,
-                                 (prog64_header.p_flags & PF_X) != 0) == -1) {
+                                 map_at) == -1) {
                     goto done;
+                }
+                uint32_t seg_end = map_at + (uint32_t)prog64_header.p_memsz;
+                if (seg_end > image_end) {
+                    image_end = seg_end;
+                }
+                if ((prog64_header.p_flags & PF_X) && wxn < 16) {
+                    uint32_t first = map_at & ~0xfffu;
+                    uint32_t sz_first = PAGE_SIZE - (map_at & 0xfffu);
+                    wx[wxn].base = first;
+                    wx[wxn].pages =
+                        (prog64_header.p_memsz > sz_first)
+                            ? DIV_ROUND_UP(prog64_header.p_memsz - sz_first,
+                                           PAGE_SIZE) +
+                                  1
+                            : 1;
+                    wxn++;
                 }
             }
             prog_header_offset += elf64_header.e_phentsize;
         }
-        ret = (int32_t)elf64_header.e_entry;
+        apply_relocs(bias, dyn_vaddr);
+        for (int i = 0; i < wxn; i++)
+            apply_rx(wx[i].base, wx[i].pages);
+        ret = (int32_t)((uint64_t)elf64_header.e_entry + bias);
+        *bias_out = bias;
+        if (image_end <= USER_VADDR_START ||
+            image_end + PAGE_SIZE >= USER_LOW_CEILING) {
+            goto done;
+        }
+        *brk_base_out = pick_brk_base(image_end);
     } else {
         struct Elf32_Ehdr elf_header;
         struct Elf32_Phdr prog_header;
@@ -317,14 +479,36 @@ static int32_t load(const char *pathname, int *is64, int *is_linux,
                 prog_header.p_vaddr >= USER_VADDR_START &&
                 prog_header.p_vaddr < USER_STACK3_VADDR) {
                 if (segment_load(fd, prog_header.p_offset, prog_header.p_filesz,
-                                 prog_header.p_memsz, prog_header.p_vaddr,
-                                 (prog_header.p_flags & PF_X) != 0) == -1) {
+                                 prog_header.p_memsz, prog_header.p_vaddr) ==
+                    -1) {
                     goto done;
+                }
+                uint32_t seg_end =
+                    prog_header.p_vaddr + prog_header.p_memsz;
+                if (seg_end > image_end) {
+                    image_end = seg_end;
+                }
+                if (prog_header.p_flags & PF_X) {
+                    uint32_t first = prog_header.p_vaddr & ~0xfffu;
+                    uint32_t sz_first =
+                        PAGE_SIZE - (prog_header.p_vaddr & 0xfffu);
+                    uint32_t pages =
+                        (prog_header.p_memsz > sz_first)
+                            ? DIV_ROUND_UP(prog_header.p_memsz - sz_first,
+                                           PAGE_SIZE) +
+                                  1
+                            : 1;
+                    apply_rx(first, pages);
                 }
             }
             prog_header_offset += elf_header.e_phentsize;
         }
         ret = elf_header.e_entry;
+        if (image_end <= USER_VADDR_START ||
+            image_end + PAGE_SIZE >= USER_LOW_CEILING) {
+            goto done;
+        }
+        *brk_base_out = pick_brk_base(image_end);
     }
 done:
     close_file(fd);
@@ -348,6 +532,8 @@ int32_t sys_execv(const char *path, const char *argv[],
     uint32_t aux_phentsize = 0;
     uint32_t aux_phnum = 0;
     uint32_t aux_random_addr = 0;
+    uint32_t aux_bias = 0;
+    uint32_t aux_brk_base = 0;
     cur = current;
     old_pgdir = cur->pgdir;
     if (cur->pgdir == 0) {
@@ -370,7 +556,7 @@ int32_t sys_execv(const char *path, const char *argv[],
         ++argc;
     }
     entry_point = load(path, &is64, &is_linux, &aux_phdr_vaddr, &aux_phentsize,
-                       &aux_phnum);
+                       &aux_phnum, &aux_bias, &aux_brk_base);
     if (entry_point == -1) {
         if (cur->pgdir != old_pgdir) {
             cur->pgdir = old_pgdir;
@@ -381,8 +567,9 @@ int32_t sys_execv(const char *path, const char *argv[],
     memcpy(cur->name, path, 15);
     cur->name[15] = 0;
     cur->user_brk = 0;
+    cur->brk_base = aux_brk_base;
     signal_reset_user(cur);
-    for (uint32_t sp = USER_STACK3_VADDR - PAGE_SIZE; sp <= USER_STACK3_VADDR;
+    for (uint32_t sp = USER_STACK_BOTTOM; sp < USER_STACK_TOP;
          sp += PAGE_SIZE) {
         uint64_t *pde = pde_ptr(sp);
         uint64_t *pte = pte_ptr(sp);
@@ -397,22 +584,30 @@ int32_t sys_execv(const char *path, const char *argv[],
     cur->tls_selector = 0;
     cur->errno = 0;
     cur->compat = is_linux;
+    cur->stack_bottom = USER_STACK_BOTTOM;
     if (is_linux) {
         kprintf("[exec] task %d marked as Linux compat (ABI-tag detected)\n",
                 cur->pid);
     }
-    ustack_ptr = USER_STACK3_VADDR + PAGE_SIZE;
+    
     {
-        static uint32_t boot_seed = 0x1234abcd;
-        boot_seed = boot_seed * 1103515245 + 12345;
+        uint32_t below = rand_u32() % (USER_STACK_PAGES - 3);
+        uint32_t sub = (rand_u32() % (PAGE_SIZE / 8)) * 8;
+        ustack_ptr = USER_STACK_TOP - below * PAGE_SIZE - sub;
+    }
+    {
+        uint64_t r0 = rand_u64();
+        uint64_t r1 = rand_u64();
         ustack_ptr -= 16;
         uint32_t *rnd = (uint32_t *)ustack_ptr;
-        rnd[0] = boot_seed;
-        rnd[1] = boot_seed ^ (boot_seed << 7);
-        rnd[2] = boot_seed + 0x9e3779b9u;
-        rnd[3] = ~boot_seed;
+        rnd[0] = (uint32_t)r0;
+        rnd[1] = (uint32_t)(r0 >> 32);
+        rnd[2] = (uint32_t)r1;
+        rnd[3] = (uint32_t)(r1 >> 32);
         aux_random_addr = ustack_ptr;
     }
+    kprintf("[exec] ASLR: base=0x%x brk=0x%x stack=0x%x\n", aux_bias,
+            aux_brk_base, ustack_ptr);
     for (i = 0; i < MAX_ARG_NR; ++i) {
         argv_user_addrs[i] = 0;
     }
@@ -421,7 +616,7 @@ int32_t sys_execv(const char *path, const char *argv[],
             slen = strlen(argv[i]) + 1;
             ustack_ptr -= slen;
             ustack_ptr &= ~(is64 ? 0x7u : 0x3u);
-            if (ustack_ptr < USER_STACK3_VADDR) {
+            if (ustack_ptr < cur->stack_bottom) {
                 kprintf("[exec] argv too large for user stack\n");
                 return -1;
             }
@@ -468,10 +663,11 @@ int32_t sys_execv(const char *path, const char *argv[],
             A64(AT_EXECFN, 0);
             A64(AT_PAGESZ, PAGE_SIZE);
             A64(AT_CLKTCK, 100);
-            A64(AT_ENTRY, (uint64_t)entry_point);
-            A64(AT_PHDR, aux_phdr_vaddr);
+            A64(AT_ENTRY, (uint64_t)(uint32_t)entry_point);
+            A64(AT_PHDR, aux_phdr_vaddr + aux_bias);
             A64(AT_PHENT, aux_phentsize);
             A64(AT_PHNUM, aux_phnum);
+            A64(AT_BASE, aux_bias);
             A64(AT_FLAGS, 0);
             A64(AT_HWCAP, 0);
             A64(AT_RANDOM, aux_random_addr);
@@ -481,7 +677,7 @@ int32_t sys_execv(const char *path, const char *argv[],
             slen = strlen(exefn) + 1;
             ustack_ptr -= slen;
             ustack_ptr &= ~0x7u;
-            if (ustack_ptr < USER_STACK3_VADDR) {
+            if (ustack_ptr < cur->stack_bottom) {
                 return -1;
             }
             memcpy((void *)ustack_ptr, exefn, slen);
@@ -490,7 +686,7 @@ int32_t sys_execv(const char *path, const char *argv[],
                 slen = strlen(env_defaults[e]) + 1;
                 ustack_ptr -= slen;
                 ustack_ptr &= ~0x7u;
-                if (ustack_ptr < USER_STACK3_VADDR) {
+                if (ustack_ptr < cur->stack_bottom) {
                     return -1;
                 }
                 memcpy((void *)ustack_ptr, env_defaults[e], slen);
@@ -530,7 +726,7 @@ int32_t sys_execv(const char *path, const char *argv[],
             slen = strlen(exefn) + 1;
             ustack_ptr -= slen;
             ustack_ptr &= ~0x3u;
-            if (ustack_ptr < USER_STACK3_VADDR) {
+            if (ustack_ptr < cur->stack_bottom) {
                 return -1;
             }
             memcpy((void *)ustack_ptr, exefn, slen);
@@ -541,7 +737,7 @@ int32_t sys_execv(const char *path, const char *argv[],
                 slen = strlen(env_defaults[e]) + 1;
                 ustack_ptr -= slen;
                 ustack_ptr &= ~0x3u;
-                if (ustack_ptr < USER_STACK3_VADDR) {
+                if (ustack_ptr < cur->stack_bottom) {
                     return -1;
                 }
                 memcpy((void *)ustack_ptr, env_defaults[e], slen);

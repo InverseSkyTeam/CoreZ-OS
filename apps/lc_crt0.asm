@@ -1,5 +1,6 @@
 ; 参考: Wine ntdll 的进程入口 (ldt 初始化) + Linux x86_64 SysV ABI 的 _start (crt1.o) 栈解析
 [bits 64]
+default rel
 extern main
 extern __lc_tls_init
 extern __lc_terminate

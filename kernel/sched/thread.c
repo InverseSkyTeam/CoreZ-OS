@@ -70,6 +70,7 @@ static void init_task_struct_basic(struct task_struct *t, int32_t parent_pid) {
     t->fd_cloexec = 0;
     t->tls_base = 0;
     t->tls_selector = 0;
+    t->tls_msr = 0;
     t->errno = 0;
     t->compat = 0;
     init_signal_state(t);
@@ -143,6 +144,7 @@ void thread_init(void) {
     task_table[0].fd_cloexec = 0;
     task_table[0].tls_base = 0;
     task_table[0].tls_selector = 0;
+    task_table[0].tls_msr = 0;
     task_table[0].errno = 0;
     task_table[0].compat = 0;
     task_table[0].in_ready = 0;

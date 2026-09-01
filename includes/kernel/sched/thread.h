@@ -65,6 +65,7 @@ struct task_struct {
     uint32_t fd_table[MAX_FILES_OPEN_PER_PROC];
     uint32_t tls_base;
     uint32_t tls_selector;
+    uint8_t tls_msr; 
     int32_t errno;
     uint32_t compat;
     uint32_t stack_magic;

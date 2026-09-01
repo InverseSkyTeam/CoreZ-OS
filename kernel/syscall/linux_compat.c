@@ -322,6 +322,7 @@ static int32_t compat_set_thread_area(struct Registers *r,
         return -1;
     cur->tls_base = base;
     cur->tls_selector = SELECTOR_TLS;
+    cur->tls_msr = 0;
     tls_desc_set_base(base);
     lc_seterrno(cur, 0);
     return 0;
@@ -1018,6 +1019,7 @@ uint32_t linux_compat_handler(struct Registers *r) {
         uint64_t base = b;
         if (code == 0x1002u) {
             cur->tls_base = (uint32_t)base;
+            cur->tls_msr = 1; /* process_activate 按 FS_BASE 恢复 */
             asm_wrmsr(MSR_FS_BASE, base);
             lc_seterrno(cur, 0);
             ret = 0;

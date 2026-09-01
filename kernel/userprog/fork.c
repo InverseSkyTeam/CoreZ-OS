@@ -134,6 +134,10 @@ pid_t sys_fork(struct Registers *r) {
     child->exit_status = 0;
     child->signal_mask = parent->signal_mask;
     child->signal_pending = 0;
+    child->tls_base = parent->tls_base;
+    child->tls_selector = parent->tls_selector;
+    child->tls_msr = parent->tls_msr;
+    child->compat = parent->compat;
     for (int i = 0; i < NSIG; i++) {
         child->sigactions[i] = parent->sigactions[i];
     }

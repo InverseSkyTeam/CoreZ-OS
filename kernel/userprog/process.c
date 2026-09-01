@@ -13,6 +13,7 @@
 #define EFLAGS_MBS (1 << 1)
 #define EFLAGS_IF_1 (1 << 9)
 #define EFLAGS_IOPL_0 0
+#define MSR_FS_BASE 0xC0000100ull
 
 void start_process(void *arg) {
     char *path = (char *)arg;
@@ -33,7 +34,9 @@ void page_dir_activate(struct task_struct *task) {
 void process_activate(struct task_struct *task) {
     if (task->pml4_phys != 0) {
         page_dir_activate(task);
-        if (task->tls_selector != 0) {
+        if (task->tls_msr) {
+            asm_wrmsr(MSR_FS_BASE, (uint64_t)task->tls_base);
+        } else if (task->tls_selector != 0) {
             tls_desc_set_base(task->tls_base);
         }
     } else {

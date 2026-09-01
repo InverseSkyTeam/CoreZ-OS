@@ -237,6 +237,7 @@ static uint32_t sys_set_thread_area(struct Registers *r, uint32_t base) {
         return (uint32_t)-1;
     current->tls_base = base;
     current->tls_selector = SELECTOR_TLS;
+    current->tls_msr = 0;
     tls_desc_set_base(base);
     current->errno = 0;
     *(volatile int32_t *)base = 0;

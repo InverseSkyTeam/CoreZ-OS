@@ -168,14 +168,14 @@ static void apply_relocs(uint32_t bias, uint32_t dyn_vaddr) {
         uint64_t w = *(uint64_t *)(uintptr_t)(bias + relr + off);
         if ((w & 1) == 0) {
             where = w;
-            *(uint64_t *)(uintptr_t)(bias + where) = bias + where;
+            *(uint64_t *)(uintptr_t)(bias + where) += bias;
             where += sizeof(uint64_t);
         } else {
             uint64_t bitmap = w >> 1;
             for (int b = 0; b < 63; b++) {
                 if (bitmap & (1ull << b)) {
                     uint64_t a = where + (uint64_t)b * sizeof(uint64_t);
-                    *(uint64_t *)(uintptr_t)(bias + a) = bias + a;
+                    *(uint64_t *)(uintptr_t)(bias + a) += bias;
                 }
             }
             where += 63 * sizeof(uint64_t);
@@ -604,6 +604,7 @@ int32_t sys_execv(const char *path, const char *argv[],
     }
     cur->tls_base = 0;
     cur->tls_selector = 0;
+    cur->tls_msr = 0;
     cur->errno = 0;
     cur->compat = is_linux;
     cur->stack_bottom = USER_STACK_BOTTOM;

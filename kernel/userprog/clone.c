@@ -55,6 +55,8 @@ pid_t sys_clone(struct Registers *r) {
     child->pml4_phys = parent->pml4_phys;
     child->tls_base = parent->tls_base;
     child->tls_selector = parent->tls_selector;
+    child->tls_msr = parent->tls_msr;
+    child->compat = parent->compat;
     if (child_user_stack == 0) {
         for (uint32_t v = USER_STACK_BOTTOM - PAGE_SIZE; v > USER_VADDR_START;
              v -= PAGE_SIZE) {

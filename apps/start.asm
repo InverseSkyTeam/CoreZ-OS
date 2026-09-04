@@ -8,10 +8,12 @@
 [bits 64]
 extern main
 extern exit
+extern __ssp_init
 
 section .text
 global _start
 _start:
+    call    __ssp_init              ; 初始化 stack canary guard
     mov     rdi, [rsp]              ; rdi = argc
     lea     rsi, [rsp + 8]          ; rsi = argv
     lea     rdx, [rsi + rdi*8 + 8]  ; rdx = envp (跳过 argv 数组及其后 NULL)

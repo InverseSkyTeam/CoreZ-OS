@@ -18,6 +18,7 @@
 #include "libc/user/stdio.h"
 #include "libc/user/syscall.h"
 #include "kernel/mm/pool/pool.h"
+#include "kernel/ssp.h"
 #include "drivers/net/net.h"
 #include "kernel/shell/shell.h"
 #include "lib/rand/rand.h"
@@ -93,6 +94,9 @@ void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
     asm_write_cr0(asm_read_cr0() | 0x10000);
     kernel_kphys = kphys;
 
+    stack_canary_init();
+    rand_init();
+
     struct mb2_tag_framebuffer fb = {0};
     mb2_parse(magic, mbi_ptr, &fb);
 
@@ -156,7 +160,6 @@ void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
     if (net_enable)
         net_init();
 
-    rand_init();
     kernel_thread("shell", 4, my_shell, 0);
     for (;;) {
         net_check_guards();

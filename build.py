@@ -46,6 +46,7 @@ CFLAGS = CFLAGS_BASE
 KERNEL_CFLAGS = CFLAGS_BASE + [
     "-mcmodel=large",
     "-mno-red-zone",
+    "-fstack-protector-strong",
     "-Wall", "-Wunused-function", "-Wunused-variable",
 ]
 UP_CFLAGS = CFLAGS_BASE + [
@@ -57,6 +58,7 @@ UP_LDFLAGS = ["-s", "-m", "elf_i386", "-T", str(ROOT / "linker" / "user.ld"), "-
 
 UP_CFLAGS_64 = [
     "-ffreestanding", "-fno-builtin", "-fno-sanitize=all", "-fPIE",
+    "-fstack-protector-strong",
     "-I", str(ROOT / "includes" / "libc" / "user"),
     "-I", str(ROOT / "includes" / "lib"),
     "-I", str(ROOT / "includes"),
@@ -78,7 +80,7 @@ MUSL_CFLAGS = MUSL64_BASE + [
 MUSL_PREFIX = BUILD_DIR / "musl"
 MUSL_INC   = MUSL_PREFIX / "include"
 MUSL_LIB   = MUSL_PREFIX / "lib"
-MUSL_DEMO_CFLAGS = MUSL64_BASE + ["-I", str(MUSL_INC)]
+MUSL_DEMO_CFLAGS = MUSL64_BASE + ["-fstack-protector-strong", "-I", str(MUSL_INC)]
 LC_CFLAGS = MUSL64_BASE + ["-I", str(ROOT / "includes")]
 class Ansi:
     RESET   = "\x1b[0m"
@@ -353,6 +355,8 @@ def task_cc(name: str, src: Path, out: Path, tools: Tools, flags: List[str], tar
     cmd = [*tools.cc]
     if tools.is_zig and target:
         cmd.append(f"--target={target}")
+        if any(f.startswith("-fstack-protector") for f in flags):
+            cmd += ["-nostdinc", "-lc"]
     cmd += ["-c", str(src), *flags, "-MMD", "-MP", "-o", str(out)]
     COMPILE_COMMANDS.append({
         "directory": str(ROOT),
@@ -454,6 +458,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         ("interrupt.o",  ROOT / "arch" / "x86" / "interrupt" / "interrupt.c"),
         ("kernel.o",     KERNEL_DIR / "init" / "main.c"),
         ("assert.o",     KERNEL_DIR / "init" / "assert.c"),
+        ("ssp.o",        KERNEL_DIR / "init" / "ssp.c"),
         ("str.o",        ROOT / "lib" / "str" / "str.c"),
         ("rand.o",       ROOT / "lib" / "rand" / "rand.c"),
         ("rbtree.o",     ROOT / "lib" / "rbtree" / "rbtree.c"),
@@ -513,7 +518,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
     for stem, src in kernel_c_sources:
         tasks.append(task_cc(stem, src, BUILD_DIR / stem, tools, KERNEL_CFLAGS))
     user_programs = [
-        ("prog_no_arg", "prog_no_arg.c", "main",   []),
+        ("prog_no_arg", "prog_no_arg.c", "_start", []),
         ("prog_arg",    "prog_arg.c",    "_start", []),
         ("cat",         "cat.c",         "_start", []),
         ("fork_demo",   "fork_demo.c",   "_start", []),
@@ -535,6 +540,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         ("ping",        "ping.c",        "_start", []),
         ("udp_echo",    "udp_echo.c",    "_start", []),
         ("cow_stress",  "cow_stress.c",  "_start", []),
+        ("canary_test", "canary_test.c", "_start", []),
     ]
     user_lib_sources = [
         (ROOT / "libc" / "user", "stdio.c",   "up_stdio.o"),
@@ -542,6 +548,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
         (ROOT / "lib" / "str",  "str.c",     "up_str.o"),
         (ROOT / "lib" / "rbtree", "rbtree.c",  "up_rbtree.o"),
         (ROOT / "libc" / "user", "stdlib.c",  "up_stdlib.o"),
+        (ROOT / "libc" / "user", "ssp.c",     "up_ssp.o"),
     ]
     def compile_user_lib(out_dir: Path) -> List[Path]:
         outs = []
@@ -639,7 +646,7 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
     kernel_objs_names = [
         "entry.o", "kernel.o", "func.o", "ioc.o", "io.o", "idle.o", "acpi.o",
         "apic.o", "pit.o", "stub.o", "idt.o", "interrupt.o", "pic.o",
-        "assert.o", "str.o", "rand.o", "rbtree.o", "bitmap.o", "pool.o", "access.o", "list.o",
+        "assert.o", "ssp.o", "str.o", "rand.o", "rbtree.o", "bitmap.o", "pool.o", "access.o", "list.o",
         "switch.o", "thread.o", "sync.o", "percpu.o", "smp.o",
         "ap_tramp.o", "ioqueue.o", "tty.o", "keyboard.o",
         "ide.o", "ext2.o", "fs.o", "inode.o", "dir.o", "file.o", "proc.o",

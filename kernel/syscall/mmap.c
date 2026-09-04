@@ -1,10 +1,12 @@
 #include "kernel/syscall/mmap.h"
 #include "kernel/assert.h"
 #include "lib/str/str.h"
+#include "lib/rand/rand.h"
 #include "kernel/mm/bitmap/bitmap.h"
 #include "kernel/mm/pool/pool.h"
 #include "kernel/sched/thread.h"
 #include "kernel/userprog/process.h"
+#include "kernel/mm/access.h"
 static int32_t unmap_pages(uint32_t addr, uint32_t pages) {
     struct task_struct *cur = current;
     for (uint32_t i = 0; i < pages; i++) {
@@ -27,10 +29,23 @@ static int page_is_mapped(uint32_t v) {
 static uint32_t find_free_region(uint32_t pages) {
     struct task_struct *cur = current;
     uint32_t start = cur->userprog_v_addr.vaddr_start;
-    uint32_t limit = USER_STACK3_VADDR;
+
+    uint32_t limit = USER_LOW_CEILING;
+    uint32_t total = (limit - start) / PAGE_SIZE;
+    if (pages == 0 || pages > total) {
+        return 0;
+    }
+
+    uint32_t offset = rand_u32() % total;
     uint32_t run = 0;
     uint32_t base = 0;
-    for (uint32_t v = start; v < limit; v += PAGE_SIZE) {
+    for (uint32_t i = 0; i < total; i++) {
+        uint32_t v = start + ((offset + total - 1 - i) % total) * PAGE_SIZE;
+        if (pages > (limit - v) / PAGE_SIZE) {
+            run = 0;
+            base = 0;
+            continue;
+        }
         if (page_is_mapped(v)) {
             run = 0;
             base = 0;
@@ -58,9 +73,17 @@ uint32_t sys_mmap(const struct mmap_args *a) {
     struct task_struct *cur = current;
     if ((a->flags & MAP_FIXED) && (a->addr & (PAGE_SIZE - 1)) == 0 &&
         a->addr >= cur->userprog_v_addr.vaddr_start) {
+
+        uint32_t end = a->addr + pages * PAGE_SIZE;
+        if (end > USER_SPACE_END) {
+            return (uint32_t)-1;
+        }
+        if (a->addr < USER_HIGH_MMIO_END && end > USER_LOW_CEILING) {
+            return (uint32_t)-1;
+        }
         for (uint32_t i = 0; i < pages; i++) {
-            uint32_t p = a->addr + i * PAGE_SIZE;
-            if (get_a_page(p) == 0) {
+            uint32_t page = a->addr + i * PAGE_SIZE;
+            if (get_a_page(page) == 0) {
                 unmap_pages(a->addr, i);
                 return (uint32_t)-1;
             }
@@ -97,7 +120,15 @@ int32_t sys_munmap(uint32_t addr, uint32_t len) {
     if (addr & (PAGE_SIZE - 1)) {
         return -1;
     }
+    if (addr < USER_VADDR_START || addr >= USER_SPACE_END ||
+        len > USER_SPACE_END - addr) {
+        return -1;
+    }
     uint32_t pages = (len + PAGE_SIZE - 1) / PAGE_SIZE;
+    if (addr < USER_HIGH_MMIO_END &&
+        addr + pages * PAGE_SIZE > USER_LOW_CEILING) {
+        return -1;
+    }
     unmap_pages(addr, pages);
     return 0;
 }
@@ -111,7 +142,15 @@ int32_t sys_mprotect(uint32_t addr, uint32_t len, uint32_t prot) {
     if (len == 0) {
         return 0;
     }
+    if (addr < USER_VADDR_START || addr >= USER_SPACE_END ||
+        len > USER_SPACE_END - addr) {
+        return -1;
+    }
     uint32_t pages = (len + PAGE_SIZE - 1) / PAGE_SIZE;
+    if (addr < USER_HIGH_MMIO_END &&
+        addr + pages * PAGE_SIZE > USER_LOW_CEILING) {
+        return -1;
+    }
     for (uint32_t i = 0; i < pages; i++) {
         uint32_t v = addr + i * PAGE_SIZE;
         if (!page_is_mapped(v)) {

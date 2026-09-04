@@ -81,14 +81,14 @@ uint32_t proc_read(struct file *file, void *buf, uint32_t count) {
     if (file->proc_id != PROC_MEMINFO) {
         return 0;
     }
-    char tmp[128];
-    uint32_t len = meminfo_build(tmp, sizeof(tmp));
+    char info[128];
+    uint32_t len = meminfo_build(info, sizeof(info));
     if (file->fd_pos >= len) {
         return 0;
     }
     uint32_t remain = len - file->fd_pos;
     uint32_t n = (count < remain) ? count : remain;
-    memcpy(buf, tmp + file->fd_pos, n);
+    memcpy(buf, info + file->fd_pos, n);
     file->fd_pos += n;
     return n;
 }

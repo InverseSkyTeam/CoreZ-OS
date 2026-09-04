@@ -63,13 +63,14 @@ static void init_task_struct_basic(struct task_struct *t, int32_t parent_pid) {
     t->pid = pid_alloc++;
     t->elapsed_ticks = 0;
     t->kernel_stack_top = 0;
-    t->pgdir = 0;
+    t->pml4_phys = 0;
     init_fd_table(t);
     t->parent_pid = parent_pid;
     t->stack_magic = STACK_MAGIC;
     t->fd_cloexec = 0;
     t->tls_base = 0;
     t->tls_selector = 0;
+    t->tls_msr = 0;
     t->errno = 0;
     t->compat = 0;
     init_signal_state(t);
@@ -136,13 +137,14 @@ void thread_init(void) {
     task_table[0].ticks = 5;
     task_table[0].elapsed_ticks = 0;
     task_table[0].kernel_stack_top = 0;
-    task_table[0].pgdir = 0;
+    task_table[0].pml4_phys = 0;
     init_fd_table(&task_table[0]);
     task_table[0].parent_pid = -1;
     task_table[0].stack_magic = STACK_MAGIC;
     task_table[0].fd_cloexec = 0;
     task_table[0].tls_base = 0;
     task_table[0].tls_selector = 0;
+    task_table[0].tls_msr = 0;
     task_table[0].errno = 0;
     task_table[0].compat = 0;
     task_table[0].in_ready = 0;
@@ -321,7 +323,7 @@ void thread_kill_pid(uint32_t pid) {
     }
     if (t == NULL || t->status == TASK_DIED || t->status == TASK_HANGING)
         return;
-    if (t->pgdir == 0)
+    if (t->pml4_phys == 0)
         return;
 
     uint32_t old = asm_save_eflags();
@@ -376,9 +378,9 @@ static void reap_died_threads(void) {
         struct task_struct *t = list_entry(e, struct task_struct, all_list_tag);
         struct list_elem *next = e->next;
         if (t->status == TASK_DIED && t != current) {
-            if (t->pgdir) {
-                pfree(&kernel_pool, t->pgdir);
-                t->pgdir = 0;
+            if (t->pml4_phys) {
+                pfree(&kernel_pool, t->pml4_phys);
+                t->pml4_phys = 0;
             }
             if (t->kernel_stack_top) {
                 uint8_t *stack_base =

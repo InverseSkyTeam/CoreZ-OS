@@ -283,8 +283,8 @@ void comp_destroy_surface_pool(struct wl_surface *s, struct shm_pool **pool) {
 }
 
 static uint8_t wallpaper_color(int y) {
-    int t = (y * 5) / scrny;
-    return gfx_rgb(0, t / 3, 1 + t / 2);
+    int shade = (y * 5) / scrny;
+    return gfx_rgb(0, shade / 3, 1 + shade / 2);
 }
 
 static void draw_wallpaper(struct gfx_rect *r) {

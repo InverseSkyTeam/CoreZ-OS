@@ -200,14 +200,14 @@ static void u32_to_str(uint32_t v, char *buf) {
     if (v == 0) {
         buf[n++] = '0';
     } else {
-        char tmp[12];
+        char digits[12];
         int m = 0;
         while (v) {
-            tmp[m++] = (char)('0' + v % 10);
+            digits[m++] = (char)('0' + v % 10);
             v /= 10;
         }
         while (m--)
-            buf[n++] = tmp[m];
+            buf[n++] = digits[m];
     }
     buf[n] = 0;
 }
@@ -384,9 +384,9 @@ static const char *type_names[] = {"gc_term", "gc_clock", "gc_sysmon",
 static int next_type = 0;
 
 void clients_spawn_next(void) {
-    int t = next_type % 4;
+    int type_idx = next_type % 4;
     next_type++;
-    kernel_thread((char *)type_names[t], 6, types[t], 0);
+    kernel_thread((char *)type_names[type_idx], 6, types[type_idx], 0);
 }
 
 void clients_spawn_initial(void) {

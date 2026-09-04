@@ -355,7 +355,7 @@ struct dir_entry *sys_readdir(struct dir *dir) {
     return dir_read(dir);
 }
 void sys_rewinddir(struct dir *dir) {
-    dir->dir_pos = 0;
+    dir_rewind(dir);
 }
 int32_t sys_rmdir(const char *pathname) {
     if (pathname == NULL) {

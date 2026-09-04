@@ -79,15 +79,15 @@ int gfx_rect_intersect(struct gfx_rect a, struct gfx_rect b,
 static int gfx_isqrt(int v) {
     if (v <= 0)
         return 0;
-    int r = 0;
-    for (int b = 1 << 15; b > 0; b >>= 1) {
-        if (r + b <= 46340) {
-            int t = r + b;
-            if (t * t <= v)
-                r = t;
+    int root = 0;
+    for (int bit = 1 << 15; bit > 0; bit >>= 1) {
+        if (root + bit <= 46340) {
+            int candidate = root + bit;
+            if (candidate * candidate <= v)
+                root = candidate;
         }
     }
-    return r;
+    return root;
 }
 
 void gfx_fill_round(struct gfx_canvas *c, int x, int y, int w, int h, int rad,

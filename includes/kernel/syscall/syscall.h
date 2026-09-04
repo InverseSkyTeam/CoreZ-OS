@@ -9,6 +9,6 @@
 
 void syscall_init(void);
 
-uint32_t syscall_handler(struct Registers *r);
+uint64_t syscall_handler(struct Registers *r);
 
 #endif

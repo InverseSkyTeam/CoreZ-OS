@@ -17,8 +17,8 @@ static int vaddr_owned_by_current(struct task_struct *t, uint32_t vaddr) {
     return bitmap_scan_test(&t->userprog_v_addr.vaddr_bitmap, bit_idx) == 1;
 }
 static void release_prog_resource(struct task_struct *release_thread) {
-    if (release_thread->pgdir != 0) {
-        uint64_t *pml4 = (uint64_t *)VIRT_OF(release_thread->pgdir);
+    if (release_thread->pml4_phys != 0) {
+        uint64_t *pml4 = (uint64_t *)VIRT_OF(release_thread->pml4_phys);
         uint64_t pml4e = pml4[0];
         if (pml4e & 1) {
             uint64_t *pdp = (uint64_t *)VIRT_OF(PTE_PHYS(pml4e));

@@ -264,3 +264,20 @@ void buildin_shutdown(int32_t argc, char **argv) {
     printf("Shutting down...\n");
     acpi_shutdown();
 }
+
+__attribute__((noinline))
+static void canary_smash_frame(void) {
+    char buf[8];
+
+    printf("smash: overflowing kernel stack frame\n");
+    for (int32_t i = 0; i < 128; i++) {
+        buf[i] = 0x41;
+    }
+}
+
+void buildin_smash(int32_t argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    canary_smash_frame();
+    printf("smash: returned, canary failed to detect\n");
+}

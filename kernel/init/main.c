@@ -18,8 +18,10 @@
 #include "libc/user/stdio.h"
 #include "libc/user/syscall.h"
 #include "kernel/mm/pool/pool.h"
+#include "kernel/ssp.h"
 #include "drivers/net/net.h"
 #include "kernel/shell/shell.h"
+#include "lib/rand/rand.h"
 #include "kernel/syscall/futex.h"
 #include "kernel/syscall/syscall.h"
 #include "kernel/sched/thread.h"
@@ -89,7 +91,11 @@ void drivers_init(int min_level, int max_level) {
 
 void kmain(uint32_t magic, void *mbi_ptr, uint32_t kphys) {
     asm_write_cr4(asm_read_cr4() | 0x600);
+    asm_write_cr0(asm_read_cr0() | 0x10000);
     kernel_kphys = kphys;
+
+    stack_canary_init();
+    rand_init();
 
     struct mb2_tag_framebuffer fb = {0};
     mb2_parse(magic, mbi_ptr, &fb);

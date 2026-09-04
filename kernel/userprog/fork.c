@@ -33,32 +33,32 @@ static void mark_child_bitmap(struct task_struct *child, uint32_t vaddr) {
 }
 static void copy_user_space(struct task_struct *parent,
                             struct task_struct *child) {
-    if (parent->pgdir == 0) {
+    if (parent->pml4_phys == 0) {
         return;
     }
 
-    uint64_t *pgdir = (uint64_t *)VIRT_OF(parent->pgdir);
-    uint64_t *child_pgdir = (uint64_t *)VIRT_OF(child->pgdir);
-    uint64_t pml4e = pgdir[0];
-    if (!(pml4e & 1)) {
+    uint64_t *parent_pml4 = (uint64_t *)VIRT_OF(parent->pml4_phys);
+    uint64_t *child_pml4 = (uint64_t *)VIRT_OF(child->pml4_phys);
+    uint64_t pml4e = parent_pml4[0];
+    if (!(pml4e & PTE_P)) {
         return;
     }
     uint64_t *pdp = (uint64_t *)VIRT_OF(PTE_PHYS(pml4e));
-    uint64_t *child_pdp = (uint64_t *)VIRT_OF(PTE_PHYS(child_pgdir[0]));
+    uint64_t *child_pdp = (uint64_t *)VIRT_OF(PTE_PHYS(child_pml4[0]));
     for (uint32_t pdp_idx = 0; pdp_idx < 3; pdp_idx++) {
         uint64_t pdp_e = pdp[pdp_idx];
-        if (!(pdp_e & 1) || (pdp_e & 0x80)) {
+        if (!(pdp_e & PTE_P) || (pdp_e & PTE_PS)) {
             continue;
         }
         uint64_t *pd = (uint64_t *)VIRT_OF(PTE_PHYS(pdp_e));
         uint64_t child_pdp_e = child_pdp[pdp_idx];
-        if (!(child_pdp_e & 1)) {
+        if (!(child_pdp_e & PTE_P)) {
             continue;
         }
         uint64_t *child_pd = (uint64_t *)VIRT_OF(PTE_PHYS(child_pdp_e));
         for (uint32_t pd_idx = 0; pd_idx < 512; pd_idx++) {
             uint64_t pd_e = pd[pd_idx];
-            if (!(pd_e & 1) || (pd_e & 0x80)) {
+            if (!(pd_e & PTE_P) || (pd_e & PTE_PS)) {
                 continue;
             }
             uint64_t *pt = (uint64_t *)VIRT_OF(PTE_PHYS(pd_e));
@@ -70,7 +70,7 @@ static void copy_user_space(struct task_struct *parent,
             uint64_t *child_pt = (uint64_t *)VIRT_OF(child_tbl);
             for (uint32_t pte_idx = 0; pte_idx < 512; pte_idx++) {
                 uint64_t pte = pt[pte_idx];
-                if (!(pte & 1)) {
+                if (!(pte & PTE_P)) {
                     continue;
                 }
                 uint32_t vaddr =
@@ -122,6 +122,8 @@ pid_t sys_fork(struct Registers *r) {
     child->parent_pid = (int32_t)parent->pid;
     child->cwd_inode_nr = parent->cwd_inode_nr;
     child->user_brk = parent->user_brk;
+    child->brk_base = parent->brk_base;
+    child->stack_bottom = parent->stack_bottom;
     for (uint32_t i = 0; i < MAX_FILES_OPEN_PER_PROC; i++) {
         child->fd_table[i] = parent->fd_table[i];
         if (child->fd_table[i] != (uint32_t)-1 &&
@@ -132,16 +134,20 @@ pid_t sys_fork(struct Registers *r) {
     child->exit_status = 0;
     child->signal_mask = parent->signal_mask;
     child->signal_pending = 0;
+    child->tls_base = parent->tls_base;
+    child->tls_selector = parent->tls_selector;
+    child->tls_msr = parent->tls_msr;
+    child->compat = parent->compat;
     for (int i = 0; i < NSIG; i++) {
         child->sigactions[i] = parent->sigactions[i];
     }
     create_user_vaddr_bitmap(child);
-    child->pgdir = (uint32_t)create_page_dir();
-    if (child->pgdir == 0) {
+    child->pml4_phys = (uint32_t)create_page_dir();
+    if (child->pml4_phys == 0) {
         return -1;
     }
     copy_user_space(parent, child);
-    if (parent->pgdir == 0) {
+    if (parent->pml4_phys == 0) {
         struct thread_stack *ts =
             (struct thread_stack *)((uint8_t *)child->kernel_stack_top -
                                     sizeof(struct thread_stack));

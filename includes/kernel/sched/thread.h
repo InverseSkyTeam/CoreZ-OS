@@ -53,9 +53,11 @@ struct task_struct {
     int32_t parent_pid;
     int32_t exit_status;
     uint64_t kernel_stack_top;
-    uint32_t pgdir;
+    uint32_t pml4_phys;
     struct virtual_addr userprog_v_addr;
     uint32_t user_brk;
+    uint32_t brk_base;
+    uint32_t stack_bottom;
     uint32_t signal_pending;
     uint32_t signal_mask;
     struct sigaction sigactions[NSIG];
@@ -63,6 +65,7 @@ struct task_struct {
     uint32_t fd_table[MAX_FILES_OPEN_PER_PROC];
     uint32_t tls_base;
     uint32_t tls_selector;
+    uint8_t tls_msr; 
     int32_t errno;
     uint32_t compat;
     uint32_t stack_magic;

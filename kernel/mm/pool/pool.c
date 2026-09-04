@@ -20,7 +20,7 @@ struct virtual_addr kernel_vaddr;
 #define FRAME_IDX(phy) (((phy) - MEMORY_BASE) / PAGE_SIZE)
 #define FRAME_IDX_MAX ((MAX_PHYS_MEM - MEMORY_BASE) / PAGE_SIZE)
 static uint8_t frame_owner[FRAME_IDX_MAX];
-static uint64_t kernel_pml4;
+uint64_t kernel_pml4;
 uint32_t kernel_kphys;
 
 #define KERNEL_VADDR_START 0x40400000
@@ -185,8 +185,8 @@ static uint32_t palloc_pages_raw(struct pool *pool, uint32_t cnt) {
 }
 
 static uint64_t cur_pml4(void) {
-    if (current && current->pgdir) {
-        return (uint64_t)current->pgdir;
+    if (current && current->pml4_phys) {
+        return (uint64_t)current->pml4_phys;
     }
     return asm_read_cr3();
 }
@@ -212,29 +212,29 @@ static uint64_t *pte_make(uint64_t pml4_phys, uint64_t vaddr) {
     uint64_t *pml4 = (uint64_t *)VIRT_OF(pml4_phys);
     uint32_t idx = PML4_INDEX(vaddr);
     if (!(pml4[idx] & 1)) {
-        uint32_t p = palloc_raw(&kernel_pool);
-        if (p == 0)
+        uint32_t pa = palloc_raw(&kernel_pool);
+        if (pa == 0)
             return 0;
-        pml4[idx] = p | 7;
-        memset((void *)VIRT_OF(p), 0, PAGE_SIZE);
+        pml4[idx] = pa | PTE_P | PTE_W | PTE_U;
+        memset((void *)VIRT_OF(pa), 0, PAGE_SIZE);
     }
     uint64_t *pdp = (uint64_t *)VIRT_OF(PTE_PHYS(pml4[idx]));
     idx = PDPT_INDEX(vaddr);
     if (!(pdp[idx] & 1)) {
-        uint32_t p = palloc_raw(&kernel_pool);
-        if (p == 0)
+        uint32_t pa = palloc_raw(&kernel_pool);
+        if (pa == 0)
             return 0;
-        pdp[idx] = p | 7;
-        memset((void *)VIRT_OF(p), 0, PAGE_SIZE);
+        pdp[idx] = pa | PTE_P | PTE_W | PTE_U;
+        memset((void *)VIRT_OF(pa), 0, PAGE_SIZE);
     }
     uint64_t *pd = (uint64_t *)VIRT_OF(PTE_PHYS(pdp[idx]));
     idx = PD_INDEX(vaddr);
     if (!(pd[idx] & 1)) {
-        uint32_t p = palloc_raw(&kernel_pool);
-        if (p == 0)
+        uint32_t pa = palloc_raw(&kernel_pool);
+        if (pa == 0)
             return 0;
-        pd[idx] = p | 7;
-        memset((void *)VIRT_OF(p), 0, PAGE_SIZE);
+        pd[idx] = pa | PTE_P | PTE_W | PTE_U;
+        memset((void *)VIRT_OF(pa), 0, PAGE_SIZE);
     }
     uint64_t *pt = (uint64_t *)VIRT_OF(PTE_PHYS(pd[idx]));
     return &pt[PT_INDEX(vaddr)];
@@ -334,7 +334,9 @@ void *ioremap(uint32_t phy_addr, uint32_t size) {
 void *get_a_page(uint32_t vaddr) {
     struct task_struct *cur = current;
     uint32_t bit_idx = (vaddr - cur->userprog_v_addr.vaddr_start) / PAGE_SIZE;
-    ASSERT(bit_idx < cur->userprog_v_addr.vaddr_bitmap.btmp_bytes_len * 8);
+    if (bit_idx >= cur->userprog_v_addr.vaddr_bitmap.btmp_bytes_len * 8) {
+        return 0;
+    }
     lock_acquire(&mem_lock);
     bitmap_set(&cur->userprog_v_addr.vaddr_bitmap, bit_idx, 1);
     uint32_t phy = palloc_raw(&kernel_pool);

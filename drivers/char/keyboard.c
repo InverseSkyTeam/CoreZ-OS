@@ -84,6 +84,9 @@ char keyboard_translate(uint8_t scancode, int shifted) {
 }
 
 void keyboard_handler(void) {
+    if (!(inb(KEYBOARD_STATUS) & 0x01)) {
+        return;
+    }
     uint8_t sc = inb(KEYBOARD_DATA);
 
     if (sc == SC_SHIFT_L_DOWN || sc == SC_SHIFT_R_DOWN) {

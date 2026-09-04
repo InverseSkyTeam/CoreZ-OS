@@ -125,6 +125,8 @@ static void cmd_execute(int32_t argc, char **argv) {
         gui_start();
     } else if (!strcmp("shutdown", argv[0])) {
         buildin_shutdown(argc, argv);
+    } else if (!strcmp("smash", argv[0])) {
+        buildin_smash(argc, argv);
     } else {
         make_clear_abs_path(argv[0], final_path);
         char *prog_path = final_path;

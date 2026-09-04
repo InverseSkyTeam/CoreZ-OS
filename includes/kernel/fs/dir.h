@@ -23,6 +23,7 @@ extern struct dir root_dir;
 
 void open_root_dir(struct partition *part);
 struct dir *dir_open(struct partition *part, uint32_t inode_no);
+void dir_rewind(struct dir *dir);
 void dir_close(struct dir *dir);
 struct dir_entry *dir_read(struct dir *dir);
 

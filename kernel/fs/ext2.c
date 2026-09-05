@@ -153,6 +153,9 @@ static uint32_t ext2_alloc_block(void) {
         ext2_read_block(bbitblk, buf);
         uint32_t base = bb * bs * 8;
         for (uint32_t i = 0; i < bs; i++) {
+            if (buf[i] == 0xff) {
+                continue;
+            }
             for (uint32_t bit = 0; bit < 8; bit++) {
                 uint32_t blk = base + i * 8 + bit;
                 if (blk < data_start || blk >= total_blocks) {

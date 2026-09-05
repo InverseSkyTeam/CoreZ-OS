@@ -32,7 +32,8 @@ FILES = [
     "echocat.elf",
     "canary_test.elf",
     "font_subset.ttf", "nr_shell.elf", "ping.elf",
-    "lc_demo.elf", "libc_testsuite.elf", "musl_demo.elf", "udp_echo.elf"
+    "lc_demo.elf", "libc_testsuite.elf", "musl_demo.elf", "udp_echo.elf",
+    "musl_abi_test.elf"
 ]
 ALIASES = {"forktest.elf": "fork_demo.elf"}
 

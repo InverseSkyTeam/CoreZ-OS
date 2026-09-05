@@ -8,8 +8,8 @@
 #include "kernel/auxv.h"
 #include "kernel/fs/fs.h"
 #include "kernel/init/gdt/gdt.h"
-#include "kernel/mm/pool/pool.h"
 #include "kernel/mm/access.h"
+#include "kernel/mm/pool/pool.h"
 #include "kernel/sched/thread.h"
 #include "kernel/userprog/process.h"
 #include "lib/rand/rand.h"
@@ -21,7 +21,7 @@
 #define EFLAGS_IOPL_0 0
 #define MAX_ARG_NR 16
 #define MAX_ARG_STR_LEN 256
-#define HEAP_ASLR_PAGES 2048 /* brk 相对镜像尾部的随机间隙上限: 8MB */
+#define HEAP_ASLR_PAGES 2048
 
 struct Elf64_Nhdr {
     uint32_t namesz;
@@ -127,8 +127,7 @@ static void apply_rx(uint32_t base, uint32_t pages) {
         uint32_t pg = base + i * PAGE_SIZE;
         uint64_t *pte = pte_ptr(pg);
         if (pte != NULL && (*pte & PTE_P)) {
-            *pte = (*pte & 0x000ffffffffff000ull) |
-                   pte_wx(PTE_P | PTE_U, 0, 1);
+            *pte = (*pte & 0x000ffffffffff000ull) | pte_wx(PTE_P | PTE_U, 0, 1);
             __asm__ volatile("invlpg (%0)" : : "r"(pg) : "memory");
         }
     }
@@ -183,12 +182,35 @@ static void apply_relocs(uint32_t bias, uint32_t dyn_vaddr) {
     }
 }
 
+static int brk_page_taken(uint32_t v) {
+    uint64_t *pde = pde_ptr(v);
+    if (pde == NULL) {
+        return 0;
+    }
+    if (*pde & 0x80) {
+        return 1;
+    }
+    uint64_t *pte = pte_ptr(v);
+    return (pte != NULL && (*pte & 1)) ? 1 : 0;
+}
+
 static uint32_t pick_brk_base(uint32_t image_end) {
     uint32_t brk_end = (image_end + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-    uint32_t gap = (rand_u32() % HEAP_ASLR_PAGES) * PAGE_SIZE;
+    if (brk_end >= USER_LOW_CEILING) {
+        return brk_end;
+    }
+    uint32_t span = (USER_LOW_CEILING - brk_end) / PAGE_SIZE;
+    if (span > HEAP_ASLR_PAGES) {
+        span = HEAP_ASLR_PAGES;
+    }
+    if (span == 0) {
+        return brk_end;
+    }
+    uint32_t gap = (rand_u32() % span) * PAGE_SIZE;
     uint32_t brk_base = brk_end + gap;
-    if (brk_base > USER_LOW_CEILING || brk_base < brk_end)
-        brk_base = USER_LOW_CEILING;
+    while (brk_base > brk_end && brk_page_taken(brk_base)) {
+        brk_base -= PAGE_SIZE;
+    }
     return brk_base;
 }
 
@@ -217,9 +239,8 @@ static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
 }
 
 static int32_t load(const char *pathname, int *is64, int *is_linux,
-                    uint32_t *phdr_vaddr, uint32_t *phentsize,
-                    uint32_t *phnum, uint32_t *bias_out,
-                    uint32_t *brk_base_out) {
+                    uint32_t *phdr_vaddr, uint32_t *phentsize, uint32_t *phnum,
+                    uint32_t *bias_out, uint32_t *brk_base_out) {
     *phdr_vaddr = 0;
     *phentsize = 0;
     *phnum = 0;
@@ -481,12 +502,11 @@ static int32_t load(const char *pathname, int *is64, int *is_linux,
                 prog_header.p_vaddr >= USER_VADDR_START &&
                 prog_header.p_vaddr < USER_STACK3_VADDR) {
                 if (segment_load(fd, prog_header.p_offset, prog_header.p_filesz,
-                                 prog_header.p_memsz, prog_header.p_vaddr) ==
-                    -1) {
+                                 prog_header.p_memsz,
+                                 prog_header.p_vaddr) == -1) {
                     goto done;
                 }
-                uint32_t seg_end =
-                    prog_header.p_vaddr + prog_header.p_memsz;
+                uint32_t seg_end = prog_header.p_vaddr + prog_header.p_memsz;
                 if (seg_end > image_end) {
                     image_end = seg_end;
                 }
@@ -516,8 +536,8 @@ done:
     close_file(fd);
     return ret;
 }
-int32_t sys_execv(const char *path, const char *argv[],
-                  struct Registers *regs) {
+int32_t sys_execve(const char *path, const char *argv[], const char *envp[],
+                   struct Registers *regs) {
     uint32_t argc;
     int32_t entry_point;
     struct task_struct *cur;
@@ -525,6 +545,8 @@ int32_t sys_execv(const char *path, const char *argv[],
     uint32_t ustack_ptr;
     uint32_t argv_user_addrs[MAX_ARG_NR];
     uint32_t slens[MAX_ARG_NR];
+    uint32_t envlens[MAX_ARG_NR];
+    int32_t envc = 0;
     uint32_t argv_user_base;
     int32_t i;
     uint32_t slen;
@@ -559,9 +581,9 @@ int32_t sys_execv(const char *path, const char *argv[],
         argc = 0;
         if (argv != NULL) {
             while (argc < MAX_ARG_NR) {
-                if (!kcaller && !user_range_readable(
-                                    (uint32_t)(uintptr_t)&argv[argc],
-                                    sizeof(char *))) {
+                if (!kcaller &&
+                    !user_range_readable((uint32_t)(uintptr_t)&argv[argc],
+                                         sizeof(char *))) {
                     return -1;
                 }
                 if (argv[argc] == NULL) {
@@ -574,6 +596,29 @@ int32_t sys_execv(const char *path, const char *argv[],
                 }
                 slens[argc] = (uint32_t)n + 1;
                 argc++;
+            }
+        }
+        if (envp == NULL) {
+            envc = 2;
+            envlens[0] = (uint32_t)strlen("PATH=/") + 1;
+            envlens[1] = (uint32_t)strlen("HOME=/") + 1;
+        } else {
+            while (envc < MAX_ARG_NR) {
+                if (!kcaller &&
+                    !user_range_readable((uint32_t)(uintptr_t)&envp[envc],
+                                         sizeof(char *))) {
+                    return -1;
+                }
+                if (envp[envc] == NULL) {
+                    break;
+                }
+                int n = kcaller ? (int)strlen(envp[envc])
+                                : user_strnlen(envp[envc], MAX_ARG_STR_LEN);
+                if (n < 0) {
+                    return -1;
+                }
+                envlens[envc] = (uint32_t)n + 1;
+                envc++;
             }
         }
     }
@@ -612,7 +657,7 @@ int32_t sys_execv(const char *path, const char *argv[],
         kprintf("[exec] task %d marked as Linux compat (ABI-tag detected)\n",
                 cur->pid);
     }
-    
+
     {
         uint32_t below = rand_u32() % (USER_STACK_PAGES - 3);
         uint32_t sub = (rand_u32() % (PAGE_SIZE / 8)) * 8;
@@ -648,10 +693,9 @@ int32_t sys_execv(const char *path, const char *argv[],
         }
     }
     {
-        static const char *env_defaults[] = {"PATH=/", "HOME=/", 0};
+        static const char *env_defaults[2] = {"PATH=/", "HOME=/"};
         const char *exefn = path;
-        uint32_t envp_addrs[8];
-        int envc = 0;
+        uint32_t envp_addrs[MAX_ARG_NR];
         uint32_t exefn_addr = 0;
         uint32_t aux_dst = 0;
         uint32_t aux_bytes = 0;
@@ -667,9 +711,6 @@ int32_t sys_execv(const char *path, const char *argv[],
         *((uint64_t *)(sp)) = (uint64_t)(v);                                   \
     } while (0)
         exefn_addr = 0;
-        while (env_defaults[envc] != 0 && envc < 8) {
-            envc++;
-        }
 #define A64(t, v)                                                              \
     do {                                                                       \
         aux64[naw++] = (uint64_t)(t);                                          \
@@ -706,13 +747,14 @@ int32_t sys_execv(const char *path, const char *argv[],
             memcpy((void *)ustack_ptr, exefn, slen);
             exefn_addr = ustack_ptr;
             for (e = envc - 1; e >= 0; --e) {
-                slen = strlen(env_defaults[e]) + 1;
+                slen = envlens[e];
                 ustack_ptr -= slen;
                 ustack_ptr &= ~0x7u;
                 if (ustack_ptr < cur->stack_bottom) {
                     return -1;
                 }
-                memcpy((void *)ustack_ptr, env_defaults[e], slen);
+                memcpy((void *)ustack_ptr, envp ? envp[e] : env_defaults[e],
+                       slen);
                 envp_addrs[e] = ustack_ptr;
             }
             ustack_ptr &= ~0x7u;
@@ -757,13 +799,14 @@ int32_t sys_execv(const char *path, const char *argv[],
             aux32[1] = (uint32_t)exefn_addr;
             memcpy((void *)aux_dst, aux32, aux_bytes);
             for (e = envc - 1; e >= 0; --e) {
-                slen = strlen(env_defaults[e]) + 1;
+                slen = envlens[e];
                 ustack_ptr -= slen;
                 ustack_ptr &= ~0x3u;
                 if (ustack_ptr < cur->stack_bottom) {
                     return -1;
                 }
-                memcpy((void *)ustack_ptr, env_defaults[e], slen);
+                memcpy((void *)ustack_ptr, envp ? envp[e] : env_defaults[e],
+                       slen);
                 envp_addrs[e] = ustack_ptr;
             }
             PSTACK32(ustack_ptr, 0);
@@ -824,4 +867,9 @@ int32_t sys_execv(const char *path, const char *argv[],
                      : "memory");
     __asm__ volatile("mov %0, %%rsp; jmp intr_exit" : : "r"(ps) : "memory");
     return 0;
+}
+
+int32_t sys_execv(const char *path, const char *argv[],
+                  struct Registers *regs) {
+    return sys_execve(path, argv, NULL, regs);
 }

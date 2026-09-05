@@ -72,7 +72,7 @@ int user_strnlen(const char *src, uint32_t max) {
         const char *s = (const char *)(uintptr_t)va;
         for (uint32_t i = 0; i < n; i++) {
             if (s[i] == 0) {
-                return (int)off;
+                return (int)(off + i);
             }
         }
         off += n;

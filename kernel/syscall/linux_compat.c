@@ -1,5 +1,4 @@
 #include "kernel/syscall/linux_compat.h"
-#include "kernel/mm/access.h"
 #include "arch/x86/interrupt/interrupt.h"
 #include "drivers/char/console/io.h"
 #include "drivers/char/keyboard.h"
@@ -11,14 +10,19 @@
 #include "kernel/fs/fs.h"
 #include "kernel/init/gdt/gdt.h"
 #include "kernel/init/pit/pit.h"
+#include "kernel/mm/access.h"
 #include "kernel/sched/thread.h"
 #include "kernel/shell/pipe.h"
 #include "kernel/signal.h"
 #include "kernel/syscall/file_syscall.h"
 #include "kernel/syscall/futex.h"
 #include "kernel/syscall/mmap.h"
+#include "kernel/userprog/clone.h"
+#include "kernel/userprog/exec.h"
+#include "kernel/userprog/fork.h"
 #include "kernel/userprog/process.h"
 #include "kernel/userprog/wait_exit.h"
+#include "lib/rand/rand.h"
 #include "lib/str/str.h"
 #include "libc/user/syscall.h"
 
@@ -39,9 +43,50 @@ static int64_t lc_uptime_ms(void) {
     return (int64_t)tick * (1000 / PIT_HZ);
 }
 
+#define DIRF_FLAG 0xFFFEu
+
+static int32_t compat_dir_fd(const char *path) {
+    uint32_t ino = 0;
+    int is_dir = 0;
+    if (ext2_lookup(path, &ino, &is_dir) || !is_dir)
+        return -1;
+    int gfd = file_table_alloc_slot();
+    if (gfd < 0)
+        return -1;
+    struct file *f = file_get((uint32_t)gfd);
+    f->fd_inode = inode_open(cur_part, ino);
+    if (f->fd_inode == NULL) {
+        file_table_free_slot(gfd);
+        return -1;
+    }
+    f->fd_pos = 0;
+    f->fd_flag = DIRF_FLAG;
+    f->proc_id = 0;
+    f->ref_cnt = 1;
+    int32_t fd = fd_install(gfd);
+    if (fd < 0) {
+        inode_close(f->fd_inode);
+        file_table_free_slot(gfd);
+        return -1;
+    }
+    return fd;
+}
+
+static int compat_fd_isdir(int32_t fd) {
+    if (fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC)
+        return 0;
+    uint32_t gfd = fd_local2global((uint32_t)fd);
+    if (gfd >= MAX_FILE_OPEN)
+        return 0;
+    struct file *pf = file_get(gfd);
+    return pf != NULL && pf->fd_flag == DIRF_FLAG;
+}
+
 static int32_t compat_getdents64(int32_t fd, void *dirp, uint32_t count) {
     if (dirp == NULL || fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC)
         return -LINUX_EBADF;
+    if (!compat_fd_isdir(fd))
+        return -LINUX_ENOTDIR;
     uint32_t gfd = fd_local2global((uint32_t)fd);
     struct file *pf = file_get(gfd);
     if (pf == NULL || pf->fd_inode == NULL)
@@ -229,6 +274,99 @@ static int32_t compat_truncate(const char *path, int32_t length) {
     return 0;
 }
 
+static int32_t compat_flags_linux2native(uint32_t lflags) {
+    int32_t nflags = (int32_t)(lflags & 3u);
+    if (lflags & LINUX_O_CREAT)
+        nflags |= O_CREAT;
+    return nflags;
+}
+
+static uint32_t compat_mode_native(uint32_t filetype) {
+    if (filetype == FT_DIRECTORY)
+        return LINUX_S_IFDIR | 0755u;
+    return LINUX_S_IFREG | 0644u;
+}
+
+static void compat_stat_fill(struct LINUX_STAT *ls, uint32_t ino, int64_t size,
+                             uint32_t mode) {
+    memset(ls, 0, sizeof(*ls));
+    ls->st_dev = 0x800u;
+    ls->st_ino = ino;
+    ls->st_nlink = 1;
+    ls->st_mode = mode;
+    ls->st_blksize = 512;
+    ls->st_blocks = (int64_t)((size + 511) / 512);
+    ls->st_size = size;
+    ls->st_atim.tv_sec = (int64_t)(tick / PIT_HZ);
+    ls->st_mtim = ls->st_atim;
+    ls->st_ctim = ls->st_atim;
+}
+
+static int32_t compat_stat_linux(const char *path, uint64_t ub) {
+    struct stat st;
+    struct LINUX_STAT ls;
+    if (sys_stat(path, &st) != 0)
+        return -LINUX_ENOENT;
+    compat_stat_fill(&ls, st.st_ino, (int64_t)st.st_size,
+                     compat_mode_native(st.st_filetype));
+    memcpy((void *)(uintptr_t)ub, &ls, sizeof(ls));
+    return 0;
+}
+
+static int32_t compat_fstat_linux(int32_t fd, uint64_t ub) {
+    struct LINUX_STAT ls;
+    if (fd >= 0 && fd < 3) {
+        compat_stat_fill(&ls, 0, 0, LINUX_S_IFCHR | 0600u);
+    } else if (compat_fd_isdir(fd)) {
+        uint32_t gfd = fd_local2global((uint32_t)fd);
+        struct file *pf = file_get(gfd);
+        compat_stat_fill(&ls, pf->fd_inode->i_no, (int64_t)pf->fd_inode->i_size,
+                         LINUX_S_IFDIR | 0755u);
+    } else if (is_pipe(fd)) {
+        compat_stat_fill(&ls, 0, 0, LINUX_S_IFIFO | 0600u);
+    } else {
+        struct stat st;
+        if (sys_fstat(fd, &st) != 0)
+            return -LINUX_EBADF;
+        compat_stat_fill(&ls, st.st_ino, (int64_t)st.st_size,
+                         compat_mode_native(st.st_filetype));
+    }
+    memcpy((void *)(uintptr_t)ub, &ls, sizeof(ls));
+    return 0;
+}
+
+static int32_t compat_openat(int32_t dirfd, const char *kpath,
+                             uint32_t lflags) {
+    if (dirfd != LINUX_AT_FDCWD)
+        return -LINUX_EINVAL;
+    struct stat pst;
+    uint32_t ino = 0;
+    int is_dir = 0;
+    if (kpath[0] == '/' && ext2_lookup(kpath, &ino, &is_dir) == 0 && is_dir) {
+        if (lflags & (LINUX_O_CREAT | LINUX_O_TRUNC | LINUX_O_APPEND))
+            return -LINUX_EISDIR;
+        int32_t fd = compat_dir_fd(kpath);
+        return fd < 0 ? -LINUX_ENOENT : fd;
+    }
+    if (lflags & LINUX_O_DIRECTORY) {
+        if (sys_stat(kpath, &pst) != 0 || pst.st_filetype != FT_DIRECTORY)
+            return -LINUX_ENOTDIR;
+    }
+    if ((lflags & (LINUX_O_CREAT | LINUX_O_EXCL)) ==
+        (LINUX_O_CREAT | LINUX_O_EXCL)) {
+        if (sys_stat(kpath, &pst) == 0)
+            return -LINUX_EEXIST;
+    }
+    int32_t fd = open_file(kpath, (uint8_t)compat_flags_linux2native(lflags));
+    if (fd < 0)
+        return -LINUX_ENOENT;
+    if (lflags & LINUX_O_TRUNC)
+        compat_ftruncate(fd, 0);
+    if (lflags & LINUX_O_APPEND)
+        sys_lseek(fd, 0, (uint8_t)SEEK_END);
+    return fd;
+}
+
 static int32_t compat_rename(const char *oldpath, const char *newpath) {
     uint32_t ino = 0;
     int is_dir = 0;
@@ -287,6 +425,8 @@ static void lc_seterrno(struct task_struct *cur, int32_t val) {
 static int32_t compat_write(int32_t fd, const void *buf, uint32_t count) {
     if (fd < 0)
         return -1;
+    if (compat_fd_isdir(fd))
+        return -LINUX_EISDIR;
     if (is_pipe(fd))
         return (int32_t)pipe_write(fd, buf, count);
     if (fd == 1 || fd == 2)
@@ -301,6 +441,8 @@ static int32_t compat_write(int32_t fd, const void *buf, uint32_t count) {
 static int32_t compat_read(int32_t fd, void *buf, uint32_t count) {
     if (fd == 0)
         return TTY.read((char *)buf, count);
+    if (compat_fd_isdir(fd))
+        return -LINUX_EISDIR;
     if (is_pipe(fd))
         return (int32_t)pipe_read(fd, buf, count);
     if (fd >= 0 && fd < 3)
@@ -345,9 +487,9 @@ static int32_t sys_compat_writev(int32_t fd, struct LINUX_IOVEC *iov,
     return (int32_t)total;
 }
 
-static int user_ptr_ok(struct Registers *r, uint64_t ptr, uint32_t len, int wr) {
-    return (r->cs & 3) != 3 ||
-           access_ok((const void *)(uintptr_t)ptr, len, wr);
+static int user_ptr_ok(struct Registers *r, uint64_t ptr, uint32_t len,
+                       int wr) {
+    return (r->cs & 3) != 3 || access_ok((const void *)(uintptr_t)ptr, len, wr);
 }
 static int copy_user_str(struct Registers *r, char *dst, uint64_t ptr) {
     return (r->cs & 3) != 3 ||
@@ -358,10 +500,10 @@ uint32_t linux_compat_handler(struct Registers *r) {
     struct task_struct *cur = current;
     uint32_t nr = r->eax;
     uint32_t ret = (uint32_t)-1;
+    char kpath[MAX_PATH_LEN];
+    char kpath2[MAX_PATH_LEN];
 
-    /* custom libc syscalls (LC_*, int 0x80 ABI) */
     if (nr >= COMPAT_SYSCALL_BASE) {
-        /* int 0x80 ABI: rbx rcx rdx rsi rdi rbp = arg1..arg6 */
         uint32_t a = r->rbx;
         uint32_t b = r->rcx;
         uint32_t c = r->rdx;
@@ -370,10 +512,10 @@ uint32_t linux_compat_handler(struct Registers *r) {
         uint32_t f = r->rbp;
 
         switch (nr - COMPAT_SYSCALL_BASE) {
-        case 0: /* LC_PID */
+        case 0:
             ret = cur->pid;
             break;
-        case 1: /* LC_WRITE */ {
+        case 1: {
             if (!user_ptr_ok(r, b, c, 0)) {
                 lc_seterrno(cur, LINUX_EFAULT);
                 ret = (uint32_t)-1;
@@ -384,7 +526,7 @@ uint32_t linux_compat_handler(struct Registers *r) {
             ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
             break;
         }
-        case 2: /* LC_READ */ {
+        case 2: {
             if (!user_ptr_ok(r, b, c, 1)) {
                 lc_seterrno(cur, LINUX_EFAULT);
                 ret = (uint32_t)-1;
@@ -395,18 +537,17 @@ uint32_t linux_compat_handler(struct Registers *r) {
             ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
             break;
         }
-        case 3: /* LC_EXIT */
+        case 3:
             sys_exit((int32_t)a);
             ret = 0;
             break;
-        case 4: /* LC_BRK */ {
+        case 4: {
             uint32_t rr = sys_brk(a);
             lc_seterrno(cur, 0);
             ret = rr;
             break;
         }
-        case 5: /* LC_OPEN */ {
-            char kpath[MAX_PATH_LEN];
+        case 5: {
             if (!copy_user_str(r, kpath, a)) {
                 lc_seterrno(cur, LINUX_EFAULT);
                 ret = (uint32_t)-1;
@@ -417,13 +558,13 @@ uint32_t linux_compat_handler(struct Registers *r) {
             ret = fd < 0 ? (uint32_t)-1 : (uint32_t)fd;
             break;
         }
-        case 6: /* LC_CLOSE */ {
+        case 6: {
             int32_t rr = close_file((int32_t)a);
             lc_seterrno(cur, rr < 0 ? -rr : 0);
             ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
             break;
         }
-        case 7: /* LC_MMAP */ {
+        case 7: {
             if (a != 0) {
                 ret = a;
             } else {
@@ -432,13 +573,13 @@ uint32_t linux_compat_handler(struct Registers *r) {
             lc_seterrno(cur, (int32_t)ret == (uint32_t)-1 ? 1 : 0);
             break;
         }
-        case 8: /* LC_SET_THREAD_AREA */ {
+        case 8: {
             int32_t rr = compat_set_thread_area(r, cur, a);
             lc_seterrno(cur, rr < 0 ? -rr : 0);
             ret = rr < 0 ? (uint32_t)-1 : 0;
             break;
         }
-        case 9: /* LC_WRITEV */ {
+        case 9: {
             int32_t total = 0;
             int32_t err = 0;
             int32_t i;
@@ -474,14 +615,13 @@ uint32_t linux_compat_handler(struct Registers *r) {
             break;
         }
         default:
-            lc_seterrno(cur, 38); /* ENOSYS */
+            lc_seterrno(cur, 38);
             ret = (uint32_t)-1;
             break;
         }
         return ret;
     }
 
-    /* Linux x86_64 ABI: rdi rsi rdx r10 r8 r9 = arg1..arg6 */
     uint32_t a = r->rdi;
     uint32_t b = r->rsi;
     uint32_t c = r->rdx;
@@ -513,13 +653,12 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_open: {
-        char kpath[MAX_PATH_LEN];
         if (!copy_user_str(r, kpath, a)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
             break;
         }
-        int32_t fd = open_file(kpath, (uint8_t)b);
+        int32_t fd = compat_openat(LINUX_AT_FDCWD, kpath, b);
         lc_seterrno(cur, fd < 0 ? -fd : 0);
         ret = fd < 0 ? (uint32_t)-1 : (uint32_t)fd;
         break;
@@ -603,42 +742,42 @@ uint32_t linux_compat_handler(struct Registers *r) {
         ret = cur->parent_pid >= 0 ? (uint32_t)cur->parent_pid : 0;
         break;
     case SYS_LINUX_fstat: {
-        if (!user_ptr_ok(r, b, sizeof(struct stat), 1)) {
+        if (!user_ptr_ok(r, b, sizeof(struct LINUX_STAT), 1)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
             break;
         }
-        int32_t rr = sys_fstat((int32_t)a, (void *)b);
+        int32_t rr = compat_fstat_linux((int32_t)a, b);
         lc_seterrno(cur, rr < 0 ? -rr : 0);
         ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
         break;
     }
     case SYS_LINUX_stat: {
-        char kpath[MAX_PATH_LEN];
-        if (!copy_user_str(r, kpath, a) || !user_ptr_ok(r, b, sizeof(struct stat), 1)) {
+        if (!copy_user_str(r, kpath, a) ||
+            !user_ptr_ok(r, b, sizeof(struct LINUX_STAT), 1)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
             break;
         }
-        int32_t rr = sys_stat(kpath, (struct stat *)b);
+        int32_t rr = compat_stat_linux(kpath, b);
         lc_seterrno(cur, rr < 0 ? -rr : 0);
         ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
         break;
     }
     case SYS_LINUX_lstat: {
-        char kpath[MAX_PATH_LEN];
-        if (!copy_user_str(r, kpath, a) || !user_ptr_ok(r, b, sizeof(struct stat), 1)) {
+        if (!copy_user_str(r, kpath, a) ||
+            !user_ptr_ok(r, b, sizeof(struct LINUX_STAT), 1)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
             break;
         }
-        int32_t rr = sys_stat(kpath, (struct stat *)b);
+        int32_t rr = compat_stat_linux(kpath, b);
         lc_seterrno(cur, rr < 0 ? -rr : 0);
         ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
         break;
     }
     case SYS_LINUX_lseek: {
-        int32_t rr = sys_lseek((int32_t)a, (int32_t)b, (uint8_t)c);
+        int32_t rr = sys_lseek((int32_t)a, (int32_t)b, (uint8_t)(c + 1u));
         lc_seterrno(cur, rr < 0 ? -rr : 0);
         ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
         break;
@@ -650,7 +789,6 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_readlink: {
-        char kpath[MAX_PATH_LEN];
         if (!copy_user_str(r, kpath, a) || !user_ptr_ok(r, b, c, 1)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
@@ -662,7 +800,6 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_chdir: {
-        char kpath[MAX_PATH_LEN];
         if (!copy_user_str(r, kpath, a)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
@@ -685,7 +822,6 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_mkdir: {
-        char kpath[MAX_PATH_LEN];
         if (!copy_user_str(r, kpath, a)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
@@ -697,7 +833,6 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_rmdir: {
-        char kpath[MAX_PATH_LEN];
         if (!copy_user_str(r, kpath, a)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
@@ -709,7 +844,6 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_unlink: {
-        char kpath[MAX_PATH_LEN];
         if (!copy_user_str(r, kpath, a)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
@@ -721,20 +855,17 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_rename: {
-        char kfrom[MAX_PATH_LEN];
-        char kto[MAX_PATH_LEN];
-        if (!copy_user_str(r, kfrom, a) || !copy_user_str(r, kto, b)) {
+        if (!copy_user_str(r, kpath, a) || !copy_user_str(r, kpath2, b)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
             break;
         }
-        int32_t rr = sys_rename(kfrom, kto);
+        int32_t rr = sys_rename(kpath, kpath2);
         lc_seterrno(cur, rr < 0 ? -rr : 0);
         ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
         break;
     }
     case SYS_LINUX_chmod: {
-        char kpath[MAX_PATH_LEN];
         if (!copy_user_str(r, kpath, a)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
@@ -746,7 +877,6 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_access: {
-        char kpath[MAX_PATH_LEN];
         if (!copy_user_str(r, kpath, a)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
@@ -884,7 +1014,8 @@ uint32_t linux_compat_handler(struct Registers *r) {
         memset(&oldnat, 0, sizeof(oldnat));
         int rr = sys_sigaction(sig, b ? &nat : NULL, &oldnat);
         lc_seterrno(cur, rr < 0 ? -rr : 0);
-        if (rr == 0 && d && !user_ptr_ok(r, d, sizeof(struct LINUX_SIGACTION), 1)) {
+        if (rr == 0 && d &&
+            !user_ptr_ok(r, d, sizeof(struct LINUX_SIGACTION), 1)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
             break;
@@ -963,12 +1094,12 @@ uint32_t linux_compat_handler(struct Registers *r) {
         break;
     }
     case SYS_LINUX_wait4: {
-        if (d && !user_ptr_ok(r, d, 4, 1)) {
+        if (b && !user_ptr_ok(r, b, 4, 1)) {
             lc_seterrno(cur, LINUX_EFAULT);
             ret = (uint32_t)-1;
             break;
         }
-        int32_t pid = compat_wait4((int32_t *)d);
+        int32_t pid = compat_wait4((int32_t *)b);
         lc_seterrno(cur, pid < 0 ? -pid : 0);
         ret = pid < 0 ? (uint32_t)-1 : (uint32_t)pid;
         break;
@@ -1019,7 +1150,7 @@ uint32_t linux_compat_handler(struct Registers *r) {
         uint64_t base = b;
         if (code == 0x1002u) {
             cur->tls_base = (uint32_t)base;
-            cur->tls_msr = 1; /* process_activate 按 FS_BASE 恢复 */
+            cur->tls_msr = 1;
             asm_wrmsr(MSR_FS_BASE, base);
             lc_seterrno(cur, 0);
             ret = 0;
@@ -1041,8 +1172,205 @@ uint32_t linux_compat_handler(struct Registers *r) {
     case SYS_LINUX_sched_yield:
         ret = 0;
         break;
+    case SYS_LINUX_execve: {
+        if (!copy_user_str(r, kpath, a)) {
+            lc_seterrno(cur, LINUX_EFAULT);
+            ret = (uint32_t)-1;
+            break;
+        }
+        int32_t rr = sys_execve(kpath, (const char **)(uintptr_t)b,
+                                (const char **)(uintptr_t)c, r);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : 0;
+        break;
+    }
+    case SYS_LINUX_fork:
+    case SYS_LINUX_vfork:
+    case SYS_LINUX_clone: {
+        if (nr != SYS_LINUX_fork && nr != SYS_LINUX_vfork && (a & CLONE_VM)) {
+            lc_seterrno(cur, LINUX_ENOSYS);
+            ret = (uint32_t)-1;
+            break;
+        }
+        int32_t rr = (int32_t)sys_fork(r);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
+        break;
+    }
+    case SYS_LINUX_pipe: {
+        if (a == 0 || !user_ptr_ok(r, a, 8, 1)) {
+            lc_seterrno(cur, LINUX_EFAULT);
+            ret = (uint32_t)-1;
+            break;
+        }
+        int32_t rr = sys_pipe((int32_t *)(uintptr_t)a);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
+        break;
+    }
+    case SYS_LINUX_pipe2: {
+        if (b != 0) {
+            lc_seterrno(cur, LINUX_EINVAL);
+            ret = (uint32_t)-1;
+            break;
+        }
+        if (a == 0 || !user_ptr_ok(r, a, 8, 1)) {
+            lc_seterrno(cur, LINUX_EFAULT);
+            ret = (uint32_t)-1;
+            break;
+        }
+        int32_t rr = sys_pipe((int32_t *)(uintptr_t)a);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
+        break;
+    }
+    case SYS_LINUX_dup: {
+        int32_t rr = sys_dup((int32_t)a);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
+        break;
+    }
+    case SYS_LINUX_dup2: {
+        int32_t rr = sys_dup2((int32_t)a, (int32_t)b);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
+        break;
+    }
+    case SYS_LINUX_dup3: {
+        if ((int32_t)a == (int32_t)b || d != 0) {
+            lc_seterrno(cur, LINUX_EINVAL);
+            ret = (uint32_t)-1;
+            break;
+        }
+        int32_t rr = sys_dup2((int32_t)a, (int32_t)b);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
+        break;
+    }
+    case SYS_LINUX_openat: {
+        if (!copy_user_str(r, kpath, b)) {
+            lc_seterrno(cur, LINUX_EFAULT);
+            ret = (uint32_t)-1;
+            break;
+        }
+        int32_t fd = compat_openat((int32_t)a, kpath, c);
+        lc_seterrno(cur, fd < 0 ? -fd : 0);
+        ret = fd < 0 ? (uint32_t)-1 : (uint32_t)fd;
+        break;
+    }
+    case SYS_LINUX_newfstatat: {
+        if (!user_ptr_ok(r, c, sizeof(struct LINUX_STAT), 1)) {
+            lc_seterrno(cur, LINUX_EFAULT);
+            ret = (uint32_t)-1;
+            break;
+        }
+        if ((b == 0 || *(const char *)(uintptr_t)b == 0) &&
+            (d & LINUX_AT_EMPTY_PATH)) {
+            int32_t rr = compat_fstat_linux((int32_t)a, c);
+            lc_seterrno(cur, rr < 0 ? -rr : 0);
+            ret = rr < 0 ? (uint32_t)-1 : 0;
+            break;
+        }
+        if (!copy_user_str(r, kpath, b)) {
+            lc_seterrno(cur, LINUX_EFAULT);
+            ret = (uint32_t)-1;
+            break;
+        }
+        int32_t rr = compat_stat_linux(kpath, c);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : 0;
+        break;
+    }
+    case SYS_LINUX_unlinkat: {
+        if (!copy_user_str(r, kpath, b)) {
+            lc_seterrno(cur, LINUX_EFAULT);
+            ret = (uint32_t)-1;
+            break;
+        }
+        int32_t rr =
+            (d & LINUX_AT_REMOVEDIR) ? sys_rmdir(kpath) : sys_unlink(kpath);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : 0;
+        break;
+    }
+    case SYS_LINUX_mkdirat: {
+        if (!copy_user_str(r, kpath, b)) {
+            lc_seterrno(cur, LINUX_EFAULT);
+            ret = (uint32_t)-1;
+            break;
+        }
+        int32_t rr = sys_mkdir(kpath);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : 0;
+        break;
+    }
+    case SYS_LINUX_renameat:
+    case SYS_LINUX_renameat2: {
+        if (nr == SYS_LINUX_renameat2 && e != 0) {
+            lc_seterrno(cur, LINUX_EINVAL);
+            ret = (uint32_t)-1;
+            break;
+        }
+        if (!copy_user_str(r, kpath, b) || !copy_user_str(r, kpath2, d)) {
+            lc_seterrno(cur, LINUX_EFAULT);
+            ret = (uint32_t)-1;
+            break;
+        }
+        int32_t rr = sys_rename(kpath, kpath2);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : 0;
+        break;
+    }
+    case SYS_LINUX_readlinkat: {
+        if (!copy_user_str(r, kpath, b) || !user_ptr_ok(r, c, d, 1)) {
+            lc_seterrno(cur, LINUX_EFAULT);
+            ret = (uint32_t)-1;
+            break;
+        }
+        int32_t rr = sys_readlink(kpath, (char *)(uintptr_t)c, d);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
+        break;
+    }
+    case SYS_LINUX_faccessat: {
+        if (!copy_user_str(r, kpath, b)) {
+            lc_seterrno(cur, LINUX_EFAULT);
+            ret = (uint32_t)-1;
+            break;
+        }
+        int32_t rr = sys_access(kpath, (int32_t)c);
+        lc_seterrno(cur, rr < 0 ? -rr : 0);
+        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
+        break;
+    }
+    case SYS_LINUX_getrandom: {
+        if (b == 0) {
+            ret = 0;
+            break;
+        }
+        if (!user_ptr_ok(r, a, b, 1)) {
+            lc_seterrno(cur, LINUX_EFAULT);
+            ret = (uint32_t)-1;
+            break;
+        }
+        uint8_t *p = (uint8_t *)(uintptr_t)a;
+        uint32_t n = b;
+        while (n >= 8) {
+            uint64_t v = rand_u64();
+            memcpy(p, &v, 8);
+            p += 8;
+            n -= 8;
+        }
+        if (n) {
+            uint64_t v = rand_u64();
+            memcpy(p, &v, n);
+        }
+        lc_seterrno(cur, 0);
+        ret = b;
+        break;
+    }
     default:
-        lc_seterrno(cur, 38); /* ENOSYS */
+        lc_seterrno(cur, 38);
         ret = (uint32_t)-1;
         break;
     }

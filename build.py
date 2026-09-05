@@ -752,6 +752,16 @@ def make_plan(tools: Tools, with_musl_lib: bool = False):
             "musl_demo.elf", BUILD_DIR / "musl_demo.elf",
             [BUILD_DIR / "musl_demo.o"])
         tasks.append(musl_demo_elf)
+        musl_abi_test_c = task_cc("musl_abi_test.o",
+                                  APPS_DIR / "musl_abi_test.c",
+                                  BUILD_DIR / "musl_abi_test.o", tools,
+                                  MUSL_DEMO_CFLAGS)
+        musl_abi_test_c.optional = True
+        tasks.append(musl_abi_test_c)
+        musl_abi_test_elf = link_musl_user(
+            "musl_abi_test.elf", BUILD_DIR / "musl_abi_test.elf",
+            [BUILD_DIR / "musl_abi_test.o"])
+        tasks.append(musl_abi_test_elf)
         libc_tests_elf = link_musl_user(
             "libc_testsuite.elf", BUILD_DIR / "libc_testsuite.elf",
             [BUILD_DIR / "libc_tests_main.o",

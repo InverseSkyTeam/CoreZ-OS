@@ -90,8 +90,17 @@
 #define SYS_LINUX_exit_group 231
 #define SYS_LINUX_set_thread_area 234
 #define SYS_LINUX_openat 257
+#define SYS_LINUX_mkdirat 258
+#define SYS_LINUX_mknodat 259
 #define SYS_LINUX_newfstatat 262
 #define SYS_LINUX_unlinkat 263
+#define SYS_LINUX_renameat 264
+#define SYS_LINUX_readlinkat 267
+#define SYS_LINUX_faccessat 269
+#define SYS_LINUX_dup3 292
+#define SYS_LINUX_pipe2 293
+#define SYS_LINUX_renameat2 316
+#define SYS_LINUX_getrandom 318
 #define SYS_LINUX_getrandom 318
 
 #define LINUX_O_RDONLY 0
@@ -217,6 +226,25 @@
 #define LINUX_DT_REG 8
 #define LINUX_DT_LNK 10
 
+#define LINUX_S_IFMT 0xF000u
+#define LINUX_S_IFIFO 0x1000u
+#define LINUX_S_IFCHR 0x2000u
+#define LINUX_S_IFDIR 0x4000u
+#define LINUX_S_IFREG 0x8000u
+#define LINUX_S_IFLNK 0xA000u
+#define LINUX_S_IRWXU 0700u
+#define LINUX_S_IRUSR 0400u
+#define LINUX_S_IWUSR 0200u
+#define LINUX_S_IXUSR 0100u
+#define LINUX_S_IRWXG 070u
+#define LINUX_S_IRGRP 040u
+#define LINUX_S_IWGRP 020u
+#define LINUX_S_IXGRP 010u
+#define LINUX_S_IRWXO 07u
+#define LINUX_S_IROTH 04u
+#define LINUX_S_IWOTH 02u
+#define LINUX_S_IXOTH 01u
+
 #define LINUX_CLOCK_REALTIME 0
 #define LINUX_CLOCK_MONOTONIC 1
 #define LINUX_CLOCK_BOOTTIME 7
@@ -282,7 +310,7 @@ struct LINUX_TIMEVAL {
 struct LINUX_STAT {
     uint64_t st_dev;
     uint64_t st_ino;
-    uint32_t st_nlink;
+    uint64_t st_nlink;
     uint32_t st_mode;
     uint32_t st_uid;
     uint32_t st_gid;

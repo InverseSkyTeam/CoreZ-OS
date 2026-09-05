@@ -1,17 +1,17 @@
 #include "kernel/sched/thread.h"
+#include "drivers/char/console/io.h"
 #include "drivers/char/keyboard.h"
 #include "kernel/asmFunc.h"
 #include "kernel/assert.h"
-#include "drivers/char/console/io.h"
-#include "lib/list/list.h"
-#include "lib/rbtree/rbtree.h"
-#include "lib/str/str.h"
 #include "kernel/mm/pool/pool.h"
 #include "kernel/userprog/process.h"
 #include "kernel/userprog/wait_exit.h"
+#include "lib/list/list.h"
+#include "lib/str/str.h"
 
-struct RB_ROOT ready_rb_root;
-static uint64_t global_seq = 0;
+static uint64_t ready_bitmap;
+static uint64_t slot_inuse;
+static uint32_t rr_cursor;
 
 struct task_struct task_table[MAX_TASKS];
 static uint32_t pid_alloc = 0;
@@ -21,6 +21,22 @@ struct task_struct *idle_thread;
 uint32_t foreground_pid = (uint32_t)-1;
 static volatile uint32_t idle_monitor;
 static int mwait_ok;
+
+static inline uint32_t task_slot(struct task_struct *t) {
+    return (uint32_t)(t - task_table);
+}
+
+static void ready_enqueue(struct task_struct *t) {
+    uint64_t bit = 1ULL << task_slot(t);
+    if (ready_bitmap & bit)
+        return;
+    ready_bitmap |= bit;
+    t->status = TASK_READY;
+}
+
+static void ready_remove(struct task_struct *t) {
+    ready_bitmap &= ~(1ULL << task_slot(t));
+}
 
 void cpu_idle_init(void) {
     mwait_ok = asm_mwait_supported();
@@ -75,35 +91,12 @@ static void init_task_struct_basic(struct task_struct *t, int32_t parent_pid) {
     t->compat = 0;
     init_signal_state(t);
 
-    t->rb_node.parent = NULL;
-    t->rb_node.left = NULL;
-    t->rb_node.right = NULL;
-    t->rb_node.color = RB_RED;
-    t->rb_node.key = 0;
-    t->in_ready = 0;
-
     t->all_list_tag.prev = t->all_list_tag.next = NULL;
     t->futex_tag.prev = t->futex_tag.next = NULL;
     t->futex_ready = 0;
 }
 
-static void ready_enqueue(struct task_struct *t) {
-    if (t->in_ready)
-        return;
-    t->rb_node.key = ++global_seq;
-    rb_insert(&ready_rb_root, &t->rb_node);
-    t->in_ready = 1;
-    t->status = TASK_READY;
-}
-
 static void reap_died_threads(void);
-
-static void ready_remove(struct task_struct *t) {
-    if (!t->in_ready)
-        return;
-    rb_erase(&ready_rb_root, &t->rb_node);
-    t->in_ready = 0;
-}
 
 struct task_struct *thread_create(char *name, uint8_t priority,
                                   thread_func function, void *arg) {
@@ -125,8 +118,8 @@ struct task_struct *thread_create(char *name, uint8_t priority,
 
 void thread_init(void) {
     cpu_idle_init();
-    rb_root_init(&ready_rb_root);
     list_init(&thread_all_list);
+    slot_inuse = 1;
 
     set_current(&task_table[0]);
     task_table[0].self_kstack = 0;
@@ -147,10 +140,6 @@ void thread_init(void) {
     task_table[0].tls_msr = 0;
     task_table[0].errno = 0;
     task_table[0].compat = 0;
-    task_table[0].in_ready = 0;
-    task_table[0].rb_node.parent = task_table[0].rb_node.left =
-        task_table[0].rb_node.right = NULL;
-    task_table[0].rb_node.color = RB_BLACK;
     task_table[0].futex_tag.prev = task_table[0].futex_tag.next = NULL;
     task_table[0].futex_ready = 0;
     task_table[0].slot_used = 1;
@@ -160,17 +149,13 @@ void thread_init(void) {
 }
 
 struct task_struct *thread_alloc_slot(const char *name, uint8_t priority) {
-    struct task_struct *t = NULL;
-    for (uint32_t i = 0; i < MAX_TASKS; i++) {
-        if (!task_table[i].slot_used) {
-            t = &task_table[i];
-            break;
-        }
-    }
-    if (t == NULL) {
+    uint64_t free = ~slot_inuse;
+    if (free == 0) {
         kprintf("[thread] no free task slot (MAX_TASKS=%d)\n", MAX_TASKS);
         return NULL;
     }
+    uint32_t i = (uint32_t)__builtin_ctzll(free);
+    struct task_struct *t = &task_table[i];
     uint64_t stack = (uint64_t)get_kernel_pages(THREAD_STACK_SIZE / PAGE_SIZE);
     if (stack == 0) {
         kprintf("[thread] no kernel pages for stack (free pages: %d)\n",
@@ -178,6 +163,7 @@ struct task_struct *thread_alloc_slot(const char *name, uint8_t priority) {
         return NULL;
     }
     t->slot_used = 1;
+    slot_inuse |= 1ULL << i;
     struct thread_stack *ts =
         (struct thread_stack *)(stack + THREAD_STACK_SIZE -
                                 sizeof(struct thread_stack));
@@ -200,10 +186,8 @@ void thread_ready(struct task_struct *t) {
         return;
     uint32_t old = asm_save_eflags();
     asm_cli();
-    if (!t->in_ready) {
-        t->status = TASK_READY;
+    if (!(ready_bitmap & (1ULL << task_slot(t))))
         ready_enqueue(t);
-    }
     asm_restore_eflags(old);
 }
 
@@ -215,7 +199,7 @@ void kernel_thread(char *name, uint8_t priority, thread_func function,
 void thread_block(void) {
     uint32_t old = asm_save_eflags();
     asm_cli();
-    if (current->in_ready)
+    if (ready_bitmap & (1ULL << task_slot(current)))
         ready_remove(current);
     current->status = TASK_BLOCKED;
     schedule();
@@ -225,7 +209,7 @@ void thread_block(void) {
 void thread_block_with_status(enum task_status status) {
     uint32_t old = asm_save_eflags();
     asm_cli();
-    if (current->in_ready)
+    if (ready_bitmap & (1ULL << task_slot(current)))
         ready_remove(current);
     current->status = status;
     schedule();
@@ -235,22 +219,17 @@ void thread_block_with_status(enum task_status status) {
 void thread_unblock(struct task_struct *t) {
     uint32_t old = asm_save_eflags();
     asm_cli();
-    ASSERT(t->status == TASK_BLOCKED || t->status == TASK_WAITING ||
-           t->status == TASK_HANGING);
-    if (!t->in_ready) {
-        t->status = TASK_READY;
+    ASSERT(t->status & TASK_WAKE_MASK);
+    if (!(ready_bitmap & (1ULL << task_slot(t))))
         ready_enqueue(t);
-    }
     asm_restore_eflags(old);
 }
 
 void thread_yield(void) {
     uint32_t old = asm_save_eflags();
     asm_cli();
-    if (!current->in_ready) {
-        current->status = TASK_READY;
+    if (!(ready_bitmap & (1ULL << task_slot(current))))
         ready_enqueue(current);
-    }
     current->ticks = current->priority;
     schedule();
     asm_restore_eflags(old);
@@ -260,9 +239,6 @@ void schedule(void) {
     ASSERT((asm_save_eflags() & 0x200) == 0);
 
     if (current->status == TASK_RUNNING) {
-        if (current->in_ready)
-            ready_remove(current);
-        current->status = TASK_READY;
         ready_enqueue(current);
         current->ticks = current->priority;
     }
@@ -270,14 +246,18 @@ void schedule(void) {
     if (died_pending > 0)
         reap_died_threads();
 
-    if (rb_empty(&ready_rb_root)) {
-        thread_unblock(idle_thread);
-    }
+    if (ready_bitmap == 0)
+        ready_enqueue(idle_thread);
 
-    struct RB_NODE *node = rb_first(&ready_rb_root);
-    struct task_struct *next = rb_entry(node, struct task_struct, rb_node);
-    rb_erase(&ready_rb_root, node);
-    next->in_ready = 0;
+    uint64_t avail = ready_bitmap;
+    if (rr_cursor < 63)
+        avail &= ~((1ULL << (rr_cursor + 1)) - 1);
+    if (avail == 0)
+        avail = ready_bitmap;
+    uint32_t slot = (uint32_t)__builtin_ctzll(avail);
+    ready_bitmap &= ~(1ULL << slot);
+    struct task_struct *next = &task_table[slot];
+    rr_cursor = slot;
     next->status = TASK_RUNNING;
 
     struct task_struct *prev = current;
@@ -306,7 +286,7 @@ void thread_exit_current(void) {
     uint32_t old = asm_save_eflags();
     asm_cli();
     current->status = TASK_DIED;
-    if (current->in_ready)
+    if (ready_bitmap & (1ULL << task_slot(current)))
         ready_remove(current);
     died_pending++;
     schedule();
@@ -321,7 +301,7 @@ void thread_kill_pid(uint32_t pid) {
             break;
         }
     }
-    if (t == NULL || t->status == TASK_DIED || t->status == TASK_HANGING)
+    if (t == NULL || (t->status & TASK_DEAD_MASK))
         return;
     if (t->pml4_phys == 0)
         return;
@@ -330,10 +310,9 @@ void thread_kill_pid(uint32_t pid) {
     asm_cli();
     t->exit_status = -1;
     t->status = TASK_HANGING;
-    if (t->in_ready)
+    if (ready_bitmap & (1ULL << task_slot(t)))
         ready_remove(t);
 
-    /* 被杀线程的子进程成为孤儿, 无人 wait, 直接终止并回收 */
     kill_orphan_children((int32_t)t->pid);
     if (keyboard_ioq.consumer == t)
         keyboard_ioq.consumer = 0;
@@ -366,7 +345,7 @@ void thread_exit(struct task_struct *thread_over, int need_schedule) {
         return;
     }
     thread_over->status = TASK_DIED;
-    if (thread_over->in_ready)
+    if (ready_bitmap & (1ULL << task_slot(thread_over)))
         ready_remove(thread_over);
     died_pending++;
     asm_restore_eflags(old);
@@ -391,6 +370,7 @@ static void reap_died_threads(void) {
             }
             list_remove(&t->all_list_tag);
             t->slot_used = 0;
+            slot_inuse &= ~(1ULL << task_slot(t));
             died_pending--;
         }
         e = next;

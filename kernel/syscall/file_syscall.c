@@ -21,16 +21,23 @@ struct linux_dirent {
 #define F_SETFD 2
 #define F_GETFL 3
 #define F_SETFL 4
-int32_t sys_fstat(int32_t fd, void *buf) {
-    if (buf == NULL || fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
-        return -1;
+static struct file *fd_lookup(int32_t fd) {
+    if (fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
+        return NULL;
     }
     uint32_t global_fd = current->fd_table[fd];
     if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
+        return NULL;
+    }
+    return file_get(global_fd);
+}
+
+int32_t sys_fstat(int32_t fd, void *buf) {
+    if (buf == NULL) {
         return -1;
     }
-    struct file *pf = file_get(global_fd);
-    if (pf->fd_inode == NULL && pf->proc_id == 0) {
+    struct file *pf = fd_lookup(fd);
+    if (pf == NULL || (pf->fd_inode == NULL && pf->proc_id == 0)) {
         return -1;
     }
     struct stat *st = (struct stat *)buf;
@@ -44,13 +51,11 @@ int32_t sys_fstat(int32_t fd, void *buf) {
     return 0;
 }
 int32_t sys_dup(int32_t oldfd) {
-    if (oldfd < 0 || oldfd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
+    struct file *pf = fd_lookup(oldfd);
+    if (pf == NULL) {
         return -1;
     }
-    uint32_t global_fd = current->fd_table[oldfd];
-    if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
-        return -1;
-    }
+    uint32_t global_fd = (uint32_t)(pf - file_table);
     lock_acquire(&file_table_lock);
     int newfd = fd_install((int32_t)global_fd);
     if (newfd == -1) {
@@ -62,17 +67,17 @@ int32_t sys_dup(int32_t oldfd) {
     return newfd;
 }
 int32_t sys_dup2(int32_t oldfd, int32_t newfd) {
-    if (oldfd < 0 || oldfd >= (int32_t)MAX_FILES_OPEN_PER_PROC || newfd < 0 ||
-        newfd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
+    if (newfd < 0 || newfd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
         return -1;
     }
     if (oldfd == newfd) {
         return newfd;
     }
-    uint32_t global_fd = current->fd_table[oldfd];
-    if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
+    struct file *pf = fd_lookup(oldfd);
+    if (pf == NULL) {
         return -1;
     }
+    uint32_t global_fd = (uint32_t)(pf - file_table);
 
     lock_acquire(&file_table_lock);
     if (current->fd_table[newfd] != (uint32_t)-1) {
@@ -86,14 +91,10 @@ int32_t sys_dup2(int32_t oldfd, int32_t newfd) {
 int32_t sys_fcntl(int32_t fd, int32_t cmd, uint32_t arg) {
     if (net_is_socket(fd))
         return net_fcntl(fd, cmd, arg);
-    if (fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
+    struct file *pf = fd_lookup(fd);
+    if (pf == NULL) {
         return -1;
     }
-    uint32_t global_fd = current->fd_table[fd];
-    if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
-        return -1;
-    }
-    struct file *pf = file_get(global_fd);
     switch (cmd) {
     case F_DUPFD:
         (void)arg;
@@ -116,15 +117,11 @@ int32_t sys_fcntl(int32_t fd, int32_t cmd, uint32_t arg) {
     }
 }
 int32_t sys_getdents(int32_t fd, void *dirp, uint32_t count) {
-    if (dirp == NULL || fd < 0 || fd >= (int32_t)MAX_FILES_OPEN_PER_PROC) {
+    if (dirp == NULL) {
         return -1;
     }
-    uint32_t global_fd = current->fd_table[fd];
-    if (global_fd == (uint32_t)-1 || global_fd >= MAX_FILE_OPEN) {
-        return -1;
-    }
-    struct file *pf = file_get(global_fd);
-    if (pf->fd_inode == NULL) {
+    struct file *pf = fd_lookup(fd);
+    if (pf == NULL || pf->fd_inode == NULL) {
         return -1;
     }
     uint32_t pos = 0;

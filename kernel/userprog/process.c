@@ -9,7 +9,6 @@
 #include "kernel/mm/bitmap/bitmap.h"
 #include "kernel/mm/pool/pool.h"
 #include "kernel/userprog/exec.h"
-#define DIV_ROUND_UP(X, STEP) ((X + STEP - 1) / STEP)
 #define EFLAGS_MBS (1 << 1)
 #define EFLAGS_IF_1 (1 << 9)
 #define EFLAGS_IOPL_0 0

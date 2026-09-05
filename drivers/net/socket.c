@@ -47,6 +47,13 @@ static struct SOCKET *sock_alloc(void) {
     return 0;
 }
 
+static struct SOCKET *sock_get(int fd) {
+    if (fd < 0 || fd >= MAX_SOCKET || !s_sock[fd].active) {
+        return NULL;
+    }
+    return &s_sock[fd];
+}
+
 static int sock_readable(struct SOCKET *s) {
     if (s->type == SOCK_DGRAM)
         return udp_rx_ready(s->upcb);
@@ -142,25 +149,26 @@ int net_socket(int domain, int type, int proto) {
 }
 
 int net_bind(int fd, uint32_t ip, uint16_t port) {
-    if (fd < 0 || fd >= MAX_SOCKET || !s_sock[fd].active)
+    struct SOCKET *s = sock_get(fd);
+    if (s == NULL)
         return -1;
-    struct SOCKET *s = &s_sock[fd];
     if (s->type == SOCK_DGRAM)
         return udp_bind(s->upcb, ip, port);
     return tcp_bind(s->pcb, ip, port);
 }
 
 int net_listen(int fd, int backlog) {
-    if (fd < 0 || fd >= MAX_SOCKET || !s_sock[fd].active)
+    struct SOCKET *s = sock_get(fd);
+    if (s == NULL)
         return -1;
     (void)backlog;
-    return tcp_listen(s_sock[fd].pcb);
+    return tcp_listen(s->pcb);
 }
 
 int net_connect(int fd, uint32_t ip, uint16_t port) {
-    if (fd < 0 || fd >= MAX_SOCKET || !s_sock[fd].active)
+    struct SOCKET *s = sock_get(fd);
+    if (s == NULL)
         return -1;
-    struct SOCKET *s = &s_sock[fd];
     if (s->type == SOCK_DGRAM) {
         udp_connect(s->upcb, ip, port);
         return 0;
@@ -175,9 +183,9 @@ int net_connect(int fd, uint32_t ip, uint16_t port) {
 }
 
 int net_send(int fd, const void *buf, uint32_t len) {
-    if (fd < 0 || fd >= MAX_SOCKET || !s_sock[fd].active)
+    struct SOCKET *s = sock_get(fd);
+    if (s == NULL)
         return -1;
-    struct SOCKET *s = &s_sock[fd];
     if (s->type == SOCK_DGRAM) {
         extern NETIF g_netif;
         if (!s->upcb->remote_ip)
@@ -191,9 +199,9 @@ int net_send(int fd, const void *buf, uint32_t len) {
 }
 
 int net_recv(int fd, void *buf, uint32_t len) {
-    if (fd < 0 || fd >= MAX_SOCKET || !s_sock[fd].active)
+    struct SOCKET *s = sock_get(fd);
+    if (s == NULL)
         return -1;
-    struct SOCKET *s = &s_sock[fd];
     if (s->type == SOCK_DGRAM) {
         if (sock_block(s, SWAIT_RECV, 0))
             return -1;
@@ -209,30 +217,27 @@ int net_recv(int fd, void *buf, uint32_t len) {
 
 int net_sendto(int fd, const void *buf, uint32_t len, uint32_t daddr,
                uint16_t dport) {
-    if (fd < 0 || fd >= MAX_SOCKET || !s_sock[fd].active ||
-        s_sock[fd].type != SOCK_DGRAM)
+    struct SOCKET *s = sock_get(fd);
+    if (s == NULL || s->type != SOCK_DGRAM)
         return -1;
-    struct SOCKET *s = &s_sock[fd];
     extern NETIF g_netif;
     return udp_sendto(&g_netif, s->upcb, buf, len, daddr, dport);
 }
 
 int net_recvfrom(int fd, void *buf, uint32_t len, uint32_t *saddr,
                  uint16_t *sport) {
-    if (fd < 0 || fd >= MAX_SOCKET || !s_sock[fd].active ||
-        s_sock[fd].type != SOCK_DGRAM)
+    struct SOCKET *s = sock_get(fd);
+    if (s == NULL || s->type != SOCK_DGRAM)
         return -1;
-    struct SOCKET *s = &s_sock[fd];
     if (sock_block(s, SWAIT_RECV, 0))
         return -1;
     return udp_recv(s->upcb, buf, len, saddr, sport);
 }
 
 int net_accept(int fd) {
-    if (fd < 0 || fd >= MAX_SOCKET || !s_sock[fd].active ||
-        s_sock[fd].type != SOCK_STREAM || s_sock[fd].pcb->state != TCP_LISTEN)
+    struct SOCKET *s = sock_get(fd);
+    if (s == NULL || s->type != SOCK_STREAM || s->pcb->state != TCP_LISTEN)
         return -1;
-    struct SOCKET *s = &s_sock[fd];
     if (sock_block(s, SWAIT_ACCEPT, 0))
         return -1;
     struct TCP_PCB *np = tcp_accept(s->pcb);
@@ -247,9 +252,9 @@ int net_accept(int fd) {
 }
 
 int net_close(int fd) {
-    if (fd < 0 || fd >= MAX_SOCKET || !s_sock[fd].active)
+    struct SOCKET *s = sock_get(fd);
+    if (s == NULL)
         return -1;
-    struct SOCKET *s = &s_sock[fd];
     if (s->type == SOCK_STREAM) {
         tcp_close(s->pcb);
         tcp_pcb_free(s->pcb);

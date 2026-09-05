@@ -31,7 +31,7 @@ VRAM    equ     0x0FF8
 VRAMBYTES equ  0x0FFC
 
 STACK_PHYS equ  0x00090000
-MBI        equ  0x00005000   ; Multiboot2 物理地址
+MBI        equ  0x00005000
 
 %define PART_LBA        2048
 %define RESERVED_SECT   2
@@ -311,38 +311,38 @@ pipelineflush:
         mov     dword [0x92000 + 4*8], 0x800083
         mov     dword [0x92000 + 5*8], 0xA00083
 
-        mov     dword [0x91000 + 2*8],  0x94007     ; PDPT[2] -> PD @0x94000
-        mov     dword [0x94000 + 0*8],  0xfd000083  ; VA 0x80000000 -> phys 0xfd000000 (LFB)
+        mov     dword [0x91000 + 2*8],  0x94007
+        mov     dword [0x94000 + 0*8],  0xfd000083
 
-        mov     dword [0x91000 + 1*8],  0x96007     ; PDPT[1] -> PD @0x96000
-        mov     dword [0x96000 + 0*8],  0xfec00083  ; VA 0x40000000 -> phys 0xfec00000 (IOAPIC)
-        mov     dword [0x96000 + 1*8],  0xfee00083  ; VA 0x40200000 -> phys 0xfee00000 (LAPIC)
+        mov     dword [0x91000 + 1*8],  0x96007
+        mov     dword [0x96000 + 0*8],  0xfec00083
+        mov     dword [0x96000 + 1*8],  0xfee00083
 
         mov     edi, MBI
         mov     dword [edi+0], 0       
-        mov     dword [edi+4], 0        ; reserved
+        mov     dword [edi+4], 0
         add     edi, 8
 
-        mov     dword [edi+0], 8        ; type
-        mov     dword [edi+4], 40       ; size
+        mov     dword [edi+0], 8
+        mov     dword [edi+4], 40
         mov     eax, [VRAM]
-        mov     dword [edi+8],  eax     ; framebuffer_addr 低32
-        mov     dword [edi+12], 0       ; framebuffer_addr 高32
+        mov     dword [edi+8],  eax
+        mov     dword [edi+12], 0
         movzx   eax, word [SCRNX]
-        mov     dword [edi+16], eax     ; framebuffer_pitch
+        mov     dword [edi+16], eax
         movzx   eax, word [SCRNX]
-        mov     dword [edi+20], eax     ; framebuffer_width
+        mov     dword [edi+20], eax
         movzx   eax, word [SCRNY]
-        mov     dword [edi+24], eax     ; framebuffer_height
-        mov     byte  [edi+28], 8       ; framebuffer_bpp
-        mov     byte  [edi+29], 1       ; framebuffer_type = direct RGB
-        mov     byte  [edi+30], 0       ; reserved
-        mov     byte  [edi+31], 8       ; red_mask_size
-        mov     byte  [edi+32], 16      ; red_field_position
-        mov     byte  [edi+33], 8       ; green_mask_size
-        mov     byte  [edi+34], 8       ; green_field_position
-        mov     byte  [edi+35], 8       ; blue_mask_size
-        mov     byte  [edi+36], 0       ; blue_field_position
+        mov     dword [edi+24], eax
+        mov     byte  [edi+28], 8
+        mov     byte  [edi+29], 1
+        mov     byte  [edi+30], 0
+        mov     byte  [edi+31], 8
+        mov     byte  [edi+32], 16
+        mov     byte  [edi+33], 8
+        mov     byte  [edi+34], 8
+        mov     byte  [edi+35], 8
+        mov     byte  [edi+36], 0
         add     edi, 40
 
         mov     dword [edi+0], 0

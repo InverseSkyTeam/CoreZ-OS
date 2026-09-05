@@ -42,32 +42,23 @@ int page_cow_resolve(uint32_t vaddr, uint64_t pte_val);
 #define PHY_OF(vaddr) ((uint32_t)((vaddr) - 0xC0000000ull))
 #define PTE_PHYS(e) ((uint64_t)(e) & 0x000ffffffffff000ull)
 
-/* 页面权限位 */
-#define PTE_P   (1ull << 0)   /* present */
-#define PTE_W   (1ull << 1)   /* writable */
-#define PTE_U   (1ull << 2)   /* user */
-#define PTE_PS  (1ull << 7)   /* page size (2MB leaf) */
-#define PTE_NX  (1ull << 63)  /* no-execute */
+#define DIV_ROUND_UP(x, step) (((x) + (step) - 1) / (step))
 
-/* NXE 读回验证通过才为 1; 否则 bit63 是保留位, 触发 RSVD #PF */
+#define PTE_P (1ull << 0)
+#define PTE_W (1ull << 1)
+#define PTE_U (1ull << 2)
+#define PTE_PS (1ull << 7)
+#define PTE_NX (1ull << 63)
+
 extern int g_nx_usable;
 
-/* W^X: 可写则不可执行, 可执行则不可写, 否则只读 */
 static inline uint64_t pte_wx(uint64_t base, int writable, int executable) {
-    base &= ~PTE_W;
-    if (writable) {
-        base |= PTE_W;
-    }
+    uint64_t nx = (uint64_t)(!(executable && !writable)) << 63;
+    base = (base & ~(PTE_W | PTE_NX)) | ((uint64_t)!!writable << 1);
     if (!g_nx_usable) {
-        base &= ~PTE_NX;  /* 无 NX 能力, 置位必 RSVD */
-        return base;
+        nx = 0;
     }
-    if (executable && !writable) {
-        base &= ~PTE_NX;
-    } else {
-        base |= PTE_NX;
-    }
-    return base;
+    return base | nx;
 }
 
 void page_free_or_decref(uint32_t phy_addr);

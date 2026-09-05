@@ -1,17 +1,17 @@
 #include "arch/x86/interrupt/interrupt.h"
 #include "drivers/block/ide.h"
+#include "drivers/char/console/io.h"
 #include "drivers/char/keyboard.h"
 #include "drivers/char/mouse.h"
 #include "kernel/asm/stub.h"
 #include "kernel/asmFunc.h"
-#include "lib/str/str.h"
+#include "kernel/init/apic/apic.h"
+#include "kernel/init/pic/pic.h"
+#include "kernel/init/pit/pit.h"
 #include "kernel/mm/pool/pool.h"
 #include "kernel/sched/thread.h"
 #include "kernel/userprog/process.h"
-#include "kernel/init/apic/apic.h"
-#include "drivers/char/console/io.h"
-#include "kernel/init/pic/pic.h"
-#include "kernel/init/pit/pit.h"
+#include "lib/str/str.h"
 volatile uint32_t tick = 0;
 static const char *exc_names[32] = {"Divide Error",
                                     "Debug",
@@ -94,8 +94,8 @@ void isr_handler(struct Registers *r) {
             (fa < 0x40000000u || fa >= 0x80200000u)) {
             set_text_color(14);
             kprintf("[pf] kernel touched unmapped user addr 0x%x, killing "
-                    "pid %d (%s)\n",
-                    fa, current->pid, current->name);
+                    "pid %d (%s) eip=0x%x\n",
+                    fa, current->pid, current->name, (uint32_t)r->eip);
             set_text_color(7);
             signal_terminate(current, SIGSEGV);
             return;
@@ -167,6 +167,7 @@ void irq_handler(struct Registers *r) {
     if (irq == 0) {
         irq_eoi(irq);
         tick++;
+        thread_timer_wake();
         if (current != 0) {
             check_pending_signals(r);
             schedule();

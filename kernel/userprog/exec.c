@@ -8,20 +8,19 @@
 #include "kernel/auxv.h"
 #include "kernel/fs/fs.h"
 #include "kernel/init/gdt/gdt.h"
-#include "kernel/mm/pool/pool.h"
 #include "kernel/mm/access.h"
+#include "kernel/mm/pool/pool.h"
 #include "kernel/sched/thread.h"
 #include "kernel/userprog/process.h"
 #include "lib/rand/rand.h"
 #include "lib/str/str.h"
-#define DIV_ROUND_UP(X, STEP) ((X + STEP - 1) / STEP)
 #define PF_X 0x1
 #define EFLAGS_MBS (1 << 1)
 #define EFLAGS_IF_1 (1 << 9)
 #define EFLAGS_IOPL_0 0
 #define MAX_ARG_NR 16
 #define MAX_ARG_STR_LEN 256
-#define HEAP_ASLR_PAGES 2048 /* brk 相对镜像尾部的随机间隙上限: 8MB */
+#define HEAP_ASLR_PAGES 2048
 
 struct Elf64_Nhdr {
     uint32_t namesz;
@@ -127,8 +126,7 @@ static void apply_rx(uint32_t base, uint32_t pages) {
         uint32_t pg = base + i * PAGE_SIZE;
         uint64_t *pte = pte_ptr(pg);
         if (pte != NULL && (*pte & PTE_P)) {
-            *pte = (*pte & 0x000ffffffffff000ull) |
-                   pte_wx(PTE_P | PTE_U, 0, 1);
+            *pte = (*pte & 0x000ffffffffff000ull) | pte_wx(PTE_P | PTE_U, 0, 1);
             __asm__ volatile("invlpg (%0)" : : "r"(pg) : "memory");
         }
     }
@@ -183,13 +181,82 @@ static void apply_relocs(uint32_t bias, uint32_t dyn_vaddr) {
     }
 }
 
+static int brk_page_taken(uint32_t v) {
+    uint64_t *pde = pde_ptr(v);
+    if (pde == NULL) {
+        return 0;
+    }
+    if (*pde & 0x80) {
+        return 1;
+    }
+    uint64_t *pte = pte_ptr(v);
+    return (pte != NULL && (*pte & 1)) ? 1 : 0;
+}
+
 static uint32_t pick_brk_base(uint32_t image_end) {
     uint32_t brk_end = (image_end + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-    uint32_t gap = (rand_u32() % HEAP_ASLR_PAGES) * PAGE_SIZE;
+    if (brk_end >= USER_LOW_CEILING) {
+        return brk_end;
+    }
+    uint32_t span = (USER_LOW_CEILING - brk_end) / PAGE_SIZE;
+    if (span > HEAP_ASLR_PAGES) {
+        span = HEAP_ASLR_PAGES;
+    }
+    if (span == 0) {
+        return brk_end;
+    }
+    uint32_t gap = (rand_u32() % span) * PAGE_SIZE;
     uint32_t brk_base = brk_end + gap;
-    if (brk_base > USER_LOW_CEILING || brk_base < brk_end)
-        brk_base = USER_LOW_CEILING;
+    while (brk_base > brk_end && brk_page_taken(brk_base)) {
+        brk_base -= PAGE_SIZE;
+    }
     return brk_base;
+}
+
+static void scan_note_abi(int32_t fd, uint32_t base_off, uint32_t filesz,
+                          int *is_linux) {
+    sys_lseek(fd, base_off, SEEK_SET);
+    uint32_t remaining = filesz;
+    while (remaining >= sizeof(struct Elf64_Nhdr)) {
+        struct Elf64_Nhdr nh;
+        if (read_file(fd, &nh, sizeof(nh)) != sizeof(nh))
+            break;
+        uint32_t sz = sizeof(nh) + ((nh.namesz + 3) & ~3u) +
+                      ((nh.descsz + 3) & ~3u);
+        if (sz > remaining)
+            break;
+        if (nh.type == NT_GNU_ABI_TAG && nh.namesz >= 4) {
+            char name[4];
+            read_file(fd, name, 4);
+            if (memcmp(name, "GNU", 4) == 0 && nh.descsz >= 8) {
+                uint8_t desc[8];
+                read_file(fd, desc, 8);
+                if (desc[0] == 0) {
+                    *is_linux = 1;
+                    kprintf("[exec] Linux ELF detected (GNU ABI-tag)\n");
+                }
+            }
+        }
+        remaining -= sz;
+        sys_lseek(fd, base_off + (filesz - remaining), SEEK_SET);
+    }
+}
+
+static void fill_entry_regs(struct Registers *r, uint32_t entry, int is64,
+                            uint32_t rsp, uint32_t argc, uint32_t argv_base) {
+    memset(r, 0, sizeof(struct Registers));
+    r->rip = entry;
+    r->cs = is64 ? SELECTOR_USER64_CODE : SELECTOR_U_CODE;
+    r->rflags = EFLAGS_IOPL_0 | EFLAGS_MBS | EFLAGS_IF_1;
+    r->user_rsp = rsp;
+    r->ss = SELECTOR_U_DATA;
+    if (is64) {
+        r->rdi = argc;
+        r->rsi = argv_base;
+    } else {
+        r->rbx = argv_base;
+        r->rcx = argc;
+    }
 }
 
 static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
@@ -217,9 +284,8 @@ static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
 }
 
 static int32_t load(const char *pathname, int *is64, int *is_linux,
-                    uint32_t *phdr_vaddr, uint32_t *phentsize,
-                    uint32_t *phnum, uint32_t *bias_out,
-                    uint32_t *brk_base_out) {
+                    uint32_t *phdr_vaddr, uint32_t *phentsize, uint32_t *phnum,
+                    uint32_t *bias_out, uint32_t *brk_base_out) {
     *phdr_vaddr = 0;
     *phentsize = 0;
     *phnum = 0;
@@ -303,36 +369,8 @@ static int32_t load(const char *pathname, int *is64, int *is_linux,
             }
 
             if (prog64_header.p_type == PT_NOTE) {
-                sys_lseek(fd, (uint32_t)prog64_header.p_offset, SEEK_SET);
-                uint32_t remaining = (uint32_t)prog64_header.p_filesz;
-                while (remaining >= sizeof(struct Elf64_Nhdr)) {
-                    struct Elf64_Nhdr nhdr;
-                    if (read_file(fd, &nhdr, sizeof(nhdr)) != sizeof(nhdr))
-                        break;
-                    uint32_t note_size = sizeof(nhdr) +
-                                         ((nhdr.namesz + 3) & ~3u) +
-                                         ((nhdr.descsz + 3) & ~3u);
-                    if (note_size > remaining)
-                        break;
-                    if (nhdr.type == NT_GNU_ABI_TAG && nhdr.namesz >= 4) {
-                        char name[4];
-                        read_file(fd, name, 4);
-                        if (memcmp(name, "GNU", 4) == 0 && nhdr.descsz >= 8) {
-                            uint8_t desc[8];
-                            read_file(fd, desc, 8);
-                            if (desc[0] == 0) {
-                                *is_linux = 1;
-                                kprintf("[exec] Linux ELF detected (GNU "
-                                        "ABI-tag)\n");
-                            }
-                        }
-                    }
-                    remaining -= note_size;
-                    sys_lseek(fd,
-                              (uint32_t)prog64_header.p_offset +
-                                  (prog64_header.p_filesz - remaining),
-                              SEEK_SET);
-                }
+                scan_note_abi(fd, (uint32_t)prog64_header.p_offset,
+                              (uint32_t)prog64_header.p_filesz, is_linux);
                 sys_lseek(fd,
                           prog_header_offset +
                               prog_idx * elf64_header.e_phentsize +
@@ -426,39 +464,8 @@ static int32_t load(const char *pathname, int *is64, int *is_linux,
             }
 
             if (prog_header.p_type == PT_NOTE) {
-                sys_lseek(fd, prog_header.p_offset, SEEK_SET);
-                uint32_t remaining = prog_header.p_filesz;
-                while (remaining >= 12) {
-                    uint32_t namesz, descsz, type;
-                    if (read_file(fd, &namesz, 4) != 4)
-                        break;
-                    if (read_file(fd, &descsz, 4) != 4)
-                        break;
-                    if (read_file(fd, &type, 4) != 4)
-                        break;
-                    uint32_t note_size =
-                        12 + ((namesz + 3) & ~3u) + ((descsz + 3) & ~3u);
-                    if (note_size > remaining)
-                        break;
-                    if (type == NT_GNU_ABI_TAG && namesz >= 4) {
-                        char name[4];
-                        read_file(fd, name, 4);
-                        if (memcmp(name, "GNU", 4) == 0 && descsz >= 8) {
-                            uint8_t desc[8];
-                            read_file(fd, desc, 8);
-                            if (desc[0] == 0) {
-                                *is_linux = 1;
-                                kprintf("[exec] Linux ELF detected (GNU "
-                                        "ABI-tag)\n");
-                            }
-                        }
-                    }
-                    remaining -= note_size;
-                    sys_lseek(fd,
-                              prog_header.p_offset +
-                                  (prog_header.p_filesz - remaining),
-                              SEEK_SET);
-                }
+                scan_note_abi(fd, prog_header.p_offset, prog_header.p_filesz,
+                              is_linux);
                 sys_lseek(fd,
                           prog_header_offset +
                               prog_idx * elf_header.e_phentsize +
@@ -481,12 +488,11 @@ static int32_t load(const char *pathname, int *is64, int *is_linux,
                 prog_header.p_vaddr >= USER_VADDR_START &&
                 prog_header.p_vaddr < USER_STACK3_VADDR) {
                 if (segment_load(fd, prog_header.p_offset, prog_header.p_filesz,
-                                 prog_header.p_memsz, prog_header.p_vaddr) ==
-                    -1) {
+                                 prog_header.p_memsz,
+                                 prog_header.p_vaddr) == -1) {
                     goto done;
                 }
-                uint32_t seg_end =
-                    prog_header.p_vaddr + prog_header.p_memsz;
+                uint32_t seg_end = prog_header.p_vaddr + prog_header.p_memsz;
                 if (seg_end > image_end) {
                     image_end = seg_end;
                 }
@@ -516,8 +522,31 @@ done:
     close_file(fd);
     return ret;
 }
-int32_t sys_execv(const char *path, const char *argv[],
-                  struct Registers *regs) {
+static int count_strs(const char *const *strs, uint32_t *lens, int kcaller) {
+    int n = 0;
+    if (strs == NULL)
+        return 0;
+    while (n < MAX_ARG_NR) {
+        if (!kcaller && !user_range_readable((uint32_t)(uintptr_t)&strs[n],
+                                             sizeof(char *))) {
+            return -1;
+        }
+        if (strs[n] == NULL) {
+            break;
+        }
+        int len = kcaller ? (int)strlen(strs[n])
+                          : user_strnlen(strs[n], MAX_ARG_STR_LEN);
+        if (len < 0) {
+            return -1;
+        }
+        lens[n] = (uint32_t)len + 1;
+        n++;
+    }
+    return n;
+}
+
+int32_t sys_execve(const char *path, const char *argv[], const char *envp[],
+                   struct Registers *regs) {
     uint32_t argc;
     int32_t entry_point;
     struct task_struct *cur;
@@ -525,6 +554,8 @@ int32_t sys_execv(const char *path, const char *argv[],
     uint32_t ustack_ptr;
     uint32_t argv_user_addrs[MAX_ARG_NR];
     uint32_t slens[MAX_ARG_NR];
+    uint32_t envlens[MAX_ARG_NR];
+    int32_t envc = 0;
     uint32_t argv_user_base;
     int32_t i;
     uint32_t slen;
@@ -556,24 +587,18 @@ int32_t sys_execv(const char *path, const char *argv[],
     create_user_vaddr_bitmap(cur);
     {
         int kcaller = (regs != NULL) ? ((regs->cs & 3) == 0) : 1;
-        argc = 0;
-        if (argv != NULL) {
-            while (argc < MAX_ARG_NR) {
-                if (!kcaller && !user_range_readable(
-                                    (uint32_t)(uintptr_t)&argv[argc],
-                                    sizeof(char *))) {
-                    return -1;
-                }
-                if (argv[argc] == NULL) {
-                    break;
-                }
-                int n = kcaller ? (int)strlen(argv[argc])
-                                : user_strnlen(argv[argc], MAX_ARG_STR_LEN);
-                if (n < 0) {
-                    return -1;
-                }
-                slens[argc] = (uint32_t)n + 1;
-                argc++;
+        argc = count_strs(argv, slens, kcaller);
+        if (argc < 0) {
+            return -1;
+        }
+        if (envp == NULL) {
+            envc = 2;
+            envlens[0] = (uint32_t)strlen("PATH=/") + 1;
+            envlens[1] = (uint32_t)strlen("HOME=/") + 1;
+        } else {
+            envc = count_strs(envp, envlens, kcaller);
+            if (envc < 0) {
+                return -1;
             }
         }
     }
@@ -612,7 +637,7 @@ int32_t sys_execv(const char *path, const char *argv[],
         kprintf("[exec] task %d marked as Linux compat (ABI-tag detected)\n",
                 cur->pid);
     }
-    
+
     {
         uint32_t below = rand_u32() % (USER_STACK_PAGES - 3);
         uint32_t sub = (rand_u32() % (PAGE_SIZE / 8)) * 8;
@@ -648,137 +673,89 @@ int32_t sys_execv(const char *path, const char *argv[],
         }
     }
     {
-        static const char *env_defaults[] = {"PATH=/", "HOME=/", 0};
+        static const char *env_defaults[2] = {"PATH=/", "HOME=/"};
         const char *exefn = path;
-        uint32_t envp_addrs[8];
-        int envc = 0;
+        uint32_t envp_addrs[MAX_ARG_NR];
         uint32_t exefn_addr = 0;
         uint32_t aux_dst = 0;
-        uint32_t aux_bytes = 0;
+        uint32_t aw = is64 ? 8u : 4u;
+        uint32_t amask = is64 ? 0x7u : 0x3u;
+        uint64_t aux[32];
+        int naw = 0;
         int e;
-#define PSTACK32(sp, v)                                                        \
+#define PVAL(p, v)                                                             \
     do {                                                                       \
-        (sp) -= 4;                                                             \
-        *((uint32_t *)(sp)) = (uint32_t)(v);                                   \
+        if (is64)                                                              \
+            *(uint64_t *)(p) = (uint64_t)(v);                                  \
+        else                                                                   \
+            *(uint32_t *)(p) = (uint32_t)(v);                                  \
     } while (0)
-#define PSTACK64(sp, v)                                                        \
+#define PSTACK(sp, v)                                                          \
     do {                                                                       \
-        (sp) -= 8;                                                             \
-        *((uint64_t *)(sp)) = (uint64_t)(v);                                   \
+        (sp) -= aw;                                                            \
+        PVAL(sp, v);                                                           \
     } while (0)
-        exefn_addr = 0;
-        while (env_defaults[envc] != 0 && envc < 8) {
-            envc++;
-        }
-#define A64(t, v)                                                              \
+#define A(t, v)                                                                \
     do {                                                                       \
-        aux64[naw++] = (uint64_t)(t);                                          \
-        aux64[naw++] = (uint64_t)(v);                                          \
+        aux[naw++] = (uint64_t)(t);                                            \
+        aux[naw++] = (uint64_t)(v);                                            \
     } while (0)
-#define A32(t, v)                                                              \
-    do {                                                                       \
-        aux32[naw++] = (uint32_t)(t);                                          \
-        aux32[naw++] = (uint32_t)(v);                                          \
-    } while (0)
-        if (is64) {
-            uint64_t aux64[32];
-            int naw = 0;
-            A64(AT_EXECFN, 0);
-            A64(AT_PAGESZ, PAGE_SIZE);
-            A64(AT_CLKTCK, 100);
-            A64(AT_ENTRY, (uint64_t)(uint32_t)entry_point);
-            A64(AT_PHDR, aux_phdr_vaddr + aux_bias);
-            A64(AT_PHENT, aux_phentsize);
-            A64(AT_PHNUM, aux_phnum);
-            A64(AT_BASE, aux_bias);
-            A64(AT_FLAGS, 0);
-            A64(AT_HWCAP, 0);
-            A64(AT_RANDOM, aux_random_addr);
-            A64(AT_NULL, 0);
-            aux_bytes = (uint32_t)(naw * 8);
+        A(AT_EXECFN, 0);
+        A(AT_PAGESZ, PAGE_SIZE);
+        A(AT_CLKTCK, 100);
+        A(AT_ENTRY, entry_point);
+        A(AT_PHDR, aux_phdr_vaddr + (is64 ? aux_bias : 0));
+        A(AT_PHENT, aux_phentsize);
+        A(AT_PHNUM, aux_phnum);
+        if (is64)
+            A(AT_BASE, aux_bias);
+        A(AT_FLAGS, 0);
+        A(AT_HWCAP, 0);
+        A(AT_RANDOM, aux_random_addr);
+        A(AT_NULL, 0);
+#undef A
 
-            slen = strlen(exefn) + 1;
-            ustack_ptr -= slen;
-            ustack_ptr &= ~0x7u;
-            if (ustack_ptr < cur->stack_bottom) {
-                return -1;
-            }
-            memcpy((void *)ustack_ptr, exefn, slen);
-            exefn_addr = ustack_ptr;
-            for (e = envc - 1; e >= 0; --e) {
-                slen = strlen(env_defaults[e]) + 1;
-                ustack_ptr -= slen;
-                ustack_ptr &= ~0x7u;
-                if (ustack_ptr < cur->stack_bottom) {
-                    return -1;
-                }
-                memcpy((void *)ustack_ptr, env_defaults[e], slen);
-                envp_addrs[e] = ustack_ptr;
-            }
-            ustack_ptr &= ~0x7u;
-            ustack_ptr -= aux_bytes;
-            aux_dst = ustack_ptr;
-            aux64[1] = (uint64_t)exefn_addr;
-            memcpy((void *)aux_dst, aux64, aux_bytes);
-            PSTACK64(ustack_ptr, 0);
-            for (e = envc - 1; e >= 0; --e)
-                PSTACK64(ustack_ptr, envp_addrs[e]);
-            PSTACK64(ustack_ptr, 0);
-            for (i = (int32_t)argc - 1; i >= 0; --i)
-                PSTACK64(ustack_ptr, argv_user_addrs[i]);
-            PSTACK64(ustack_ptr, argc);
-            argv_user_base = (uint32_t)((char *)ustack_ptr + 8);
-        } else {
-            uint32_t aux32[32];
-            int naw = 0;
-            A32(AT_EXECFN, 0);
-            A32(AT_PAGESZ, PAGE_SIZE);
-            A32(AT_CLKTCK, 100);
-            A32(AT_ENTRY, (uint32_t)entry_point);
-            A32(AT_PHDR, aux_phdr_vaddr);
-            A32(AT_PHENT, aux_phentsize);
-            A32(AT_PHNUM, aux_phnum);
-            A32(AT_FLAGS, 0);
-            A32(AT_HWCAP, 0);
-            A32(AT_RANDOM, aux_random_addr);
-            A32(AT_NULL, 0);
-            aux_bytes = (uint32_t)(naw * 4);
-            ustack_ptr &= ~0x3u;
-            ustack_ptr -= aux_bytes;
-            aux_dst = ustack_ptr;
-            slen = strlen(exefn) + 1;
-            ustack_ptr -= slen;
-            ustack_ptr &= ~0x3u;
-            if (ustack_ptr < cur->stack_bottom) {
-                return -1;
-            }
-            memcpy((void *)ustack_ptr, exefn, slen);
-            exefn_addr = ustack_ptr;
-            aux32[1] = (uint32_t)exefn_addr;
-            memcpy((void *)aux_dst, aux32, aux_bytes);
-            for (e = envc - 1; e >= 0; --e) {
-                slen = strlen(env_defaults[e]) + 1;
-                ustack_ptr -= slen;
-                ustack_ptr &= ~0x3u;
-                if (ustack_ptr < cur->stack_bottom) {
-                    return -1;
-                }
-                memcpy((void *)ustack_ptr, env_defaults[e], slen);
-                envp_addrs[e] = ustack_ptr;
-            }
-            PSTACK32(ustack_ptr, 0);
-            for (e = envc - 1; e >= 0; --e)
-                PSTACK32(ustack_ptr, envp_addrs[e]);
-            PSTACK32(ustack_ptr, 0);
-            for (i = (int32_t)argc - 1; i >= 0; --i)
-                PSTACK32(ustack_ptr, argv_user_addrs[i]);
-            PSTACK32(ustack_ptr, argc);
-            argv_user_base = (uint32_t)((char *)ustack_ptr + 4);
+        slen = strlen(exefn) + 1;
+        ustack_ptr -= slen;
+        ustack_ptr &= ~amask;
+        if (ustack_ptr < cur->stack_bottom) {
+            return -1;
         }
-#undef A64
-#undef A32
-#undef PSTACK32
-#undef PSTACK64
+        memcpy((void *)ustack_ptr, exefn, slen);
+        exefn_addr = ustack_ptr;
+
+        for (e = envc - 1; e >= 0; --e) {
+            slen = envlens[e];
+            ustack_ptr -= slen;
+            ustack_ptr &= ~amask;
+            if (ustack_ptr < cur->stack_bottom) {
+                return -1;
+            }
+            memcpy((void *)ustack_ptr, envp ? envp[e] : env_defaults[e], slen);
+            envp_addrs[e] = ustack_ptr;
+        }
+
+        ustack_ptr &= ~amask;
+        ustack_ptr -= (uint32_t)naw * aw;
+        aux_dst = ustack_ptr;
+        if (ustack_ptr < cur->stack_bottom) {
+            return -1;
+        }
+        aux[1] = exefn_addr;
+        for (int k = 0; k < naw; k++) {
+            PVAL(aux_dst + (uint32_t)k * aw, aux[k]);
+        }
+
+        PSTACK(ustack_ptr, 0);
+        for (e = envc - 1; e >= 0; --e)
+            PSTACK(ustack_ptr, envp_addrs[e]);
+        PSTACK(ustack_ptr, 0);
+        for (i = (int32_t)argc - 1; i >= 0; --i)
+            PSTACK(ustack_ptr, argv_user_addrs[i]);
+        PSTACK(ustack_ptr, argc);
+        argv_user_base = ustack_ptr + aw;
+#undef PVAL
+#undef PSTACK
     }
     for (int32_t fd = 3; fd < MAX_FILES_OPEN_PER_PROC; ++fd) {
         if (cur->fd_table[fd] != (uint32_t)-1 && (cur->fd_cloexec >> fd) & 1) {
@@ -787,41 +764,24 @@ int32_t sys_execv(const char *path, const char *argv[],
         }
     }
     if (regs != NULL) {
-        memset(regs, 0, sizeof(struct Registers));
-        regs->rip = (uint64_t)(uint32_t)entry_point;
-        regs->cs = is64 ? SELECTOR_USER64_CODE : SELECTOR_U_CODE;
-        regs->rflags = EFLAGS_IOPL_0 | EFLAGS_MBS | EFLAGS_IF_1;
-        regs->user_rsp = ustack_ptr;
-        regs->ss = SELECTOR_U_DATA;
-        if (is64) {
-            regs->rdi = argc;
-            regs->rsi = argv_user_base;
-        } else {
-            regs->rbx = argv_user_base;
-            regs->rcx = argc;
-        }
+        fill_entry_regs(regs, (uint32_t)entry_point, is64, ustack_ptr, argc,
+                        argv_user_base);
         return 0;
     }
 
     ps =
         (struct Registers *)(cur->kernel_stack_top - THREAD_STACK_SIZE + 0x100);
-    memset(ps, 0, sizeof(struct Registers));
-    ps->rip = (uint64_t)(uint32_t)entry_point;
-    ps->cs = is64 ? SELECTOR_USER64_CODE : SELECTOR_U_CODE;
-    ps->rflags = EFLAGS_IOPL_0 | EFLAGS_MBS | EFLAGS_IF_1;
-    ps->user_rsp = ustack_ptr;
-    ps->ss = SELECTOR_U_DATA;
-    if (is64) {
-        ps->rdi = argc;
-        ps->rsi = argv_user_base;
-    } else {
-        ps->rbx = argv_user_base;
-        ps->rcx = argc;
-    }
+    fill_entry_regs(ps, (uint32_t)entry_point, is64, ustack_ptr, argc,
+                    argv_user_base);
 
     __asm__ volatile("mov %0, %%ds; mov %0, %%es; mov %0, %%fs;" ::"r"(
                          (uint16_t)SELECTOR_U_DATA)
                      : "memory");
     __asm__ volatile("mov %0, %%rsp; jmp intr_exit" : : "r"(ps) : "memory");
     return 0;
+}
+
+int32_t sys_execv(const char *path, const char *argv[],
+                  struct Registers *regs) {
+    return sys_execve(path, argv, NULL, regs);
 }

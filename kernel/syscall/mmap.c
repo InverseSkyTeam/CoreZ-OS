@@ -15,7 +15,7 @@ static int32_t unmap_pages(uint32_t addr, uint32_t pages) {
     }
     return 0;
 }
-static int page_is_mapped(uint32_t v) {
+int page_is_mapped(uint32_t v) {
     uint64_t *pde = pde_ptr(v);
     if (pde == NULL) {
         return 0;

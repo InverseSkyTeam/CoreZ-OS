@@ -1,6 +1,3 @@
-/* 单核模式下的APIC */
-/* - LAPIC: 使能, 初始化 LAPIC 定时器作为内核时钟 */
-/* - I/O APIC: 键盘(IRQ1)/鼠标(IRQ12)/IDE(IRQ14) 重定向 */
 
 #include "kernel/init/apic/apic.h"
 

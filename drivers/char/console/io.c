@@ -106,10 +106,6 @@ static void scroll_screen(void) {
 }
 
 static void putc(char c) {
-    // if (gui_active) {
-    //     outb(DEBUG_CONSOLE_PORT, (uint8_t)c);
-    //     return;
-    // }
     if (c == '\r') {
         cursor_x = 0;
     } else if (c == '\n') {
@@ -209,6 +205,7 @@ static void print_signed(int v, int width, int pad0) {
     while (n--)
         putc(buf[n]);
 }
+
 
 void kprintf(const char *fmt, ...) {
     va_list ap;

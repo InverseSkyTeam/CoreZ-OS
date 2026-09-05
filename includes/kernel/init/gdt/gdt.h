@@ -2,17 +2,6 @@
 #define GDT_H
 #include <stdint.h>
 
-/* 64 位 GDT 布局, 0x08/0x10/0x18 与 loader.asm GDT64 保持一致 */
-/* idx0 sel0x00 null */
-/* idx1 sel0x08 kernel code  (64-bit, L=1) */
-/* idx2 sel0x10 kernel data */
-/* idx3 sel0x18 kernel compat code (32-bit D=1) */
-/* idx4 sel0x23 user data  (DPL3, RPL3) */
-/* idx5 sel0x2B user code  (32-bit compat, DPL3, RPL3) */
-/* idx6 sel0x33 user code  (64-bit, DPL3, RPL3) */
-/* idx7 sel0x38 TLS */
-/* idx8 sel0x40 percpu */
-/* idx9/10 sel0x48 TSS (16 字节描述符) */
 #define SELECTOR_KERNEL_CODE 0x08
 #define SELECTOR_KERNEL_DATA 0x10
 #define SELECTOR_KCOMPAT_CODE 0x18
@@ -41,5 +30,6 @@ extern struct gdt_desc gdt[GDT_ENTRIES];
 
 void gdt_init(void);
 void set_tss_desc(uint64_t tss_base, uint32_t tss_limit);
+void tss_desc_init(struct gdt_desc *d, uint64_t base, uint32_t limit);
 void tls_desc_set_base(uint32_t base);
 #endif

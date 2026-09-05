@@ -12,6 +12,7 @@ int strncmp(const char *a, const char *b, size_t n);
 char *strcat(char *dst, const char *src);
 char *strchr(const char *s, int c);
 char *strrchr(const char *s, int c);
+char *u32_to_dec(uint32_t v, char *buf);
 
 void *memcpy(void *dst, const void *src, size_t n);
 void *memmove(void *dst, const void *src, size_t n);

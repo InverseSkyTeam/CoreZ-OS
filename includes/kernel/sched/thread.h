@@ -5,7 +5,6 @@
 #include "kernel/sched/percpu.h"
 #include "kernel/signal.h"
 #include "lib/list/list.h"
-#include "lib/rbtree/rbtree.h"
 #include <stdint.h>
 
 #define THREAD_STACK_SIZE 0x4000
@@ -16,14 +15,16 @@
 #define MAX_FILES_OPEN_PER_PROC 8
 typedef int32_t pid_t;
 enum task_status {
-    TASK_RUNNING,
-    TASK_READY,
-    TASK_BLOCKED,
-    TASK_WAITING,
-    TASK_HANGING,
-    TASK_DIED,
-    TASK_STOPPED
+    TASK_RUNNING = 1u << 0,
+    TASK_READY = 1u << 1,
+    TASK_BLOCKED = 1u << 2,
+    TASK_WAITING = 1u << 3,
+    TASK_HANGING = 1u << 4,
+    TASK_DIED = 1u << 5,
+    TASK_STOPPED = 1u << 6
 };
+#define TASK_WAKE_MASK (TASK_BLOCKED | TASK_WAITING | TASK_HANGING)
+#define TASK_DEAD_MASK (TASK_DIED | TASK_HANGING)
 typedef void (*thread_func)(void *);
 
 struct thread_stack {
@@ -44,8 +45,6 @@ struct task_struct {
     uint8_t priority;
     uint8_t ticks;
     uint32_t elapsed_ticks;
-    struct RB_NODE rb_node;
-    uint8_t in_ready;
     struct list_elem all_list_tag;
     struct list_elem futex_tag;
     struct list_elem wait_tag;
@@ -65,7 +64,7 @@ struct task_struct {
     uint32_t fd_table[MAX_FILES_OPEN_PER_PROC];
     uint32_t tls_base;
     uint32_t tls_selector;
-    uint8_t tls_msr; 
+    uint8_t tls_msr;
     int32_t errno;
     uint32_t compat;
     uint32_t stack_magic;
@@ -75,7 +74,6 @@ struct task_struct {
 extern struct task_struct task_table[MAX_TASKS];
 extern struct task_struct *idle_thread;
 extern struct list thread_all_list;
-extern struct RB_ROOT ready_rb_root;
 extern uint32_t foreground_pid;
 void thread_init(void);
 void cpu_idle_init(void);
@@ -89,6 +87,8 @@ void switch_to(uint64_t **cur_kstack, uint64_t **next_kstack);
 void kernel_thread_entry(void);
 void thread_block(void);
 void thread_unblock(struct task_struct *t);
+void thread_sleep_ticks(uint32_t ticks);
+void thread_timer_wake(void);
 void thread_yield(void);
 void thread_block_with_status(enum task_status status);
 struct task_struct *pid2thread(int32_t pid);

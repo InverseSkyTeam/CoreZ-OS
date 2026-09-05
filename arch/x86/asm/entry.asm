@@ -7,28 +7,28 @@ extern __bss_end
 
 global entry_start
 entry_start:
-        ; 保存 Multiboot2
-        mov     r8d, eax                ; 0x36D76289
+
+        mov     r8d, eax
         mov     r9, rbx
-        mov     r10d, edx               ; 物理基址
+        mov     r10d, edx
         mov     dx, 0x3F8 + 1         
         xor     al, al
         out     dx, al
-        inc     dx                      ; 0x3F9
+        inc     dx
         out     dx, al
-        inc     dx                      ; 0x3FA
+        inc     dx
         out     dx, al
-        inc     dx                      ; 0x3FB
+        inc     dx
         mov     al, 0x03
         out     dx, al
-        inc     dx                      ; 0x3FC
+        inc     dx
         mov     al, 0x00
         out     dx, al
-        inc     dx                      ; 0x3FD
+        inc     dx
         out     dx, al
-        inc     dx                      ; 0x3FE
+        inc     dx
         out     dx, al
-        ; 写 "K!\n"
+
         mov     dx, 0x3F8
         mov     al, 'K'
         out     dx, al

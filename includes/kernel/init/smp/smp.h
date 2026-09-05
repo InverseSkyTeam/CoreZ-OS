@@ -1,4 +1,3 @@
-/* SMP 启动 */
 #ifndef SMP_H
 #define SMP_H
 

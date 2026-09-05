@@ -221,12 +221,33 @@ static void run_line(char *cmd_line) {
     }
 }
 
+static void autoexec(void) {
+    int32_t fd = open("/autoexec", 0);
+    if (fd == -1)
+        return;
+    char buf[MAX_PATH_LEN];
+    int32_t n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if (n <= 0)
+        return;
+    buf[n] = 0;
+    char *p = buf;
+    while (p) {
+        char *nl = strchr(p, '\n');
+        if (nl)
+            *nl = 0;
+        run_line(p);
+        p = nl ? nl + 1 : NULL;
+    }
+}
+
 void my_shell(void *arg) {
     (void)arg;
     kprintf("[shell] my_shell start\n");
     clear();
     cwd_cache[0] = '/';
     cwd_cache[1] = 0;
+    autoexec();
     for (;;) {
         print_prompt();
         memset(final_path, 0, MAX_PATH_LEN);

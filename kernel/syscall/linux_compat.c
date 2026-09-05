@@ -458,15 +458,14 @@ static uint32_t compat_brk_alloc(struct task_struct *cur, uint32_t len) {
     return curbrk;
 }
 
-static int32_t compat_set_thread_area(struct Registers *r,
-                                      struct task_struct *cur, uint32_t base) {
+static int32_t compat_set_thread_area(uint32_t base) {
     if (base == 0 || !user_range_writable(base, sizeof(int32_t)))
-        return -1;
+        return -LINUX_EFAULT;
+    struct task_struct *cur = current;
     cur->tls_base = base;
     cur->tls_selector = SELECTOR_TLS;
     cur->tls_msr = 0;
     tls_desc_set_base(base);
-    lc_seterrno(cur, 0);
     return 0;
 }
 
@@ -491,888 +490,746 @@ static int user_ptr_ok(struct Registers *r, uint64_t ptr, uint32_t len,
                        int wr) {
     return (r->cs & 3) != 3 || access_ok((const void *)(uintptr_t)ptr, len, wr);
 }
+
 static int copy_user_str(struct Registers *r, char *dst, uint64_t ptr) {
     return (r->cs & 3) != 3 ||
            copy_str_from_user(dst, (const char *)(uintptr_t)ptr,
                               MAX_PATH_LEN) == 0;
 }
+
+typedef int64_t (*LcFn)(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f);
+
+static int64_t lc_getpid(struct Registers *r, uint64_t a, uint64_t b,
+                         uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return (int64_t)current->pid;
+}
+
+static int64_t lc_getppid(struct Registers *r, uint64_t a, uint64_t b,
+                          uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    struct task_struct *cur = current;
+    return cur->parent_pid >= 0 ? (int64_t)cur->parent_pid : 0;
+}
+
+static int64_t lc_getid(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return 0;
+}
+
+static int64_t lc_write(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    if (!user_ptr_ok(r, b, (uint32_t)c, 0))
+        return -LINUX_EFAULT;
+    int32_t n = compat_write((int32_t)a, (const void *)b, (uint32_t)c);
+    return n < 0 ? -n : n;
+}
+
+static int64_t lc_read(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                       uint64_t d, uint64_t e, uint64_t f) {
+    if (!user_ptr_ok(r, b, (uint32_t)c, 1))
+        return -LINUX_EFAULT;
+    int32_t n = compat_read((int32_t)a, (void *)b, (uint32_t)c);
+    return n < 0 ? -n : n;
+}
+
+static int64_t lc_close(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return close_file((int32_t)a);
+}
+
+static int64_t lc_exit(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                       uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    sys_exit((int32_t)a);
+    return 0;
+}
+
+__attribute__((noreturn)) static int64_t lc_exit_group(struct Registers *r,
+                                                       uint64_t a, uint64_t b,
+                                                       uint64_t c, uint64_t d,
+                                                       uint64_t e, uint64_t f) {
+    (void)r;
+    sys_exit((int32_t)a);
+    for (;;) {
+    }
+}
+
+static int64_t lc_brk(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                      uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return (int64_t)sys_brk((uint32_t)a);
+}
+
+static int64_t lc_mmap(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                       uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    uint32_t rr = a ? (uint32_t)a : compat_brk_alloc(current, (uint32_t)b);
+    return rr == (uint32_t)-1 ? -LINUX_EPERM : (int64_t)rr;
+}
+
+static int64_t lc_munmap(struct Registers *r, uint64_t a, uint64_t b,
+                         uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return 0;
+}
+
+static int64_t lc_set_thread_area(struct Registers *r, uint64_t a, uint64_t b,
+                                  uint64_t c, uint64_t d, uint64_t e,
+                                  uint64_t f) {
+    (void)r;
+    return compat_set_thread_area((uint32_t)a);
+}
+
+static int64_t lc_set_tid_address(struct Registers *r, uint64_t a, uint64_t b,
+                                  uint64_t c, uint64_t d, uint64_t e,
+                                  uint64_t f) {
+    (void)r;
+    struct task_struct *cur = current;
+    if (a)
+        *(volatile int32_t *)a = (int32_t)cur->pid;
+    return (int64_t)cur->pid;
+}
+
+static int64_t lc_writev(struct Registers *r, uint64_t a, uint64_t b,
+                         uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    if (!user_ptr_ok(r, b, (uint32_t)c * 8u, 0))
+        return -LINUX_EFAULT;
+    int32_t n =
+        sys_compat_writev((int32_t)a, (struct LINUX_IOVEC *)b, (int32_t)c);
+    return n < 0 ? -n : n;
+}
+
+static int64_t lc0_writev(struct Registers *r, uint64_t a, uint64_t b,
+                          uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    if ((b == 0 && c > 0) || c > 1024 ||
+        !user_ptr_ok(r, b, (uint32_t)c * 8u, 0))
+        return -LINUX_EFAULT;
+    int32_t total = 0;
+    for (int32_t i = 0; i < (int32_t)c; i++) {
+        uint32_t pair[2];
+        memcpy(pair, (const void *)(uintptr_t)(b + (uint32_t)i * 8u),
+               sizeof(pair));
+        if (pair[1] == 0)
+            continue;
+        if (!user_ptr_ok(r, pair[0], pair[1], 0))
+            return -LINUX_EFAULT;
+        int32_t n =
+            compat_write((int32_t)a, (const void *)(uintptr_t)pair[0], pair[1]);
+        if (n < 0)
+            return n;
+        total += n;
+        if ((uint32_t)n < pair[1])
+            break;
+    }
+    return total;
+}
+
+static int64_t lc_fstat(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    if (!user_ptr_ok(r, b, sizeof(struct LINUX_STAT), 1))
+        return -LINUX_EFAULT;
+    return compat_fstat_linux((int32_t)a, b);
+}
+
+static int64_t lc_stat(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                       uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, a) ||
+        !user_ptr_ok(r, b, sizeof(struct LINUX_STAT), 1))
+        return -LINUX_EFAULT;
+    return compat_stat_linux(kpath, b);
+}
+
+static int64_t lc_lseek(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return sys_lseek((int32_t)a, (int32_t)b, (uint8_t)(c + 1u));
+}
+
+static int64_t lc_fcntl(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return sys_fcntl((int32_t)a, (int32_t)b, c);
+}
+
+static int64_t lc_readlink(struct Registers *r, uint64_t a, uint64_t b,
+                           uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, a) || !user_ptr_ok(r, b, (uint32_t)c, 1))
+        return -LINUX_EFAULT;
+    return sys_readlink(kpath, (char *)b, c);
+}
+
+static int64_t lc_chdir(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, a))
+        return -LINUX_EFAULT;
+    return sys_chdir(kpath);
+}
+
+static int64_t lc_getcwd(struct Registers *r, uint64_t a, uint64_t b,
+                         uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    if (!user_ptr_ok(r, a, (uint32_t)b, 1))
+        return -LINUX_EFAULT;
+    return sys_getcwd((char *)a, (uint32_t)b) ? (int64_t)a : -LINUX_ENOENT;
+}
+
+static int64_t lc_mkdir(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, a))
+        return -LINUX_EFAULT;
+    return sys_mkdir(kpath);
+}
+
+static int64_t lc_rmdir(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, a))
+        return -LINUX_EFAULT;
+    return sys_rmdir(kpath);
+}
+
+static int64_t lc_unlink(struct Registers *r, uint64_t a, uint64_t b,
+                         uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, a))
+        return -LINUX_EFAULT;
+    return sys_unlink(kpath);
+}
+
+static int64_t lc_rename(struct Registers *r, uint64_t a, uint64_t b,
+                         uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    char kpath2[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, a) || !copy_user_str(r, kpath2, b))
+        return -LINUX_EFAULT;
+    return sys_rename(kpath, kpath2);
+}
+
+static int64_t lc_chmod(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, a))
+        return -LINUX_EFAULT;
+    return sys_chmod(kpath, b);
+}
+
+static int64_t lc_access(struct Registers *r, uint64_t a, uint64_t b,
+                         uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, a))
+        return -LINUX_EFAULT;
+    return sys_access(kpath, (int32_t)b);
+}
+
+static int64_t lc_kill(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                       uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return sys_kill((int)a, (int)b);
+}
+
+static int64_t lc_futex(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    if (!user_ptr_ok(r, a, 4, 0))
+        return -LINUX_EFAULT;
+    return sys_futex(a, b, c, d);
+}
+
+static int64_t lc_gettimeofday(struct Registers *r, uint64_t a, uint64_t b,
+                               uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    struct LINUX_TIMEVAL tv;
+    tv.tv_sec = (int64_t)(tick / PIT_HZ);
+    tv.tv_usec = (int64_t)((tick % PIT_HZ) * (1000000 / PIT_HZ));
+    if (a && !user_ptr_ok(r, a, sizeof(tv), 1))
+        return -LINUX_EFAULT;
+    if (b && !user_ptr_ok(r, b, 16, 1))
+        return -LINUX_EFAULT;
+    if (a)
+        memcpy((void *)(uintptr_t)a, &tv, sizeof(tv));
+    if (b)
+        memset((void *)(uintptr_t)b, 0, 16);
+    return 0;
+}
+
+static int64_t lc_nanosleep(struct Registers *r, uint64_t a, uint64_t b,
+                            uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    struct LINUX_TIMESPEC req;
+    memset(&req, 0, sizeof(req));
+    if (b && !user_ptr_ok(r, b, sizeof(req), 0))
+        return -LINUX_EFAULT;
+    if (b)
+        memcpy(&req, (const void *)(uintptr_t)b, sizeof(req));
+    int64_t ms = req.tv_sec * 1000 + req.tv_nsec / 1000000;
+    mtime_sleep(ms < 0 ? 0 : (uint32_t)ms);
+    if (d) {
+        if (!user_ptr_ok(r, d, sizeof(struct LINUX_TIMESPEC), 1))
+            return -LINUX_EFAULT;
+        struct LINUX_TIMESPEC rem;
+        memset(&rem, 0, sizeof(rem));
+        memcpy((void *)(uintptr_t)d, &rem, sizeof(rem));
+    }
+    return 0;
+}
+
+static int64_t lc_clock_gettime(struct Registers *r, uint64_t a, uint64_t b,
+                                uint64_t c, uint64_t d, uint64_t e,
+                                uint64_t f) {
+    struct LINUX_TIMESPEC ts;
+    ts.tv_sec = (int64_t)(tick / PIT_HZ);
+    ts.tv_nsec = (int64_t)((tick % PIT_HZ) * (1000000000 / PIT_HZ));
+    if (b && !user_ptr_ok(r, b, sizeof(ts), 1))
+        return -LINUX_EFAULT;
+    if (b)
+        memcpy((void *)(uintptr_t)b, &ts, sizeof(ts));
+    return 0;
+}
+
+static int64_t lc_clock_getres(struct Registers *r, uint64_t a, uint64_t b,
+                               uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    if (b && !user_ptr_ok(r, b, sizeof(struct LINUX_TIMESPEC), 1))
+        return -LINUX_EFAULT;
+    if (b) {
+        struct LINUX_TIMESPEC res;
+        res.tv_sec = 0;
+        res.tv_nsec = 1000000000 / PIT_HZ;
+        memcpy((void *)(uintptr_t)b, &res, sizeof(res));
+    }
+    return 0;
+}
+
+static int64_t lc_mprotect(struct Registers *r, uint64_t a, uint64_t b,
+                           uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return sys_mprotect(a, b, c);
+}
+
+static int64_t lc_rt_sigaction(struct Registers *r, uint64_t a, uint64_t b,
+                               uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    int32_t sig = (int32_t)a;
+    if (sig <= 0 || sig >= 32)
+        return -LINUX_EINVAL;
+    struct LINUX_SIGACTION lsa;
+    memset(&lsa, 0, sizeof(lsa));
+    if (b && !user_ptr_ok(r, b, sizeof(lsa), 0))
+        return -LINUX_EFAULT;
+    if (b)
+        memcpy(&lsa, (const void *)(uintptr_t)b, sizeof(lsa));
+    struct sigaction nat;
+    memset(&nat, 0, sizeof(nat));
+    nat.sa_handler = (void (*)(int))(uintptr_t)lsa.sa_handler;
+    nat.sa_mask = (uint32_t)lsa.sa_mask;
+    nat.sa_flags = (uint32_t)lsa.sa_flags;
+    nat.sa_restorer = (void *)(uintptr_t)lsa.sa_restorer;
+    struct sigaction oldnat;
+    memset(&oldnat, 0, sizeof(oldnat));
+    int rr = sys_sigaction(sig, b ? &nat : NULL, &oldnat);
+    if (rr < 0)
+        return rr;
+    if (d) {
+        if (!user_ptr_ok(r, d, sizeof(struct LINUX_SIGACTION), 1))
+            return -LINUX_EFAULT;
+        struct LINUX_SIGACTION oldl;
+        memset(&oldl, 0, sizeof(oldl));
+        oldl.sa_handler = (uint64_t)(uintptr_t)oldnat.sa_handler;
+        oldl.sa_flags = oldnat.sa_flags;
+        oldl.sa_restorer = (uint64_t)(uintptr_t)oldnat.sa_restorer;
+        oldl.sa_mask = oldnat.sa_mask;
+        memcpy((void *)(uintptr_t)d, &oldl, sizeof(oldl));
+    }
+    return 0;
+}
+
+static int64_t lc_rt_sigprocmask(struct Registers *r, uint64_t a, uint64_t b,
+                                 uint64_t c, uint64_t d, uint64_t e,
+                                 uint64_t f) {
+    sigset_t kset = 0;
+    if (b && !user_ptr_ok(r, b, 8, 0))
+        return -LINUX_EFAULT;
+    if (c && !user_ptr_ok(r, c, 8, 1))
+        return -LINUX_EFAULT;
+    if (b) {
+        uint8_t in[8];
+        memset(in, 0, sizeof(in));
+        memcpy(in, (const void *)(uintptr_t)b, 8);
+        memcpy(&kset, in, sizeof(kset));
+    }
+    sigset_t oset = 0;
+    int32_t rr =
+        sys_sigprocmask((int32_t)a, b ? &kset : NULL, c ? &oset : NULL);
+    if (rr < 0)
+        return rr;
+    if (c) {
+        uint8_t out[8];
+        memset(out, 0, sizeof(out));
+        memcpy(out, &oset, sizeof(oset));
+        memcpy((void *)(uintptr_t)c, out, 8);
+    }
+    return 0;
+}
+
+static int64_t lc_getdents64(struct Registers *r, uint64_t a, uint64_t b,
+                             uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    if (!user_ptr_ok(r, b, (uint32_t)c, 1))
+        return -LINUX_EFAULT;
+    return compat_getdents64((int32_t)a, (void *)(uintptr_t)b, (uint32_t)c);
+}
+
+static int64_t lc_ioctl(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return compat_ioctl((int32_t)a, (uint32_t)b, c);
+}
+
+static int64_t lc_readv(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    if (!user_ptr_ok(r, b, (uint32_t)c * 8u, 0))
+        return -LINUX_EFAULT;
+    return compat_readv((int32_t)a, (struct LINUX_IOVEC *)(uintptr_t)b,
+                        (int32_t)c);
+}
+
+static int64_t lc_wait4(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    if (b && !user_ptr_ok(r, b, 4, 1))
+        return -LINUX_EFAULT;
+    return compat_wait4((int32_t *)b);
+}
+
+static int64_t lc_uname(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return compat_uname((void *)a);
+}
+
+static int64_t lc_sysinfo(struct Registers *r, uint64_t a, uint64_t b,
+                          uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return compat_sysinfo((void *)a);
+}
+
+static int64_t lc_times(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return (int64_t)(uint32_t)compat_times((void *)a);
+}
+
+static int64_t lc_ftruncate(struct Registers *r, uint64_t a, uint64_t b,
+                            uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return compat_ftruncate((int32_t)a, (int32_t)c);
+}
+
+static int64_t lc_rt_sigreturn(struct Registers *r, uint64_t a, uint64_t b,
+                               uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    return (int64_t)sys_sigreturn(r);
+}
+
+static int64_t lc_setpgid(struct Registers *r, uint64_t a, uint64_t b,
+                          uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return compat_setpgid(a, b);
+}
+
+static int64_t lc_getpgid(struct Registers *r, uint64_t a, uint64_t b,
+                          uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return compat_getpgid(a);
+}
+
+static int64_t lc_arch_prctl(struct Registers *r, uint64_t a, uint64_t b,
+                             uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    const uint64_t MSR_FS_BASE = 0xC0000100;
+    const uint64_t MSR_GS_BASE = 0xC0000101;
+    struct task_struct *cur = current;
+    switch (a) {
+    case 0x1002u:
+        cur->tls_base = (uint32_t)b;
+        cur->tls_msr = 1;
+        asm_wrmsr(MSR_FS_BASE, b);
+        return 0;
+    case 0x1001u:
+        cur->tls_base = (uint32_t)b;
+        asm_wrmsr(MSR_GS_BASE, b);
+        return 0;
+    case 0x1003u:
+        return (int64_t)(uint32_t)asm_rdmsr(MSR_FS_BASE);
+    case 0x1004u:
+        return (int64_t)(uint32_t)asm_rdmsr(MSR_GS_BASE);
+    default:
+        return -LINUX_EINVAL;
+    }
+}
+
+static int64_t lc_sched_yield(struct Registers *r, uint64_t a, uint64_t b,
+                              uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return 0;
+}
+
+static int64_t lc_execve(struct Registers *r, uint64_t a, uint64_t b,
+                         uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, a))
+        return -LINUX_EFAULT;
+    return sys_execve(kpath, (const char **)(uintptr_t)b,
+                      (const char **)(uintptr_t)c, r);
+}
+
+static int64_t lc_fork(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                       uint64_t d, uint64_t e, uint64_t f) {
+    return sys_fork(r);
+}
+
+static int64_t lc_clone(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    if (a & CLONE_VM)
+        return -LINUX_ENOSYS;
+    return sys_fork(r);
+}
+
+static int64_t lc_pipe(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                       uint64_t d, uint64_t e, uint64_t f) {
+    if (a == 0 || !user_ptr_ok(r, a, 8, 1))
+        return -LINUX_EFAULT;
+    return sys_pipe((int32_t *)(uintptr_t)a);
+}
+
+static int64_t lc_pipe2(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    if (b != 0)
+        return -LINUX_EINVAL;
+    return lc_pipe(r, a, 0, 0, 0, 0, 0);
+}
+
+static int64_t lc_dup(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                      uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return sys_dup((int32_t)a);
+}
+
+static int64_t lc_dup2(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                       uint64_t d, uint64_t e, uint64_t f) {
+    (void)r;
+    return sys_dup2((int32_t)a, (int32_t)b);
+}
+
+static int64_t lc_dup3(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                       uint64_t d, uint64_t e, uint64_t f) {
+    if ((int32_t)a == (int32_t)b || d != 0)
+        return -LINUX_EINVAL;
+    return sys_dup2((int32_t)a, (int32_t)b);
+}
+
+static int64_t lc_open(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                       uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, a))
+        return -LINUX_EFAULT;
+    return compat_openat(LINUX_AT_FDCWD, kpath, (uint32_t)b);
+}
+
+static int64_t lc_openat(struct Registers *r, uint64_t a, uint64_t b,
+                         uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, b))
+        return -LINUX_EFAULT;
+    return compat_openat((int32_t)a, kpath, (uint32_t)c);
+}
+
+static int64_t lc_newfstatat(struct Registers *r, uint64_t a, uint64_t b,
+                             uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    if (!user_ptr_ok(r, c, sizeof(struct LINUX_STAT), 1))
+        return -LINUX_EFAULT;
+    if ((b == 0 || *(const char *)(uintptr_t)b == 0) &&
+        (d & LINUX_AT_EMPTY_PATH))
+        return compat_fstat_linux((int32_t)a, c);
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, b))
+        return -LINUX_EFAULT;
+    return compat_stat_linux(kpath, c);
+}
+
+static int64_t lc_unlinkat(struct Registers *r, uint64_t a, uint64_t b,
+                           uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, b))
+        return -LINUX_EFAULT;
+    return (d & LINUX_AT_REMOVEDIR) ? sys_rmdir(kpath) : sys_unlink(kpath);
+}
+
+static int64_t lc_mkdirat(struct Registers *r, uint64_t a, uint64_t b,
+                          uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, b))
+        return -LINUX_EFAULT;
+    return sys_mkdir(kpath);
+}
+
+static int64_t lc_renameat(struct Registers *r, uint64_t a, uint64_t b,
+                           uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    char kpath2[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, b) || !copy_user_str(r, kpath2, d))
+        return -LINUX_EFAULT;
+    return sys_rename(kpath, kpath2);
+}
+
+static int64_t lc_renameat2(struct Registers *r, uint64_t a, uint64_t b,
+                            uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    if (e != 0)
+        return -LINUX_EINVAL;
+    return lc_renameat(r, b, d, 0, 0, 0, 0);
+}
+
+static int64_t lc_readlinkat(struct Registers *r, uint64_t a, uint64_t b,
+                             uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, b) || !user_ptr_ok(r, c, (uint32_t)d, 1))
+        return -LINUX_EFAULT;
+    return sys_readlink(kpath, (char *)(uintptr_t)c, d);
+}
+
+static int64_t lc_faccessat(struct Registers *r, uint64_t a, uint64_t b,
+                            uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, b))
+        return -LINUX_EFAULT;
+    return sys_access(kpath, (int32_t)c);
+}
+
+static int64_t lc_getrandom(struct Registers *r, uint64_t a, uint64_t b,
+                            uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    if (b == 0)
+        return 0;
+    if (!user_ptr_ok(r, a, (uint32_t)b, 1))
+        return -LINUX_EFAULT;
+    uint8_t *p = (uint8_t *)(uintptr_t)a;
+    uint32_t n = (uint32_t)b;
+    while (n >= 8) {
+        uint64_t v = rand_u64();
+        memcpy(p, &v, 8);
+        p += 8;
+        n -= 8;
+    }
+    if (n) {
+        uint64_t v = rand_u64();
+        memcpy(p, &v, n);
+    }
+    return (int64_t)b;
+}
+
+static int64_t lc0_open(struct Registers *r, uint64_t a, uint64_t b, uint64_t c,
+                        uint64_t d, uint64_t e, uint64_t f) {
+    char kpath[MAX_PATH_LEN];
+    if (!copy_user_str(r, kpath, a))
+        return -LINUX_EFAULT;
+    return open_file(kpath, (uint8_t)b);
+}
+
+#define LC_TABLE_SIZE 320
+
+static const LcFn LC_TABLE[LC_TABLE_SIZE] = {
+    [SYS_LINUX_read] = lc_read,
+    [SYS_LINUX_write] = lc_write,
+    [SYS_LINUX_open] = lc_open,
+    [SYS_LINUX_close] = lc_close,
+    [SYS_LINUX_exit] = lc_exit,
+    [SYS_LINUX_exit_group] = lc_exit_group,
+    [SYS_LINUX_brk] = lc_brk,
+    [SYS_LINUX_mmap] = lc_mmap,
+    [SYS_LINUX_munmap] = lc_munmap,
+    [SYS_LINUX_set_thread_area] = lc_set_thread_area,
+    [SYS_LINUX_set_tid_address] = lc_set_tid_address,
+    [SYS_LINUX_writev] = lc_writev,
+    [SYS_LINUX_getpid] = lc_getpid,
+    [SYS_LINUX_getuid] = lc_getid,
+    [SYS_LINUX_getgid] = lc_getid,
+    [SYS_LINUX_geteuid] = lc_getid,
+    [SYS_LINUX_getegid] = lc_getid,
+    [SYS_LINUX_getppid] = lc_getppid,
+    [SYS_LINUX_fstat] = lc_fstat,
+    [SYS_LINUX_stat] = lc_stat,
+    [SYS_LINUX_lstat] = lc_stat,
+    [SYS_LINUX_lseek] = lc_lseek,
+    [SYS_LINUX_fcntl] = lc_fcntl,
+    [SYS_LINUX_readlink] = lc_readlink,
+    [SYS_LINUX_chdir] = lc_chdir,
+    [SYS_LINUX_getcwd] = lc_getcwd,
+    [SYS_LINUX_mkdir] = lc_mkdir,
+    [SYS_LINUX_rmdir] = lc_rmdir,
+    [SYS_LINUX_unlink] = lc_unlink,
+    [SYS_LINUX_rename] = lc_rename,
+    [SYS_LINUX_chmod] = lc_chmod,
+    [SYS_LINUX_access] = lc_access,
+    [SYS_LINUX_kill] = lc_kill,
+    [SYS_LINUX_futex] = lc_futex,
+    [SYS_LINUX_gettimeofday] = lc_gettimeofday,
+    [SYS_LINUX_nanosleep] = lc_nanosleep,
+    [SYS_LINUX_clock_gettime] = lc_clock_gettime,
+    [SYS_LINUX_clock_getres] = lc_clock_getres,
+    [SYS_LINUX_mprotect] = lc_mprotect,
+    [SYS_LINUX_rt_sigaction] = lc_rt_sigaction,
+    [SYS_LINUX_rt_sigprocmask] = lc_rt_sigprocmask,
+    [SYS_LINUX_getdents64] = lc_getdents64,
+    [SYS_LINUX_ioctl] = lc_ioctl,
+    [SYS_LINUX_readv] = lc_readv,
+    [SYS_LINUX_wait4] = lc_wait4,
+    [SYS_LINUX_uname] = lc_uname,
+    [SYS_LINUX_sysinfo] = lc_sysinfo,
+    [SYS_LINUX_times] = lc_times,
+    [SYS_LINUX_ftruncate] = lc_ftruncate,
+    [SYS_LINUX_rt_sigreturn] = lc_rt_sigreturn,
+    [SYS_LINUX_setpgid] = lc_setpgid,
+    [SYS_LINUX_getpgid] = lc_getpgid,
+    [SYS_LINUX_arch_prctl] = lc_arch_prctl,
+    [SYS_LINUX_sched_yield] = lc_sched_yield,
+    [SYS_LINUX_execve] = lc_execve,
+    [SYS_LINUX_fork] = lc_fork,
+    [SYS_LINUX_vfork] = lc_fork,
+    [SYS_LINUX_clone] = lc_clone,
+    [SYS_LINUX_pipe] = lc_pipe,
+    [SYS_LINUX_pipe2] = lc_pipe2,
+    [SYS_LINUX_dup] = lc_dup,
+    [SYS_LINUX_dup2] = lc_dup2,
+    [SYS_LINUX_dup3] = lc_dup3,
+    [SYS_LINUX_openat] = lc_openat,
+    [SYS_LINUX_newfstatat] = lc_newfstatat,
+    [SYS_LINUX_unlinkat] = lc_unlinkat,
+    [SYS_LINUX_mkdirat] = lc_mkdirat,
+    [SYS_LINUX_renameat] = lc_renameat,
+    [SYS_LINUX_renameat2] = lc_renameat2,
+    [SYS_LINUX_readlinkat] = lc_readlinkat,
+    [SYS_LINUX_faccessat] = lc_faccessat,
+    [SYS_LINUX_getrandom] = lc_getrandom,
+};
+
 uint32_t linux_compat_handler(struct Registers *r) {
     struct task_struct *cur = current;
     uint32_t nr = r->eax;
-    uint32_t ret = (uint32_t)-1;
-    char kpath[MAX_PATH_LEN];
-    char kpath2[MAX_PATH_LEN];
+    int64_t ret = -LINUX_ENOSYS;
 
     if (nr >= COMPAT_SYSCALL_BASE) {
-        uint32_t a = r->rbx;
-        uint32_t b = r->rcx;
-        uint32_t c = r->rdx;
-        uint32_t d = r->rsi;
-        uint32_t e = r->rdi;
-        uint32_t f = r->rbp;
-
-        switch (nr - COMPAT_SYSCALL_BASE) {
-        case 0:
-            ret = cur->pid;
-            break;
-        case 1: {
-            if (!user_ptr_ok(r, b, c, 0)) {
-                lc_seterrno(cur, LINUX_EFAULT);
-                ret = (uint32_t)-1;
-                break;
-            }
-            int32_t n = compat_write((int32_t)a, (const void *)b, c);
-            lc_seterrno(cur, n < 0 ? -n : 0);
-            ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
-            break;
-        }
-        case 2: {
-            if (!user_ptr_ok(r, b, c, 1)) {
-                lc_seterrno(cur, LINUX_EFAULT);
-                ret = (uint32_t)-1;
-                break;
-            }
-            int32_t n = compat_read((int32_t)a, (void *)b, c);
-            lc_seterrno(cur, n < 0 ? -n : 0);
-            ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
-            break;
-        }
-        case 3:
-            sys_exit((int32_t)a);
-            ret = 0;
-            break;
-        case 4: {
-            uint32_t rr = sys_brk(a);
-            lc_seterrno(cur, 0);
-            ret = rr;
-            break;
-        }
-        case 5: {
-            if (!copy_user_str(r, kpath, a)) {
-                lc_seterrno(cur, LINUX_EFAULT);
-                ret = (uint32_t)-1;
-                break;
-            }
-            int32_t fd = open_file(kpath, (uint8_t)b);
-            lc_seterrno(cur, fd < 0 ? -fd : 0);
-            ret = fd < 0 ? (uint32_t)-1 : (uint32_t)fd;
-            break;
-        }
-        case 6: {
-            int32_t rr = close_file((int32_t)a);
-            lc_seterrno(cur, rr < 0 ? -rr : 0);
-            ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-            break;
-        }
-        case 7: {
-            if (a != 0) {
-                ret = a;
-            } else {
-                ret = compat_brk_alloc(cur, b);
-            }
-            lc_seterrno(cur, (int32_t)ret == (uint32_t)-1 ? 1 : 0);
-            break;
-        }
-        case 8: {
-            int32_t rr = compat_set_thread_area(r, cur, a);
-            lc_seterrno(cur, rr < 0 ? -rr : 0);
-            ret = rr < 0 ? (uint32_t)-1 : 0;
-            break;
-        }
-        case 9: {
-            int32_t total = 0;
-            int32_t err = 0;
-            int32_t i;
-            if (b == 0 && c > 0) {
-                err = 14;
-            } else if (c > 1024 || !user_ptr_ok(r, b, c * 8u, 0)) {
-                err = 14;
-            } else {
-                for (i = 0; i < (int32_t)c; i++) {
-                    uint32_t pair[2];
-                    memcpy(pair,
-                           (const void *)(uintptr_t)(b + (uint32_t)i * 8u),
-                           sizeof(pair));
-                    if (pair[1] == 0)
-                        continue;
-                    if (!user_ptr_ok(r, pair[0], pair[1], 0)) {
-                        err = 14;
-                        break;
-                    }
-                    int32_t n = compat_write(
-                        (int32_t)a, (const void *)(uintptr_t)pair[0], pair[1]);
-                    if (n < 0) {
-                        err = -n;
-                        break;
-                    }
-                    total += n;
-                    if ((uint32_t)n < pair[1])
-                        break;
-                }
-            }
-            lc_seterrno(cur, err);
-            ret = err ? (uint32_t)-1 : (uint32_t)total;
-            break;
-        }
-        default:
-            lc_seterrno(cur, 38);
-            ret = (uint32_t)-1;
-            break;
-        }
-        return ret;
+        static const LcFn LC0_TABLE[] = {
+            [0] = lc_getpid,  [1] = lc_write, [2] = lc_read,
+            [3] = lc_exit,    [4] = lc_brk,   [5] = lc0_open,
+            [6] = lc_close,   [7] = lc_mmap,  [8] = lc_set_thread_area,
+            [9] = lc0_writev,
+        };
+        uint32_t idx = nr - COMPAT_SYSCALL_BASE;
+        if (idx < sizeof(LC0_TABLE) / sizeof(LC0_TABLE[0]) && LC0_TABLE[idx])
+            ret = LC0_TABLE[idx](r, r->rbx, r->rcx, r->rdx, r->rsi, r->rdi,
+                                 r->rbp);
+    } else if (nr < LC_TABLE_SIZE && LC_TABLE[nr]) {
+        ret = LC_TABLE[nr](r, r->rdi, r->rsi, r->rdx, r->r10, r->r8, r->r9);
     }
 
-    uint32_t a = r->rdi;
-    uint32_t b = r->rsi;
-    uint32_t c = r->rdx;
-    uint32_t d = r->r10;
-    uint32_t e = r->r8;
-    uint32_t f = r->r9;
-
-    switch (nr) {
-    case SYS_LINUX_write: {
-        if (!user_ptr_ok(r, b, c, 0)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t n = compat_write((int32_t)a, (const void *)b, c);
-        lc_seterrno(cur, n < 0 ? -n : 0);
-        ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
-        break;
-    }
-    case SYS_LINUX_read: {
-        if (!user_ptr_ok(r, b, c, 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t n = compat_read((int32_t)a, (void *)b, c);
-        lc_seterrno(cur, n < 0 ? -n : 0);
-        ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
-        break;
-    }
-    case SYS_LINUX_open: {
-        if (!copy_user_str(r, kpath, a)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t fd = compat_openat(LINUX_AT_FDCWD, kpath, b);
-        lc_seterrno(cur, fd < 0 ? -fd : 0);
-        ret = fd < 0 ? (uint32_t)-1 : (uint32_t)fd;
-        break;
-    }
-    case SYS_LINUX_close: {
-        int32_t rr = close_file((int32_t)a);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_exit:
-        sys_exit((int32_t)a);
-        ret = 0;
-        break;
-    case SYS_LINUX_exit_group:
-        sys_exit((int32_t)a);
-        for (;;) {
-        }
-        break;
-    case SYS_LINUX_brk: {
-        uint32_t rr = sys_brk(a);
-        lc_seterrno(cur, 0);
-        ret = rr;
-        break;
-    }
-    case SYS_LINUX_mmap: {
-        if (a != 0) {
-            ret = a;
-        } else {
-            ret = compat_brk_alloc(cur, b);
-        }
-        lc_seterrno(cur, (int32_t)ret == (uint32_t)-1 ? 1 : 0);
-        break;
-    }
-    case SYS_LINUX_munmap: {
-        lc_seterrno(cur, 0);
-        ret = 0;
-        break;
-    }
-    case SYS_LINUX_set_thread_area: {
-        int32_t rr = compat_set_thread_area(r, cur, a);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : 0;
-        break;
-    }
-    case SYS_LINUX_set_tid_address: {
-        if (a)
-            *(volatile int32_t *)a = (int32_t)cur->pid;
-        lc_seterrno(cur, 0);
-        ret = (uint32_t)cur->pid;
-        break;
-    }
-    case SYS_LINUX_writev: {
-        if (!user_ptr_ok(r, b, (uint32_t)c * 8u, 0)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t n =
-            sys_compat_writev((int32_t)a, (struct LINUX_IOVEC *)b, (int32_t)c);
-        lc_seterrno(cur, n < 0 ? -n : 0);
-        ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
-        break;
-    }
-    case SYS_LINUX_getpid:
-        ret = cur->pid;
-        break;
-    case SYS_LINUX_getuid:
-        ret = 0;
-        break;
-    case SYS_LINUX_getgid:
-        ret = 0;
-        break;
-    case SYS_LINUX_geteuid:
-        ret = 0;
-        break;
-    case SYS_LINUX_getegid:
-        ret = 0;
-        break;
-    case SYS_LINUX_getppid:
-        ret = cur->parent_pid >= 0 ? (uint32_t)cur->parent_pid : 0;
-        break;
-    case SYS_LINUX_fstat: {
-        if (!user_ptr_ok(r, b, sizeof(struct LINUX_STAT), 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = compat_fstat_linux((int32_t)a, b);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_stat: {
-        if (!copy_user_str(r, kpath, a) ||
-            !user_ptr_ok(r, b, sizeof(struct LINUX_STAT), 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = compat_stat_linux(kpath, b);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_lstat: {
-        if (!copy_user_str(r, kpath, a) ||
-            !user_ptr_ok(r, b, sizeof(struct LINUX_STAT), 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = compat_stat_linux(kpath, b);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_lseek: {
-        int32_t rr = sys_lseek((int32_t)a, (int32_t)b, (uint8_t)(c + 1u));
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_fcntl: {
-        int32_t rr = sys_fcntl((int32_t)a, (int32_t)b, c);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_readlink: {
-        if (!copy_user_str(r, kpath, a) || !user_ptr_ok(r, b, c, 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_readlink(kpath, (char *)b, c);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_chdir: {
-        if (!copy_user_str(r, kpath, a)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_chdir(kpath);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_getcwd: {
-        if (!user_ptr_ok(r, a, b, 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        char *rr = sys_getcwd((char *)a, b);
-        lc_seterrno(cur, rr == NULL ? 2 : 0);
-        ret = rr == NULL ? (uint32_t)-1 : (uint32_t)a;
-        break;
-    }
-    case SYS_LINUX_mkdir: {
-        if (!copy_user_str(r, kpath, a)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_mkdir(kpath);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_rmdir: {
-        if (!copy_user_str(r, kpath, a)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_rmdir(kpath);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_unlink: {
-        if (!copy_user_str(r, kpath, a)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_unlink(kpath);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_rename: {
-        if (!copy_user_str(r, kpath, a) || !copy_user_str(r, kpath2, b)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_rename(kpath, kpath2);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_chmod: {
-        if (!copy_user_str(r, kpath, a)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_chmod(kpath, b);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_access: {
-        if (!copy_user_str(r, kpath, a)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_access(kpath, (int32_t)b);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_kill: {
-        int rr = sys_kill((int)a, (int)b);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_futex: {
-        if (!user_ptr_ok(r, a, 4, 0)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_futex(a, b, c, d);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_gettimeofday: {
-        struct LINUX_TIMEVAL tv;
-        tv.tv_sec = (int64_t)(tick / PIT_HZ);
-        tv.tv_usec = (int64_t)((tick % PIT_HZ) * (1000000 / PIT_HZ));
-        if (a && !user_ptr_ok(r, a, sizeof(tv), 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if (b && !user_ptr_ok(r, b, 16, 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if (a)
-            memcpy((void *)(uintptr_t)a, &tv, sizeof(tv));
-        if (b)
-            memset((void *)(uintptr_t)b, 0, 16);
-        lc_seterrno(cur, 0);
-        ret = 0;
-        break;
-    }
-    case SYS_LINUX_nanosleep: {
-        struct LINUX_TIMESPEC req;
-        memset(&req, 0, sizeof(req));
-        if (b && !user_ptr_ok(r, b, sizeof(req), 0)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if (b)
-            memcpy(&req, (const void *)(uintptr_t)b, sizeof(req));
-        int64_t ms = req.tv_sec * 1000 + req.tv_nsec / 1000000;
-        mtime_sleep(ms < 0 ? 0 : (uint32_t)ms);
-        if (d && !user_ptr_ok(r, d, sizeof(struct LINUX_TIMESPEC), 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if (d) {
-            struct LINUX_TIMESPEC rem;
-            memset(&rem, 0, sizeof(rem));
-            memcpy((void *)(uintptr_t)d, &rem, sizeof(rem));
-        }
-        lc_seterrno(cur, 0);
-        ret = 0;
-        break;
-    }
-    case SYS_LINUX_clock_gettime: {
-        struct LINUX_TIMESPEC ts;
-        ts.tv_sec = (int64_t)(tick / PIT_HZ);
-        ts.tv_nsec = (int64_t)((tick % PIT_HZ) * (1000000000 / PIT_HZ));
-        if (b && !user_ptr_ok(r, b, sizeof(ts), 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if (b)
-            memcpy((void *)(uintptr_t)b, &ts, sizeof(ts));
-        lc_seterrno(cur, 0);
-        ret = 0;
-        break;
-    }
-    case SYS_LINUX_clock_getres: {
-        if (b && !user_ptr_ok(r, b, sizeof(struct LINUX_TIMESPEC), 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if (b) {
-            struct LINUX_TIMESPEC res;
-            res.tv_sec = 0;
-            res.tv_nsec = 1000000000 / PIT_HZ;
-            memcpy((void *)(uintptr_t)b, &res, sizeof(res));
-        }
-        lc_seterrno(cur, 0);
-        ret = 0;
-        break;
-    }
-    case SYS_LINUX_mprotect: {
-        int32_t rr = sys_mprotect(a, b, c);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_rt_sigaction: {
-        int32_t sig = (int32_t)a;
-        if (sig <= 0 || sig >= 32) {
-            lc_seterrno(cur, LINUX_EINVAL);
-            ret = (uint32_t)-1;
-            break;
-        }
-        struct LINUX_SIGACTION lsa;
-        memset(&lsa, 0, sizeof(lsa));
-        if (b && !user_ptr_ok(r, b, sizeof(lsa), 0)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if (b)
-            memcpy(&lsa, (const void *)(uintptr_t)b, sizeof(lsa));
-        struct sigaction nat;
-        memset(&nat, 0, sizeof(nat));
-        nat.sa_handler = (void (*)(int))(uintptr_t)lsa.sa_handler;
-        nat.sa_mask = (uint32_t)lsa.sa_mask;
-        nat.sa_flags = (uint32_t)lsa.sa_flags;
-        nat.sa_restorer = (void *)(uintptr_t)lsa.sa_restorer;
-        struct sigaction oldnat;
-        memset(&oldnat, 0, sizeof(oldnat));
-        int rr = sys_sigaction(sig, b ? &nat : NULL, &oldnat);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        if (rr == 0 && d &&
-            !user_ptr_ok(r, d, sizeof(struct LINUX_SIGACTION), 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if (rr == 0 && d) {
-            struct LINUX_SIGACTION oldl;
-            memset(&oldl, 0, sizeof(oldl));
-            oldl.sa_handler = (uint64_t)(uintptr_t)oldnat.sa_handler;
-            oldl.sa_flags = oldnat.sa_flags;
-            oldl.sa_restorer = (uint64_t)(uintptr_t)oldnat.sa_restorer;
-            oldl.sa_mask = oldnat.sa_mask;
-            memcpy((void *)(uintptr_t)d, &oldl, sizeof(oldl));
-        }
-        ret = rr < 0 ? (uint32_t)-1 : 0;
-        break;
-    }
-    case SYS_LINUX_rt_sigprocmask: {
-        uint32_t how = a;
-        sigset_t kset = 0;
-        if (b && !user_ptr_ok(r, b, 8, 0)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if (c && !user_ptr_ok(r, c, 8, 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if (b) {
-            uint8_t in[8];
-            memset(in, 0, sizeof(in));
-            memcpy(in, (const void *)(uintptr_t)b, 8);
-            memcpy(&kset, in, sizeof(kset));
-        }
-        sigset_t oset = 0;
-        int32_t rr =
-            sys_sigprocmask((int32_t)how, b ? &kset : NULL, c ? &oset : NULL);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        if (c) {
-            uint8_t out[8];
-            memset(out, 0, sizeof(out));
-            memcpy(out, &oset, sizeof(oset));
-            memcpy((void *)(uintptr_t)c, out, 8);
-        }
-        ret = rr < 0 ? (uint32_t)-1 : 0;
-        break;
-    }
-    case SYS_LINUX_getdents64: {
-        if (!user_ptr_ok(r, b, c, 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t n = compat_getdents64((int32_t)a, (void *)(uintptr_t)b, c);
-        lc_seterrno(cur, n < 0 ? -n : 0);
-        ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
-        break;
-    }
-    case SYS_LINUX_ioctl: {
-        int32_t n = compat_ioctl((int32_t)a, (uint32_t)b, c);
-        lc_seterrno(cur, n < 0 ? -n : 0);
-        ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
-        break;
-    }
-    case SYS_LINUX_readv: {
-        if (!user_ptr_ok(r, b, (uint32_t)c * 8u, 0)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t n = compat_readv((int32_t)a, (struct LINUX_IOVEC *)(uintptr_t)b,
-                                 (int32_t)c);
-        lc_seterrno(cur, n < 0 ? -n : 0);
-        ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
-        break;
-    }
-    case SYS_LINUX_wait4: {
-        if (b && !user_ptr_ok(r, b, 4, 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t pid = compat_wait4((int32_t *)b);
-        lc_seterrno(cur, pid < 0 ? -pid : 0);
-        ret = pid < 0 ? (uint32_t)-1 : (uint32_t)pid;
-        break;
-    }
-    case SYS_LINUX_uname: {
-        int32_t n = compat_uname((void *)(uintptr_t)a);
-        lc_seterrno(cur, n < 0 ? -n : 0);
-        ret = n < 0 ? (uint32_t)-1 : 0;
-        break;
-    }
-    case SYS_LINUX_sysinfo: {
-        int32_t n = compat_sysinfo((void *)(uintptr_t)a);
-        lc_seterrno(cur, n < 0 ? -n : 0);
-        ret = n < 0 ? (uint32_t)-1 : 0;
-        break;
-    }
-    case SYS_LINUX_times: {
-        int32_t n = compat_times((void *)(uintptr_t)a);
-        lc_seterrno(cur, 0);
-        ret = (uint32_t)n;
-        break;
-    }
-    case SYS_LINUX_ftruncate: {
-        int32_t n = compat_ftruncate((int32_t)a, (int32_t)c);
-        lc_seterrno(cur, n < 0 ? -n : 0);
-        ret = n < 0 ? (uint32_t)-1 : 0;
-        break;
-    }
-    case SYS_LINUX_rt_sigreturn:
-        ret = (uint32_t)sys_sigreturn(r);
-        break;
-    case SYS_LINUX_setpgid: {
-        int32_t n = compat_setpgid(a, b);
-        lc_seterrno(cur, n < 0 ? -n : 0);
-        ret = n < 0 ? (uint32_t)-1 : 0;
-        break;
-    }
-    case SYS_LINUX_getpgid: {
-        int32_t n = compat_getpgid(a);
-        lc_seterrno(cur, n < 0 ? -n : 0);
-        ret = n < 0 ? (uint32_t)-1 : (uint32_t)n;
-        break;
-    }
-    case SYS_LINUX_arch_prctl: {
-        const uint64_t MSR_FS_BASE = 0xC0000100;
-        const uint64_t MSR_GS_BASE = 0xC0000101;
-        uint32_t code = a;
-        uint64_t base = b;
-        if (code == 0x1002u) {
-            cur->tls_base = (uint32_t)base;
-            cur->tls_msr = 1;
-            asm_wrmsr(MSR_FS_BASE, base);
-            lc_seterrno(cur, 0);
-            ret = 0;
-        } else if (code == 0x1001u) {
-            cur->tls_base = (uint32_t)base;
-            asm_wrmsr(MSR_GS_BASE, base);
-            lc_seterrno(cur, 0);
-            ret = 0;
-        } else if (code == 0x1003u) {
-            ret = (uint32_t)asm_rdmsr(MSR_FS_BASE);
-        } else if (code == 0x1004u) {
-            ret = (uint32_t)asm_rdmsr(MSR_GS_BASE);
-        } else {
-            lc_seterrno(cur, LINUX_EINVAL);
-            ret = (uint32_t)-1;
-        }
-        break;
-    }
-    case SYS_LINUX_sched_yield:
-        ret = 0;
-        break;
-    case SYS_LINUX_execve: {
-        if (!copy_user_str(r, kpath, a)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_execve(kpath, (const char **)(uintptr_t)b,
-                                (const char **)(uintptr_t)c, r);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : 0;
-        break;
-    }
-    case SYS_LINUX_fork:
-    case SYS_LINUX_vfork:
-    case SYS_LINUX_clone: {
-        if (nr != SYS_LINUX_fork && nr != SYS_LINUX_vfork && (a & CLONE_VM)) {
-            lc_seterrno(cur, LINUX_ENOSYS);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = (int32_t)sys_fork(r);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_pipe: {
-        if (a == 0 || !user_ptr_ok(r, a, 8, 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_pipe((int32_t *)(uintptr_t)a);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_pipe2: {
-        if (b != 0) {
-            lc_seterrno(cur, LINUX_EINVAL);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if (a == 0 || !user_ptr_ok(r, a, 8, 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_pipe((int32_t *)(uintptr_t)a);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_dup: {
-        int32_t rr = sys_dup((int32_t)a);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_dup2: {
-        int32_t rr = sys_dup2((int32_t)a, (int32_t)b);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_dup3: {
-        if ((int32_t)a == (int32_t)b || d != 0) {
-            lc_seterrno(cur, LINUX_EINVAL);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_dup2((int32_t)a, (int32_t)b);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_openat: {
-        if (!copy_user_str(r, kpath, b)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t fd = compat_openat((int32_t)a, kpath, c);
-        lc_seterrno(cur, fd < 0 ? -fd : 0);
-        ret = fd < 0 ? (uint32_t)-1 : (uint32_t)fd;
-        break;
-    }
-    case SYS_LINUX_newfstatat: {
-        if (!user_ptr_ok(r, c, sizeof(struct LINUX_STAT), 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if ((b == 0 || *(const char *)(uintptr_t)b == 0) &&
-            (d & LINUX_AT_EMPTY_PATH)) {
-            int32_t rr = compat_fstat_linux((int32_t)a, c);
-            lc_seterrno(cur, rr < 0 ? -rr : 0);
-            ret = rr < 0 ? (uint32_t)-1 : 0;
-            break;
-        }
-        if (!copy_user_str(r, kpath, b)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = compat_stat_linux(kpath, c);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : 0;
-        break;
-    }
-    case SYS_LINUX_unlinkat: {
-        if (!copy_user_str(r, kpath, b)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr =
-            (d & LINUX_AT_REMOVEDIR) ? sys_rmdir(kpath) : sys_unlink(kpath);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : 0;
-        break;
-    }
-    case SYS_LINUX_mkdirat: {
-        if (!copy_user_str(r, kpath, b)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_mkdir(kpath);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : 0;
-        break;
-    }
-    case SYS_LINUX_renameat:
-    case SYS_LINUX_renameat2: {
-        if (nr == SYS_LINUX_renameat2 && e != 0) {
-            lc_seterrno(cur, LINUX_EINVAL);
-            ret = (uint32_t)-1;
-            break;
-        }
-        if (!copy_user_str(r, kpath, b) || !copy_user_str(r, kpath2, d)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_rename(kpath, kpath2);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : 0;
-        break;
-    }
-    case SYS_LINUX_readlinkat: {
-        if (!copy_user_str(r, kpath, b) || !user_ptr_ok(r, c, d, 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_readlink(kpath, (char *)(uintptr_t)c, d);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_faccessat: {
-        if (!copy_user_str(r, kpath, b)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        int32_t rr = sys_access(kpath, (int32_t)c);
-        lc_seterrno(cur, rr < 0 ? -rr : 0);
-        ret = rr < 0 ? (uint32_t)-1 : (uint32_t)rr;
-        break;
-    }
-    case SYS_LINUX_getrandom: {
-        if (b == 0) {
-            ret = 0;
-            break;
-        }
-        if (!user_ptr_ok(r, a, b, 1)) {
-            lc_seterrno(cur, LINUX_EFAULT);
-            ret = (uint32_t)-1;
-            break;
-        }
-        uint8_t *p = (uint8_t *)(uintptr_t)a;
-        uint32_t n = b;
-        while (n >= 8) {
-            uint64_t v = rand_u64();
-            memcpy(p, &v, 8);
-            p += 8;
-            n -= 8;
-        }
-        if (n) {
-            uint64_t v = rand_u64();
-            memcpy(p, &v, n);
-        }
-        lc_seterrno(cur, 0);
-        ret = b;
-        break;
-    }
-    default:
-        lc_seterrno(cur, 38);
-        ret = (uint32_t)-1;
-        break;
-    }
-    return ret;
+    lc_seterrno(cur, ret < 0 ? (int32_t)-ret : 0);
+    return ret < 0 ? (uint32_t)-1 : (uint32_t)ret;
 }

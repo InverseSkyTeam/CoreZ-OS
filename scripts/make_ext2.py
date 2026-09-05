@@ -87,7 +87,7 @@ def put_inode(table, ino, payload_len, blocks, is_dir):
         struct.pack_into("<I", table, off + 40 + 4 * i, b)
 
 
-def build(build_dir, out):
+def build(build_dir, out, smoke=False):
     bd = Path(build_dir)
     boot_bin = (bd / "boot.bin").read_bytes()
     loader_bin = (bd / "loader.bin").read_bytes()
@@ -103,6 +103,9 @@ def build(build_dir, out):
             pre[name] = src.read_bytes()
     # 只保留实际存在的文件, 可选 elf 缺失时跳过
     names = [n for n in names if n in pre]
+    if smoke:
+        pre["autoexec"] = b"musl_abi_test.elf\nfork_demo.elf\n"
+        names.append("autoexec")
 
     next_ino = 3
     dir_entries = [(2, 2, "."), (2, 2, "..")]
@@ -221,6 +224,7 @@ def build(build_dir, out):
 
 
 if __name__ == "__main__":
-    arg1 = sys.argv[1] if len(sys.argv) > 1 else "build"
-    arg2 = sys.argv[2] if len(sys.argv) > 2 else "test_hd.img"
-    build(arg1, arg2)
+    args = [a for a in sys.argv[1:] if a != "--smoke"]
+    arg1 = args[0] if len(args) > 0 else "build"
+    arg2 = args[1] if len(args) > 1 else "test_hd.img"
+    build(arg1, arg2, smoke="--smoke" in sys.argv)

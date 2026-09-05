@@ -536,6 +536,29 @@ done:
     close_file(fd);
     return ret;
 }
+static int count_strs(const char *const *strs, uint32_t *lens, int kcaller) {
+    int n = 0;
+    if (strs == NULL)
+        return 0;
+    while (n < MAX_ARG_NR) {
+        if (!kcaller && !user_range_readable((uint32_t)(uintptr_t)&strs[n],
+                                             sizeof(char *))) {
+            return -1;
+        }
+        if (strs[n] == NULL) {
+            break;
+        }
+        int len = kcaller ? (int)strlen(strs[n])
+                          : user_strnlen(strs[n], MAX_ARG_STR_LEN);
+        if (len < 0) {
+            return -1;
+        }
+        lens[n] = (uint32_t)len + 1;
+        n++;
+    }
+    return n;
+}
+
 int32_t sys_execve(const char *path, const char *argv[], const char *envp[],
                    struct Registers *regs) {
     uint32_t argc;
@@ -698,130 +721,84 @@ int32_t sys_execve(const char *path, const char *argv[], const char *envp[],
         uint32_t envp_addrs[MAX_ARG_NR];
         uint32_t exefn_addr = 0;
         uint32_t aux_dst = 0;
-        uint32_t aux_bytes = 0;
+        uint32_t aw = is64 ? 8u : 4u;
+        uint32_t amask = is64 ? 0x7u : 0x3u;
+        uint64_t aux[32];
+        int naw = 0;
         int e;
-#define PSTACK32(sp, v)                                                        \
+#define PVAL(p, v)                                                             \
     do {                                                                       \
-        (sp) -= 4;                                                             \
-        *((uint32_t *)(sp)) = (uint32_t)(v);                                   \
+        if (is64)                                                              \
+            *(uint64_t *)(p) = (uint64_t)(v);                                  \
+        else                                                                   \
+            *(uint32_t *)(p) = (uint32_t)(v);                                  \
     } while (0)
-#define PSTACK64(sp, v)                                                        \
+#define PSTACK(sp, v)                                                          \
     do {                                                                       \
-        (sp) -= 8;                                                             \
-        *((uint64_t *)(sp)) = (uint64_t)(v);                                   \
+        (sp) -= aw;                                                            \
+        PVAL(sp, v);                                                           \
     } while (0)
-        exefn_addr = 0;
-#define A64(t, v)                                                              \
+#define A(t, v)                                                                \
     do {                                                                       \
-        aux64[naw++] = (uint64_t)(t);                                          \
-        aux64[naw++] = (uint64_t)(v);                                          \
+        aux[naw++] = (uint64_t)(t);                                            \
+        aux[naw++] = (uint64_t)(v);                                            \
     } while (0)
-#define A32(t, v)                                                              \
-    do {                                                                       \
-        aux32[naw++] = (uint32_t)(t);                                          \
-        aux32[naw++] = (uint32_t)(v);                                          \
-    } while (0)
-        if (is64) {
-            uint64_t aux64[32];
-            int naw = 0;
-            A64(AT_EXECFN, 0);
-            A64(AT_PAGESZ, PAGE_SIZE);
-            A64(AT_CLKTCK, 100);
-            A64(AT_ENTRY, (uint64_t)(uint32_t)entry_point);
-            A64(AT_PHDR, aux_phdr_vaddr + aux_bias);
-            A64(AT_PHENT, aux_phentsize);
-            A64(AT_PHNUM, aux_phnum);
-            A64(AT_BASE, aux_bias);
-            A64(AT_FLAGS, 0);
-            A64(AT_HWCAP, 0);
-            A64(AT_RANDOM, aux_random_addr);
-            A64(AT_NULL, 0);
-            aux_bytes = (uint32_t)(naw * 8);
+        A(AT_EXECFN, 0);
+        A(AT_PAGESZ, PAGE_SIZE);
+        A(AT_CLKTCK, 100);
+        A(AT_ENTRY, entry_point);
+        A(AT_PHDR, aux_phdr_vaddr + (is64 ? aux_bias : 0));
+        A(AT_PHENT, aux_phentsize);
+        A(AT_PHNUM, aux_phnum);
+        if (is64)
+            A(AT_BASE, aux_bias);
+        A(AT_FLAGS, 0);
+        A(AT_HWCAP, 0);
+        A(AT_RANDOM, aux_random_addr);
+        A(AT_NULL, 0);
+#undef A
 
-            slen = strlen(exefn) + 1;
-            ustack_ptr -= slen;
-            ustack_ptr &= ~0x7u;
-            if (ustack_ptr < cur->stack_bottom) {
-                return -1;
-            }
-            memcpy((void *)ustack_ptr, exefn, slen);
-            exefn_addr = ustack_ptr;
-            for (e = envc - 1; e >= 0; --e) {
-                slen = envlens[e];
-                ustack_ptr -= slen;
-                ustack_ptr &= ~0x7u;
-                if (ustack_ptr < cur->stack_bottom) {
-                    return -1;
-                }
-                memcpy((void *)ustack_ptr, envp ? envp[e] : env_defaults[e],
-                       slen);
-                envp_addrs[e] = ustack_ptr;
-            }
-            ustack_ptr &= ~0x7u;
-            ustack_ptr -= aux_bytes;
-            aux_dst = ustack_ptr;
-            aux64[1] = (uint64_t)exefn_addr;
-            memcpy((void *)aux_dst, aux64, aux_bytes);
-            PSTACK64(ustack_ptr, 0);
-            for (e = envc - 1; e >= 0; --e)
-                PSTACK64(ustack_ptr, envp_addrs[e]);
-            PSTACK64(ustack_ptr, 0);
-            for (i = (int32_t)argc - 1; i >= 0; --i)
-                PSTACK64(ustack_ptr, argv_user_addrs[i]);
-            PSTACK64(ustack_ptr, argc);
-            argv_user_base = (uint32_t)((char *)ustack_ptr + 8);
-        } else {
-            uint32_t aux32[32];
-            int naw = 0;
-            A32(AT_EXECFN, 0);
-            A32(AT_PAGESZ, PAGE_SIZE);
-            A32(AT_CLKTCK, 100);
-            A32(AT_ENTRY, (uint32_t)entry_point);
-            A32(AT_PHDR, aux_phdr_vaddr);
-            A32(AT_PHENT, aux_phentsize);
-            A32(AT_PHNUM, aux_phnum);
-            A32(AT_FLAGS, 0);
-            A32(AT_HWCAP, 0);
-            A32(AT_RANDOM, aux_random_addr);
-            A32(AT_NULL, 0);
-            aux_bytes = (uint32_t)(naw * 4);
-            ustack_ptr &= ~0x3u;
-            ustack_ptr -= aux_bytes;
-            aux_dst = ustack_ptr;
-            slen = strlen(exefn) + 1;
-            ustack_ptr -= slen;
-            ustack_ptr &= ~0x3u;
-            if (ustack_ptr < cur->stack_bottom) {
-                return -1;
-            }
-            memcpy((void *)ustack_ptr, exefn, slen);
-            exefn_addr = ustack_ptr;
-            aux32[1] = (uint32_t)exefn_addr;
-            memcpy((void *)aux_dst, aux32, aux_bytes);
-            for (e = envc - 1; e >= 0; --e) {
-                slen = envlens[e];
-                ustack_ptr -= slen;
-                ustack_ptr &= ~0x3u;
-                if (ustack_ptr < cur->stack_bottom) {
-                    return -1;
-                }
-                memcpy((void *)ustack_ptr, envp ? envp[e] : env_defaults[e],
-                       slen);
-                envp_addrs[e] = ustack_ptr;
-            }
-            PSTACK32(ustack_ptr, 0);
-            for (e = envc - 1; e >= 0; --e)
-                PSTACK32(ustack_ptr, envp_addrs[e]);
-            PSTACK32(ustack_ptr, 0);
-            for (i = (int32_t)argc - 1; i >= 0; --i)
-                PSTACK32(ustack_ptr, argv_user_addrs[i]);
-            PSTACK32(ustack_ptr, argc);
-            argv_user_base = (uint32_t)((char *)ustack_ptr + 4);
+        slen = strlen(exefn) + 1;
+        ustack_ptr -= slen;
+        ustack_ptr &= ~amask;
+        if (ustack_ptr < cur->stack_bottom) {
+            return -1;
         }
-#undef A64
-#undef A32
-#undef PSTACK32
-#undef PSTACK64
+        memcpy((void *)ustack_ptr, exefn, slen);
+        exefn_addr = ustack_ptr;
+
+        for (e = envc - 1; e >= 0; --e) {
+            slen = envlens[e];
+            ustack_ptr -= slen;
+            ustack_ptr &= ~amask;
+            if (ustack_ptr < cur->stack_bottom) {
+                return -1;
+            }
+            memcpy((void *)ustack_ptr, envp ? envp[e] : env_defaults[e], slen);
+            envp_addrs[e] = ustack_ptr;
+        }
+
+        ustack_ptr &= ~amask;
+        ustack_ptr -= (uint32_t)naw * aw;
+        aux_dst = ustack_ptr;
+        if (ustack_ptr < cur->stack_bottom) {
+            return -1;
+        }
+        aux[1] = exefn_addr;
+        for (int k = 0; k < naw; k++) {
+            PVAL(aux_dst + (uint32_t)k * aw, aux[k]);
+        }
+
+        PSTACK(ustack_ptr, 0);
+        for (e = envc - 1; e >= 0; --e)
+            PSTACK(ustack_ptr, envp_addrs[e]);
+        PSTACK(ustack_ptr, 0);
+        for (i = (int32_t)argc - 1; i >= 0; --i)
+            PSTACK(ustack_ptr, argv_user_addrs[i]);
+        PSTACK(ustack_ptr, argc);
+        argv_user_base = ustack_ptr + aw;
+#undef PVAL
+#undef PSTACK
     }
     for (int32_t fd = 3; fd < MAX_FILES_OPEN_PER_PROC; ++fd) {
         if (cur->fd_table[fd] != (uint32_t)-1 && (cur->fd_cloexec >> fd) & 1) {

@@ -101,7 +101,6 @@ def build(build_dir, out, smoke=False):
         src = bd / (ALIASES.get(name, name))
         if src.exists():
             pre[name] = src.read_bytes()
-    # 只保留实际存在的文件, 可选 elf 缺失时跳过
     names = [n for n in names if n in pre]
     if smoke:
         pre["autoexec"] = b"musl_abi_test.elf\nfork_demo.elf\n"

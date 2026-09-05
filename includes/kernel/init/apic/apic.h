@@ -1,4 +1,3 @@
-/* 单核模式APIC */
 #ifndef APIC_H
 #define APIC_H
 

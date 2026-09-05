@@ -66,7 +66,6 @@ static int cpuid_has_nx(void) {
 int g_nx_usable = 0;
 
 void pae_init(void) {
-    /* 读回确认 NXE 生效; 未生效则 PTE bit63 是保留位, 触发 RSVD #PF */
     if (cpuid_has_nx()) {
         uint64_t efer = asm_rdmsr(EFER_MSR);
         asm_wrmsr(EFER_MSR, efer | EFER_NXE);
@@ -137,9 +136,6 @@ void mm_init(void) {
     kernel_pml4 = asm_read_cr3();
     lock_init(&mem_lock);
 
-    /* VIRT_OF 高半区只映射了前 16MB 物理内存; 池分配必须留在
-     * 16MB 以内, 否则 VIRT_OF(phy) 指向未映射区。超出部分整体封禁,
-     * 待实现动态高半区扩展后再放开 */
     mark_used(0x1000000u, MAX_PHYS_MEM - 0x1000000u);
 
     {
@@ -271,7 +267,7 @@ void page_table_dump(uint32_t vaddr) {
         if (e1 & 1) {
             uint64_t *pd = (uint64_t *)VIRT_OF(PTE_PHYS(e1));
             e2 = pd[PD_INDEX(vaddr)];
-            if ((e2 & 1) && !(e2 & (1ull << 7))) { /* 跳过 2M 大页 */
+            if ((e2 & 1) && !(e2 & (1ull << 7))) {
                 uint64_t *pt = (uint64_t *)VIRT_OF(PTE_PHYS(e2));
                 e3 = pt[PT_INDEX(vaddr)];
             }
@@ -305,7 +301,6 @@ static void page_table_add_no_cache(uint32_t vaddr, uint32_t phy_addr) {
     if (pte == 0) {
         return;
     }
-    /* MMIO: 可写、不可执行; PCD(bit4) 关闭缓存 */
     *pte = (uint64_t)phy_addr | pte_wx(PTE_P | PTE_U | 0x10, 1, 0);
     __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
 }

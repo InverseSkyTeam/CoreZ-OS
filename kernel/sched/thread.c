@@ -1,3 +1,4 @@
+#include "arch/x86/interrupt/interrupt.h"
 #include "kernel/sched/thread.h"
 #include "drivers/char/console/io.h"
 #include "drivers/char/keyboard.h"
@@ -12,6 +13,9 @@
 static uint64_t ready_bitmap;
 static uint64_t slot_inuse;
 static uint32_t rr_cursor;
+static uint64_t sleep_bitmap;
+static uint32_t wake_tick[MAX_TASKS];
+static uint32_t wake_pid[MAX_TASKS];
 
 struct task_struct task_table[MAX_TASKS];
 static uint32_t pid_alloc = 0;
@@ -186,8 +190,7 @@ void thread_ready(struct task_struct *t) {
         return;
     uint32_t old = asm_save_eflags();
     asm_cli();
-    if (!(ready_bitmap & (1ULL << task_slot(t))))
-        ready_enqueue(t);
+    ready_enqueue(t);
     asm_restore_eflags(old);
 }
 
@@ -196,40 +199,59 @@ void kernel_thread(char *name, uint8_t priority, thread_func function,
     thread_create(name, priority, function, arg);
 }
 
-void thread_block(void) {
-    uint32_t old = asm_save_eflags();
-    asm_cli();
-    if (ready_bitmap & (1ULL << task_slot(current)))
-        ready_remove(current);
-    current->status = TASK_BLOCKED;
-    schedule();
-    asm_restore_eflags(old);
-}
-
 void thread_block_with_status(enum task_status status) {
     uint32_t old = asm_save_eflags();
     asm_cli();
-    if (ready_bitmap & (1ULL << task_slot(current)))
-        ready_remove(current);
+    ready_remove(current);
     current->status = status;
     schedule();
     asm_restore_eflags(old);
 }
 
+void thread_block(void) {
+    thread_block_with_status(TASK_BLOCKED);
+}
+
 void thread_unblock(struct task_struct *t) {
+    ASSERT(t != NULL);
+    ASSERT(t->status & TASK_WAKE_MASK);
+    thread_ready(t);
+}
+
+void thread_sleep_ticks(uint32_t ticks) {
     uint32_t old = asm_save_eflags();
     asm_cli();
-    ASSERT(t->status & TASK_WAKE_MASK);
-    if (!(ready_bitmap & (1ULL << task_slot(t))))
-        ready_enqueue(t);
+    uint32_t slot = task_slot(current);
+    wake_tick[slot] = tick + ticks;
+    wake_pid[slot] = current->pid;
+    sleep_bitmap |= 1ULL << slot;
+    ready_remove(current);
+    current->status = TASK_BLOCKED;
+    schedule();
     asm_restore_eflags(old);
+}
+
+void thread_timer_wake(void) {
+    uint64_t m = sleep_bitmap;
+    while (m) {
+        uint32_t slot = (uint32_t)__builtin_ctzll(m);
+        m &= m - 1;
+        if ((int32_t)(tick - wake_tick[slot]) < 0) {
+            continue;
+        }
+        sleep_bitmap &= ~(1ULL << slot);
+        struct task_struct *t = &task_table[slot];
+        if (t->slot_used && t->pid == wake_pid[slot] &&
+            (t->status & TASK_WAKE_MASK)) {
+            thread_unblock(t);
+        }
+    }
 }
 
 void thread_yield(void) {
     uint32_t old = asm_save_eflags();
     asm_cli();
-    if (!(ready_bitmap & (1ULL << task_slot(current))))
-        ready_enqueue(current);
+    ready_enqueue(current);
     current->ticks = current->priority;
     schedule();
     asm_restore_eflags(old);

@@ -5,7 +5,6 @@
 #define AF_INET 2
 #define SOCK_DGRAM 2
 #define ECHO_PORT 8765
-// 10.0.2.15 本机 IP, 大端字节序
 #define SELF_IP 0x0A00020Fu
 
 static uint16_t parse_port(const char *s) {
@@ -41,7 +40,6 @@ int main(int argc, char **argv) {
     }
     printf("udp_echo: listening on udp://0.0.0.0:%d\n", (int)port);
 
-    // 自发自收回环自测 (slirp 不支持 UDP hostfwd, 走 guest 自身 IP 回环)
     static const char s_msg[] = "selftest";
     if (sock_sendto(fd, s_msg, sizeof(s_msg) - 1, SELF_IP, port) < 0) {
         printf("udp_echo: selftest send failed\n");

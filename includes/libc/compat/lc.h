@@ -1,5 +1,3 @@
-/* 本 OS 的 0x80 号使用高基数 COMPAT_SYSCALL_BASE, 兼容 Linux */
-/* Syscall的功能由内核 linux_compat shim 负责 */
 #ifndef NT_LC_H
 #define NT_LC_H
 

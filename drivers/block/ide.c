@@ -40,7 +40,6 @@
 #define MAX_LBA_DEFAULT ((80 * 1024 * 1024 / 512) - 1)
 #define MAX_LBA28 (0x0FFFFFFF)
 
-#define DIV_ROUND_UP(X, STEP) ((X + STEP - 1) / STEP)
 
 uint8_t channel_cnt;
 struct ide_channel channels[2];
@@ -117,23 +116,13 @@ static void channel_send_cmd(struct ide_channel *channel, uint8_t cmd) {
 }
 
 static void read_from_sector(struct disk *hd, void *buf, uint8_t sec_cnt) {
-    uint32_t byte;
-    if (sec_cnt == 0) {
-        byte = 256 * 512;
-    } else {
-        byte = sec_cnt * 512;
-    }
-    insw(reg_data(hd->my_channel), buf, byte / 2);
+    uint32_t words = sec_cnt ? (uint32_t)sec_cnt << 8 : 256 << 8;
+    insw(reg_data(hd->my_channel), buf, words);
 }
 
 static void write_to_sector(struct disk *hd, void *buf, uint8_t sec_cnt) {
-    uint32_t byte;
-    if (sec_cnt == 0) {
-        byte = 256 * 512;
-    } else {
-        byte = sec_cnt * 512;
-    }
-    outsw(reg_data(hd->my_channel), buf, byte / 2);
+    uint32_t words = sec_cnt ? (uint32_t)sec_cnt << 8 : 256 << 8;
+    outsw(reg_data(hd->my_channel), buf, words);
 }
 
 static int busy_wait(struct disk *hd) {
@@ -157,18 +146,22 @@ void ide_read(struct disk *hd, uint32_t lba, void *buf, uint32_t sec_cnt) {
 
     uint32_t secs_done = 0;
     while (secs_done < sec_cnt) {
-        select_sector(hd, lba + secs_done, 1);
-        channel_send_cmd(hd->my_channel, CMD_READ_SECTOR);
-
-        if (!busy_wait(hd)) {
-            char error[64];
-            sprintf(error, "%s read sector %d failed!!!!!!", hd->name,
-                    (int)(lba + secs_done));
-            ide_panic(error);
+        uint32_t chunk = sec_cnt - secs_done;
+        if (chunk > 255) {
+            chunk = 255;
         }
-        read_from_sector(hd, (void *)((uint32_t)buf + secs_done * 512), 1);
-
-        secs_done++;
+        select_sector(hd, lba + secs_done, (uint8_t)chunk);
+        channel_send_cmd(hd->my_channel, CMD_READ_SECTOR);
+        for (uint32_t i = 0; i < chunk; i++) {
+            if (!busy_wait(hd)) {
+                char error[64];
+                sprintf(error, "%s read sector %d failed!!!!!!", hd->name,
+                        (int)(lba + secs_done + i));
+                ide_panic(error);
+            }
+            read_from_sector(hd, (char *)buf + (secs_done + i) * 512, 1);
+        }
+        secs_done += chunk;
     }
     lock_release(&hd->my_channel->lock);
 }
@@ -182,18 +175,23 @@ void ide_write(struct disk *hd, uint32_t lba, void *buf, uint32_t sec_cnt) {
 
     uint32_t secs_done = 0;
     while (secs_done < sec_cnt) {
-        select_sector(hd, lba + secs_done, 1);
-        channel_send_cmd(hd->my_channel, CMD_WRITE_SECTOR);
-        if (!busy_wait(hd)) {
-            char error[64];
-            sprintf(error, "%s write sector %d failed!!!!!!", hd->name,
-                    (int)(lba + secs_done));
-            ide_panic(error);
+        uint32_t chunk = sec_cnt - secs_done;
+        if (chunk > 255) {
+            chunk = 255;
         }
-        write_to_sector(hd, (void *)((uint32_t)buf + secs_done * 512), 1);
+        select_sector(hd, lba + secs_done, (uint8_t)chunk);
+        channel_send_cmd(hd->my_channel, CMD_WRITE_SECTOR);
+        for (uint32_t i = 0; i < chunk; i++) {
+            if (!busy_wait(hd)) {
+                char error[64];
+                sprintf(error, "%s write sector %d failed!!!!!!", hd->name,
+                        (int)(lba + secs_done + i));
+                ide_panic(error);
+            }
+            write_to_sector(hd, (char *)buf + (secs_done + i) * 512, 1);
+        }
         wait_bsy_clear(hd->my_channel);
-
-        secs_done++;
+        secs_done += chunk;
     }
     lock_release(&hd->my_channel->lock);
 }

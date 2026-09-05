@@ -39,7 +39,6 @@ def strip_iac(data: bytes) -> bytes:
 def main():
     s = connect()
     cmd = sys.argv[1] if len(sys.argv) > 1 else "info registers"
-    # send IAC DONT for all, then command
     s.sendall(os_command(cmd))
     time.sleep(0.6)
     data = b""

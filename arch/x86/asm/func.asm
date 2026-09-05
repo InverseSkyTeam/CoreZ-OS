@@ -6,7 +6,7 @@ asm_hlt: hlt
         ret
 
 global asm_xchg
-asm_xchg:                       ; uint32_t asm_xchg(volatile uint32_t* addr, uint32_t newval)
+asm_xchg:
         mov     eax, esi
         xchg    eax, [rdi]
         ret
@@ -30,42 +30,42 @@ asm_stihlt: sti
             ret
 
 global asm_read_cr0
-asm_read_cr0:                   ; uint64_t
+asm_read_cr0:
         mov     rax, cr0
         ret
 
 global asm_write_cr0
-asm_write_cr0:                  ; void asm_write_cr0(uint64_t cr0)
+asm_write_cr0:
         mov     cr0, rdi
         ret
 
 global asm_read_cr2
-asm_read_cr2:                   ; uint64_t
+asm_read_cr2:
         mov     rax, cr2
         ret
 
 global asm_read_cr4
-asm_read_cr4:                   ; uint64_t
+asm_read_cr4:
         mov     rax, cr4
         ret
 
 global asm_write_cr4
-asm_write_cr4:                  ; void asm_write_cr4(uint64_t cr4)
+asm_write_cr4:
         mov     cr4, rdi
         ret
 
 global asm_write_cr3
-asm_write_cr3:                  ; void asm_write_cr3(uint64_t cr3)
+asm_write_cr3:
         mov     cr3, rdi
         ret
 
 global asm_read_cr3
-asm_read_cr3:                   ; uint64_t
+asm_read_cr3:
         mov     rax, cr3
         ret
 
 global asm_rdmsr
-asm_rdmsr:                      ; uint64_t asm_rdmsr(uint32_t msr)
+asm_rdmsr:
         mov     ecx, edi
         rdmsr
         shl     rdx, 32
@@ -73,7 +73,7 @@ asm_rdmsr:                      ; uint64_t asm_rdmsr(uint32_t msr)
         ret
 
 global asm_wrmsr
-asm_wrmsr:                      ; void asm_wrmsr(uint32_t msr, uint64_t value)
+asm_wrmsr:
         mov     ecx, edi
         mov     eax, esi
         shr     rsi, 32
@@ -82,30 +82,30 @@ asm_wrmsr:                      ; void asm_wrmsr(uint32_t msr, uint64_t value)
         ret
 
 global asm_save_eflags
-asm_save_eflags:                ; uint64_t (rflags)
+asm_save_eflags:
         pushfq
         pop     rax
         ret
 
 global asm_restore_eflags
-asm_restore_eflags:             ; void asm_restore_eflags(uint64_t eflags)
+asm_restore_eflags:
         push    rdi
         popfq
         ret
 
 global asm_lgdt
-asm_lgdt:                       ; void asm_lgdt(uintptr_t gdtr_ptr)
+asm_lgdt:
         lgdt    [rdi]
         ret
 
 global asm_ltr
-asm_ltr:                        ; void asm_ltr(uint16_t sel)
+asm_ltr:
         mov     ax, di
         ltr     ax
         ret
 
 global asm_str
-asm_str:                        ; uint16_t
+asm_str:
         str     ax
         ret
 
@@ -116,8 +116,8 @@ detect_64bit:
 
 global kernel_thread_entry
 kernel_thread_entry:
-        mov     rdi, r15        ; thread_func function
-        mov     rsi, r14        ; void *arg
+        mov     rdi, r15
+        mov     rsi, r14
         xor     ebp, ebp       
         extern  kernel_thread_entry_c
         call    kernel_thread_entry_c

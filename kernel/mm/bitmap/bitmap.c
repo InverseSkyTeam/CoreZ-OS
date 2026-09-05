@@ -19,56 +19,71 @@ void bitmap_set(struct bitmap *btmp, uint32_t bit_idx, int8_t value) {
     if (byte >= btmp->btmp_bytes_len) {
         return;
     }
+    uint8_t mask = BITMAP_MASK >> (bit_idx & 7);
     if (value) {
-        btmp->bits[byte] |= (BITMAP_MASK >> (bit_idx & 7));
+        btmp->bits[byte] |= mask;
     } else {
-        btmp->bits[byte] &= ~(BITMAP_MASK >> (bit_idx & 7));
+        btmp->bits[byte] &= ~mask;
     }
+}
+
+static inline uint64_t bitmap_word(const uint64_t *words, uint32_t w) {
+    uint64_t x = words[w];
+    x = (x & 0x5555555555555555ull) << 1 | ((x >> 1) & 0x5555555555555555ull);
+    x = (x & 0x3333333333333333ull) << 2 | ((x >> 2) & 0x3333333333333333ull);
+    return (x & 0x0f0f0f0f0f0f0f0full) << 4 | ((x >> 4) & 0x0f0f0f0f0f0f0f0full);
 }
 
 int bitmap_scan(const struct bitmap *btmp, uint32_t cnt) {
     if (cnt == 0 || btmp->btmp_bytes_len == 0) {
         return -1;
     }
-    if (cnt == 1) {
-        const uint64_t *words = (const uint64_t *)btmp->bits;
-        uint32_t nwords = btmp->btmp_bytes_len >> 3;
-        for (uint32_t w = 0; w < nwords; w++) {
-            uint64_t inv = ~__builtin_bswap64(words[w]);
-            if (inv == 0) {
-                continue;
-            }
-            return (int)((w << 6) + __builtin_clzll(inv));
-        }
-        for (uint32_t byte = nwords << 3; byte < btmp->btmp_bytes_len; byte++) {
-            uint32_t inv = (uint32_t)(uint8_t)~btmp->bits[byte];
-            if (inv == 0) {
-                continue;
-            }
-            return (int)((byte << 3) + __builtin_clz(inv) - 24);
-        }
-        return -1;
-    }
+    const uint64_t *words = (const uint64_t *)btmp->bits;
+    uint32_t nwords = btmp->btmp_bytes_len >> 3;
     uint32_t run = 0;
-    for (uint32_t byte = 0; byte < btmp->btmp_bytes_len; byte++) {
-        uint8_t v = btmp->bits[byte];
-        if (v == 0xff) {
+    for (uint32_t w = 0; w < nwords; w++) {
+        uint64_t v = bitmap_word(words, w);
+        if (v == 0) {
+            run += 64;
+            if (run >= cnt) {
+                return (int)((w << 6) + 64 - run);
+            }
+            continue;
+        }
+        if (v == ~0ull) {
             run = 0;
             continue;
         }
-        if (v == 0) {
-            run += 8;
-            if (run >= cnt) {
-                return (int)((byte << 3) + 8 - cnt);
+        uint32_t base = w << 6;
+        uint32_t pos = 0;
+        while (pos < 64) {
+            uint64_t rest = v >> pos;
+            if (rest == 0) {
+                run += 64 - pos;
+                break;
             }
-            continue;
+            uint32_t tz = __builtin_ctzll(rest);
+            if (run + tz >= cnt) {
+                return (int)(base + pos - run);
+            }
+            run = 0;
+            pos += tz;
+            rest >>= tz;
+            if (rest == ~0ull) {
+                break;
+            }
+            pos += __builtin_ctzll(~rest);
         }
+    }
+    for (uint32_t byte = nwords << 3; byte < btmp->btmp_bytes_len; byte++) {
+        uint8_t bits = btmp->bits[byte];
         for (uint32_t j = 0; j < 8; j++) {
-            if (v & (BITMAP_MASK >> j)) {
+            if (bits & 0x80u) {
                 run = 0;
-            } else if (++run == cnt) {
+            } else if (++run >= cnt) {
                 return (int)((byte << 3) + j - cnt + 1);
             }
+            bits <<= 1;
         }
     }
     return -1;

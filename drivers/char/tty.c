@@ -155,7 +155,6 @@ static int tty_drv(void) {
     return 0;
 }
 
-// TEMP-BISECT DRIVER_REGISTER("tty", 5, tty_drv);
 
 void tty_init(void) {
     tty_termios.iflag = 0;

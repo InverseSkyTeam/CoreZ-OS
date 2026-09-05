@@ -284,7 +284,19 @@ int32_t sys_lseek(int32_t fd, int32_t offset, uint8_t whence) {
     pf->fd_pos = (uint32_t)new_pos;
     return (int32_t)pf->fd_pos;
 }
-int sys_unlink(const char *pathname) {
+static int ext2_dir_is_empty(struct inode *dino) {
+    uint32_t pos = 0;
+    struct dir_entry de;
+    while (ext2_dir_next(dino, &pos, &de) == 0) {
+        if (strcmp(de.filename, ".") != 0 && strcmp(de.filename, "..") != 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int remove_entry_common(const char *pathname, int want_dir,
+                               int check_empty) {
     char parent[MAX_PATH_LEN];
     char base[MAX_PATH_LEN];
     if (split_parent_path(pathname, parent, base, MAX_PATH_LEN)) {
@@ -296,12 +308,15 @@ int sys_unlink(const char *pathname) {
     }
     uint32_t ino = 0;
     int is_dir = 0;
-    if (ext2_lookup(pathname, &ino, &is_dir) || is_dir) {
+    if (ext2_lookup(pathname, &ino, &is_dir) || is_dir != want_dir) {
         return -1;
     }
     struct inode par;
     struct inode obj;
     if (ext2_read_inode(pino, &par) || ext2_read_inode(ino, &obj)) {
+        return -1;
+    }
+    if (check_empty && !ext2_dir_is_empty(&obj)) {
         return -1;
     }
     if (ext2_remove_entry(&par, base)) {
@@ -312,22 +327,16 @@ int sys_unlink(const char *pathname) {
     ext2_free_inode(obj.i_no);
     return 0;
 }
+
+int sys_unlink(const char *pathname) {
+    return remove_entry_common(pathname, 0, 0);
+}
 int32_t sys_mkdir(const char *pathname) {
     if (pathname == NULL) {
         return -1;
     }
     int r = ext2_create_common(pathname, 0x4000u, 1);
     return r ? 0 : -1;
-}
-static int ext2_dir_is_empty(struct inode *dino) {
-    uint32_t pos = 0;
-    struct dir_entry de;
-    while (ext2_dir_next(dino, &pos, &de) == 0) {
-        if (strcmp(de.filename, ".") != 0 && strcmp(de.filename, "..") != 0) {
-            return 0;
-        }
-    }
-    return 1;
 }
 struct dir *sys_opendir(const char *name) {
     uint32_t ino = 0;
@@ -366,35 +375,7 @@ int32_t sys_rmdir(const char *pathname) {
         !strcmp(pathname, "..")) {
         return -1;
     }
-    char parent[MAX_PATH_LEN];
-    char base[MAX_PATH_LEN];
-    if (split_parent_path(pathname, parent, base, MAX_PATH_LEN)) {
-        return -1;
-    }
-    uint32_t pino = get_parent_inode(parent);
-    if (pino == 0) {
-        return -1;
-    }
-    uint32_t ino = 0;
-    int is_dir = 0;
-    if (ext2_lookup(pathname, &ino, &is_dir) || !is_dir) {
-        return -1;
-    }
-    struct inode par;
-    struct inode obj;
-    if (ext2_read_inode(pino, &par) || ext2_read_inode(ino, &obj)) {
-        return -1;
-    }
-    if (!ext2_dir_is_empty(&obj)) {
-        return -1;
-    }
-    if (ext2_remove_entry(&par, base)) {
-        return -1;
-    }
-    ext2_truncate_inode(&obj);
-    ext2_write_inode(obj.i_no, &obj);
-    ext2_free_inode(obj.i_no);
-    return 0;
+    return remove_entry_common(pathname, 1, 1);
 }
 static uint32_t get_parent_dir_inode_nr(uint32_t child_inode_nr) {
     struct inode *ino = inode_open(cur_part, child_inode_nr);

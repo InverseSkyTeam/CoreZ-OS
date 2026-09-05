@@ -39,9 +39,6 @@ uint64_t sys_sigreturn(struct Registers *r);
 static int32_t compat_read(int32_t fd, void *buf, uint32_t count);
 static int32_t compat_write(int32_t fd, const void *buf, uint32_t count);
 
-static int64_t lc_uptime_ms(void) {
-    return (int64_t)tick * (1000 / PIT_HZ);
-}
 
 #define DIRF_FLAG 0xFFFEu
 
@@ -259,20 +256,6 @@ static int32_t compat_ftruncate(int32_t fd, int32_t length) {
     return 0;
 }
 
-static int32_t compat_truncate(const char *path, int32_t length) {
-    (void)length;
-    uint32_t ino = 0;
-    int is_dir = 0;
-    if (ext2_lookup(path, &ino, &is_dir) || is_dir)
-        return -LINUX_ENOENT;
-    struct inode *obj = inode_open(cur_part, ino);
-    if (obj == NULL)
-        return -LINUX_ENOENT;
-    ext2_truncate_inode(obj);
-    ext2_write_inode(ino, obj);
-    inode_close(obj);
-    return 0;
-}
 
 static int32_t compat_flags_linux2native(uint32_t lflags) {
     int32_t nflags = (int32_t)(lflags & 3u);
@@ -367,53 +350,6 @@ static int32_t compat_openat(int32_t dirfd, const char *kpath,
     return fd;
 }
 
-static int32_t compat_rename(const char *oldpath, const char *newpath) {
-    uint32_t ino = 0;
-    int is_dir = 0;
-    if (ext2_lookup(oldpath, &ino, &is_dir))
-        return -LINUX_ENOENT;
-    uint32_t nino = 0;
-    int ndir = 0;
-    if (ext2_lookup(newpath, &nino, &ndir) == 0)
-        return -LINUX_EEXIST;
-    const char *oslash = strrchr(oldpath, '/');
-    const char *nslash = strrchr(newpath, '/');
-    if (oslash == NULL || nslash == NULL)
-        return -LINUX_ENOENT;
-    char olddir[256];
-    char newdir[256];
-    uint32_t ol = (uint32_t)(oslash - oldpath);
-    uint32_t nl = (uint32_t)(nslash - newpath);
-    if (ol == 0 || nl == 0 || ol >= 256 || nl >= 256)
-        return -LINUX_EINVAL;
-    memcpy(olddir, oldpath, ol);
-    olddir[ol] = 0;
-    memcpy(newdir, newpath, nl);
-    newdir[nl] = 0;
-    uint32_t opino = 0;
-    int opdir = 0;
-    uint32_t npino = 0;
-    int npdir = 0;
-    if (ext2_lookup(ol == 1 ? "/" : olddir, &opino, &opdir) || !opdir)
-        return -LINUX_ENOENT;
-    if (ext2_lookup(nl == 1 ? "/" : newdir, &npino, &npdir) || !npdir)
-        return -LINUX_ENOENT;
-    struct inode *np = inode_open(cur_part, npino);
-    if (np == NULL)
-        return -LINUX_ENOENT;
-    int rc = ext2_add_entry(np, ino, nslash + 1, is_dir);
-    inode_close(np);
-    if (rc)
-        return -LINUX_ENOSPC;
-    struct inode *op = inode_open(cur_part, opino);
-    if (op == NULL)
-        return -LINUX_ENOENT;
-    rc = ext2_remove_entry(op, oslash + 1);
-    inode_close(op);
-    if (rc)
-        return -LINUX_ENOENT;
-    return 0;
-}
 
 static void lc_seterrno(struct task_struct *cur, int32_t val) {
     cur->errno = val;

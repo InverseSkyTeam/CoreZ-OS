@@ -3,32 +3,44 @@
 #include "kernel/asmFunc.h"
 #include "kernel/mm/pool/pool.h"
 #include "kernel/sched/thread.h"
+#include "kernel/sched/percpu.h"
 #include "kernel/init/gdt/gdt.h"
 
-struct tss tss;
+static struct tss cpu_tss[NR_CPU] __attribute__((aligned(16)));
 
 uint64_t syscall_kstack_top_data = 0;
 
+struct tss *tss_cpu(uint32_t idx) {
+    return &cpu_tss[idx];
+}
+
+static void tss_fill(struct tss *t, uint64_t rsp0) {
+    t->reserved1 = 0;
+    t->rsp0 = rsp0;
+    t->rsp1 = 0;
+    t->rsp2 = 0;
+    t->reserved2 = 0;
+    for (int i = 0; i < 7; i++) {
+        t->ist[i] = 0;
+    }
+    t->reserved3 = 0;
+    t->reserved4 = 0;
+    t->iomap_base = (uint16_t)sizeof(struct tss);
+}
+
+void tss_ap_init(uint32_t idx, uint32_t kstack_top) {
+    tss_fill(tss_cpu(idx), (uint64_t)kstack_top);
+}
+
 void tss_update_rsp0(struct task_struct *task) {
-    tss.rsp0 = (uint64_t)task->kernel_stack_top;
-    syscall_kstack_top_data = (uint64_t)task->kernel_stack_top;
+    uint64_t top = (uint64_t)task->kernel_stack_top;
+    cpu_tss[cpu_id()].rsp0 = top;
+    syscall_kstack_top_data = top;
 }
 
 void tss_init(void) {
     uint32_t kstack = (uint32_t)palloc(&kernel_pool);
-
-    tss.reserved1 = 0;
-    tss.rsp0 = (uint64_t)kstack + PAGE_SIZE;
-    tss.rsp1 = 0;
-    tss.rsp2 = 0;
-    tss.reserved2 = 0;
-    for (int i = 0; i < 7; i++) {
-        tss.ist[i] = 0;
-    }
-    tss.reserved3 = 0;
-    tss.reserved4 = 0;
-    tss.iomap_base = (uint16_t)sizeof(tss); /* 置为 TSS 大小 -> 空 IO 位图 */
-
-    set_tss_desc((uint64_t)&tss, sizeof(tss) - 1);
+    tss_fill(tss_cpu(0), (uint64_t)kstack + PAGE_SIZE);
+    set_tss_desc((uint64_t)tss_cpu(0), sizeof(struct tss) - 1);
     asm_ltr(SELECTOR_TSS);
 }

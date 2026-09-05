@@ -91,14 +91,12 @@ void idt_init(void) {
                      : "c"(0xC0000081), "a"((uint32_t)star_msr),
                        "d"((uint32_t)(star_msr >> 32)));
 
-    /* LSTAR -> syscall_entry */
     uint64_t lstar = (uint64_t)syscall_entry;
     __asm__ volatile("wrmsr"
                      :
                      : "c"(0xC0000082), "a"((uint32_t)lstar),
                        "d"((uint32_t)(lstar >> 32)));
 
-    /* EFER.SCE, 保留 pae_init 已置的 NXE/LME */
     uint64_t efer = asm_rdmsr(0xC0000080);
     asm_wrmsr(0xC0000080, efer | 1u);
 }

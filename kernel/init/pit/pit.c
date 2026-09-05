@@ -17,10 +17,7 @@ void pit_init(uint32_t hz) {
 }
 
 static void ticks_to_sleep(uint32_t sleep_ticks) {
-    uint32_t start_tick = tick;
-    while (tick - start_tick < sleep_ticks) {
-        thread_yield();
-    }
+    thread_sleep_ticks(sleep_ticks);
 }
 
 void mtime_sleep(uint32_t m_seconds) {

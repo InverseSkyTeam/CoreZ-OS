@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
     CHECK(getegid() == 0, "getegid==0");
 
     CHECK(access("/definitely_not_exist", 0) == -1, "access missing -> -1");
-    int fd = open(f1, 4 /*O_CREAT*/);
+    int fd = open(f1, 4);
     CHECK(fd >= 0, "open O_CREAT");
     CHECK(access(f1, 0) == 0, "access exists -> 0");
 
@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
     int d2 = dup2(fd, 6);
     CHECK(d2 == 6, "dup2 to target");
     CHECK(fcntl(fd, F_GETFL, 0) >= 0, "fcntl F_GETFL");
-    CHECK(fcntl(fd, F_SETFL, 4 /*O_CREAT*/) == 0, "fcntl F_SETFL");
+    CHECK(fcntl(fd, F_SETFL, 4) == 0, "fcntl F_SETFL");
     int d3 = fcntl(fd, F_DUPFD, 0);
     CHECK(d3 >= 0 && d3 != fd, "fcntl F_DUPFD");
     CHECK(fcntl(fd, F_GETFD, 0) == 0, "fcntl F_GETFD");

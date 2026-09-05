@@ -72,16 +72,7 @@ int32_t sys_nanosleep(const struct timespec *req, struct timespec *rem) {
     }
     return 0;
 }
-static uint32_t sys_getuid(void) {
-    return 0;
-}
-static uint32_t sys_getgid(void) {
-    return 0;
-}
-static uint32_t sys_geteuid(void) {
-    return 0;
-}
-static uint32_t sys_getegid(void) {
+static uint32_t sys_getid(void) {
     return 0;
 }
 static void sys_exit_group(int32_t status) {
@@ -135,42 +126,18 @@ static int32_t sys_read(int32_t fd, void *buf, uint32_t count) {
     return r;
 }
 static const char *task_status_str(enum task_status s) {
-    switch (s) {
-    case TASK_RUNNING:
-        return "RUNNING";
-    case TASK_READY:
-        return "READY";
-    case TASK_BLOCKED:
-        return "BLOCKED";
-    case TASK_WAITING:
-        return "WAITING";
-    case TASK_HANGING:
-        return "HANGING";
-    case TASK_DIED:
-        return "DIED";
-    }
-    return "?";
+    static const char *names[] = {"RUNNING", "READY",  "BLOCKED",
+                                  "WAITING", "HANGING", "DIED"};
+    return (s >= TASK_RUNNING && s <= TASK_DIED)
+               ? names[__builtin_ctz(s)]
+               : "?";
 }
 static int ps_action(struct task_struct *t, void *arg) {
     (void)arg;
     char buf[80];
     const char *parent = (t->parent_pid == -1) ? "(none)" : "?";
     if (t->parent_pid >= 0) {
-        int n = 0;
-        uint32_t v = (uint32_t)t->parent_pid;
-        if (v == 0) {
-            buf[n++] = '0';
-        } else {
-            char digits[12];
-            int m = 0;
-            while (v) {
-                digits[m++] = (char)('0' + v % 10);
-                v /= 10;
-            }
-            while (m--)
-                buf[n++] = digits[m];
-        }
-        buf[n] = 0;
+        u32_to_dec((uint32_t)t->parent_pid, buf);
         parent = buf;
     }
     kprintf("PID=%u PPID=%s STAT=%s TICKS=%u NAME=%s\n", t->pid, parent,
@@ -181,17 +148,6 @@ static uint32_t sys_ps(void) {
     kprintf("=== ps ===\n");
     thread_traverse_all(ps_action, NULL);
     return 0;
-}
-static int brk_page_in_use(uint32_t v) {
-    uint64_t *pde = pde_ptr(v);
-    if (pde == NULL) {
-        return 0;
-    }
-    if (*pde & 0x80) {
-        return 1;
-    }
-    uint64_t *pte = pte_ptr(v);
-    return (pte != NULL && (*pte & 1)) ? 1 : 0;
 }
 uint32_t sys_brk(uint32_t addr) {
     struct task_struct *cur = current;
@@ -215,7 +171,7 @@ uint32_t sys_brk(uint32_t addr) {
     uint32_t new_page = (new_brk + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     if (new_page > old_page) {
         for (uint32_t page = old_page; page < new_page; page += PAGE_SIZE) {
-            if (brk_page_in_use(page)) {
+            if (page_is_mapped(page)) {
                 kprintf("[brk] collision at 0x%x, keep 0x%x\n", page, cur_brk);
                 return cur_brk;
             }
@@ -594,24 +550,9 @@ static int64_t nsys_nanosleep(struct Registers *r) {
                                    (struct timespec *)r->ecx);
 }
 
-static int64_t nsys_getuid(struct Registers *r) {
+static int64_t nsys_getid(struct Registers *r) {
     (void)r;
-    return sys_getuid();
-}
-
-static int64_t nsys_getgid(struct Registers *r) {
-    (void)r;
-    return sys_getgid();
-}
-
-static int64_t nsys_geteuid(struct Registers *r) {
-    (void)r;
-    return sys_geteuid();
-}
-
-static int64_t nsys_getegid(struct Registers *r) {
-    (void)r;
-    return sys_getegid();
+    return sys_getid();
 }
 
 static int64_t nsys_exit_group(struct Registers *r) {
@@ -776,8 +717,8 @@ static const nsys_fn nsys_table[] = {
     [SYS_RENAME] = nsys_rename,       [SYS_TRUNCATE] = nsys_truncate,
     [SYS_CHMOD] = nsys_chmod,         [SYS_CLOCK_GETTIME] = nsys_clock_gettime,
     [SYS_GETTIMEOFDAY] = nsys_gettimeofday, [SYS_NANOSLEEP] = nsys_nanosleep,
-    [SYS_GETUID] = nsys_getuid,       [SYS_GETGID] = nsys_getgid,
-    [SYS_GETEUID] = nsys_geteuid,     [SYS_GETEGID] = nsys_getegid,
+    [SYS_GETUID] = nsys_getid,        [SYS_GETGID] = nsys_getid,
+    [SYS_GETEUID] = nsys_getid,       [SYS_GETEGID] = nsys_getid,
     [SYS_EXIT_GROUP] = nsys_exit_group, [SYS_MMAP2] = nsys_mmap2,
     [SYS_ICMP_SEND] = nsys_icmp_send, [SYS_ICMP_RECV] = nsys_icmp_recv,
     [SYS_SHUTDOWN] = nsys_shutdown,   [SYS_SOCKET] = nsys_socket,

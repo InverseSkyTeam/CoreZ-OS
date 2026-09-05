@@ -195,23 +195,6 @@ static void term_thread(void *arg) {
     log_hook = 0;
 }
 
-static void u32_to_str(uint32_t v, char *buf) {
-    int n = 0;
-    if (v == 0) {
-        buf[n++] = '0';
-    } else {
-        char digits[12];
-        int m = 0;
-        while (v) {
-            digits[m++] = (char)('0' + v % 10);
-            v /= 10;
-        }
-        while (m--)
-            buf[n++] = digits[m];
-    }
-    buf[n] = 0;
-}
-
 static void clock_render(struct demo_client *dc) {
     struct gfx_canvas cv = {dc->pool->data, dc->w, dc->w, dc->h};
     gfx_fill(&cv, 0, 0, dc->w, dc->h, gfx_rgb(0, 0, 1));
@@ -280,20 +263,20 @@ static void sysmon_render(struct demo_client *dc) {
 
     line[0] = 0;
     strcat(line, "surfaces: ");
-    u32_to_str((uint32_t)nsurf, num);
+    u32_to_dec((uint32_t)nsurf, num);
     strcat(line, num);
     gfx_text(&cv, 8, 32, line, gfx_gray(18), -1);
 
     line[0] = 0;
     strcat(line, "workspace: ");
-    u32_to_str((uint32_t)(wm_current_ws() + 1), num);
+    u32_to_dec((uint32_t)(wm_current_ws() + 1), num);
     strcat(line, num);
     strcat(line, " / 4");
     gfx_text(&cv, 8, 48, line, gfx_gray(18), -1);
 
     line[0] = 0;
     strcat(line, "tick: ");
-    u32_to_str(tick, num);
+    u32_to_dec(tick, num);
     strcat(line, num);
     gfx_text(&cv, 8, 64, line, gfx_gray(18), -1);
 

@@ -24,9 +24,6 @@ static uint32_t tcp_iss(void) {
 static inline int seq_lt(uint32_t a, uint32_t b) {
     return (int32_t)(a - b) < 0;
 }
-static inline int seq_le(uint32_t a, uint32_t b) {
-    return (int32_t)(a - b) <= 0;
-}
 
 static uint16_t tcp_sum(const uint8_t *seg, uint32_t seglen, uint32_t saddr,
                         uint32_t daddr) {

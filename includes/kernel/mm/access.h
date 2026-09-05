@@ -1,4 +1,3 @@
-/* 用户指针校验: 封装 access_ok / copy_from_user / copy_to_user. */
 #ifndef MEMORY_ACCESS_H
 #define MEMORY_ACCESS_H
 
@@ -12,5 +11,7 @@ int user_range_readable(uint32_t addr, uint32_t len);
 int user_range_writable(uint32_t addr, uint32_t len);
 int copy_str_from_user(char *dst, const char *src, uint32_t max);
 int user_strnlen(const char *src, uint32_t max);
+
+int page_is_mapped(uint32_t v);
 
 #endif

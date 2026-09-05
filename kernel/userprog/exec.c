@@ -14,7 +14,6 @@
 #include "kernel/userprog/process.h"
 #include "lib/rand/rand.h"
 #include "lib/str/str.h"
-#define DIV_ROUND_UP(X, STEP) ((X + STEP - 1) / STEP)
 #define PF_X 0x1
 #define EFLAGS_MBS (1 << 1)
 #define EFLAGS_IF_1 (1 << 9)
@@ -214,6 +213,52 @@ static uint32_t pick_brk_base(uint32_t image_end) {
     return brk_base;
 }
 
+static void scan_note_abi(int32_t fd, uint32_t base_off, uint32_t filesz,
+                          int *is_linux) {
+    sys_lseek(fd, base_off, SEEK_SET);
+    uint32_t remaining = filesz;
+    while (remaining >= sizeof(struct Elf64_Nhdr)) {
+        struct Elf64_Nhdr nh;
+        if (read_file(fd, &nh, sizeof(nh)) != sizeof(nh))
+            break;
+        uint32_t sz = sizeof(nh) + ((nh.namesz + 3) & ~3u) +
+                      ((nh.descsz + 3) & ~3u);
+        if (sz > remaining)
+            break;
+        if (nh.type == NT_GNU_ABI_TAG && nh.namesz >= 4) {
+            char name[4];
+            read_file(fd, name, 4);
+            if (memcmp(name, "GNU", 4) == 0 && nh.descsz >= 8) {
+                uint8_t desc[8];
+                read_file(fd, desc, 8);
+                if (desc[0] == 0) {
+                    *is_linux = 1;
+                    kprintf("[exec] Linux ELF detected (GNU ABI-tag)\n");
+                }
+            }
+        }
+        remaining -= sz;
+        sys_lseek(fd, base_off + (filesz - remaining), SEEK_SET);
+    }
+}
+
+static void fill_entry_regs(struct Registers *r, uint32_t entry, int is64,
+                            uint32_t rsp, uint32_t argc, uint32_t argv_base) {
+    memset(r, 0, sizeof(struct Registers));
+    r->rip = entry;
+    r->cs = is64 ? SELECTOR_USER64_CODE : SELECTOR_U_CODE;
+    r->rflags = EFLAGS_IOPL_0 | EFLAGS_MBS | EFLAGS_IF_1;
+    r->user_rsp = rsp;
+    r->ss = SELECTOR_U_DATA;
+    if (is64) {
+        r->rdi = argc;
+        r->rsi = argv_base;
+    } else {
+        r->rbx = argv_base;
+        r->rcx = argc;
+    }
+}
+
 static int32_t segment_load(int32_t fd, uint32_t offset, uint32_t filesz,
                             uint32_t memsz, uint32_t vaddr) {
     uint32_t vaddr_first_page = vaddr & 0xfffff000;
@@ -324,36 +369,8 @@ static int32_t load(const char *pathname, int *is64, int *is_linux,
             }
 
             if (prog64_header.p_type == PT_NOTE) {
-                sys_lseek(fd, (uint32_t)prog64_header.p_offset, SEEK_SET);
-                uint32_t remaining = (uint32_t)prog64_header.p_filesz;
-                while (remaining >= sizeof(struct Elf64_Nhdr)) {
-                    struct Elf64_Nhdr nhdr;
-                    if (read_file(fd, &nhdr, sizeof(nhdr)) != sizeof(nhdr))
-                        break;
-                    uint32_t note_size = sizeof(nhdr) +
-                                         ((nhdr.namesz + 3) & ~3u) +
-                                         ((nhdr.descsz + 3) & ~3u);
-                    if (note_size > remaining)
-                        break;
-                    if (nhdr.type == NT_GNU_ABI_TAG && nhdr.namesz >= 4) {
-                        char name[4];
-                        read_file(fd, name, 4);
-                        if (memcmp(name, "GNU", 4) == 0 && nhdr.descsz >= 8) {
-                            uint8_t desc[8];
-                            read_file(fd, desc, 8);
-                            if (desc[0] == 0) {
-                                *is_linux = 1;
-                                kprintf("[exec] Linux ELF detected (GNU "
-                                        "ABI-tag)\n");
-                            }
-                        }
-                    }
-                    remaining -= note_size;
-                    sys_lseek(fd,
-                              (uint32_t)prog64_header.p_offset +
-                                  (prog64_header.p_filesz - remaining),
-                              SEEK_SET);
-                }
+                scan_note_abi(fd, (uint32_t)prog64_header.p_offset,
+                              (uint32_t)prog64_header.p_filesz, is_linux);
                 sys_lseek(fd,
                           prog_header_offset +
                               prog_idx * elf64_header.e_phentsize +
@@ -447,39 +464,8 @@ static int32_t load(const char *pathname, int *is64, int *is_linux,
             }
 
             if (prog_header.p_type == PT_NOTE) {
-                sys_lseek(fd, prog_header.p_offset, SEEK_SET);
-                uint32_t remaining = prog_header.p_filesz;
-                while (remaining >= 12) {
-                    uint32_t namesz, descsz, type;
-                    if (read_file(fd, &namesz, 4) != 4)
-                        break;
-                    if (read_file(fd, &descsz, 4) != 4)
-                        break;
-                    if (read_file(fd, &type, 4) != 4)
-                        break;
-                    uint32_t note_size =
-                        12 + ((namesz + 3) & ~3u) + ((descsz + 3) & ~3u);
-                    if (note_size > remaining)
-                        break;
-                    if (type == NT_GNU_ABI_TAG && namesz >= 4) {
-                        char name[4];
-                        read_file(fd, name, 4);
-                        if (memcmp(name, "GNU", 4) == 0 && descsz >= 8) {
-                            uint8_t desc[8];
-                            read_file(fd, desc, 8);
-                            if (desc[0] == 0) {
-                                *is_linux = 1;
-                                kprintf("[exec] Linux ELF detected (GNU "
-                                        "ABI-tag)\n");
-                            }
-                        }
-                    }
-                    remaining -= note_size;
-                    sys_lseek(fd,
-                              prog_header.p_offset +
-                                  (prog_header.p_filesz - remaining),
-                              SEEK_SET);
-                }
+                scan_note_abi(fd, prog_header.p_offset, prog_header.p_filesz,
+                              is_linux);
                 sys_lseek(fd,
                           prog_header_offset +
                               prog_idx * elf_header.e_phentsize +
@@ -601,47 +587,18 @@ int32_t sys_execve(const char *path, const char *argv[], const char *envp[],
     create_user_vaddr_bitmap(cur);
     {
         int kcaller = (regs != NULL) ? ((regs->cs & 3) == 0) : 1;
-        argc = 0;
-        if (argv != NULL) {
-            while (argc < MAX_ARG_NR) {
-                if (!kcaller &&
-                    !user_range_readable((uint32_t)(uintptr_t)&argv[argc],
-                                         sizeof(char *))) {
-                    return -1;
-                }
-                if (argv[argc] == NULL) {
-                    break;
-                }
-                int n = kcaller ? (int)strlen(argv[argc])
-                                : user_strnlen(argv[argc], MAX_ARG_STR_LEN);
-                if (n < 0) {
-                    return -1;
-                }
-                slens[argc] = (uint32_t)n + 1;
-                argc++;
-            }
+        argc = count_strs(argv, slens, kcaller);
+        if (argc < 0) {
+            return -1;
         }
         if (envp == NULL) {
             envc = 2;
             envlens[0] = (uint32_t)strlen("PATH=/") + 1;
             envlens[1] = (uint32_t)strlen("HOME=/") + 1;
         } else {
-            while (envc < MAX_ARG_NR) {
-                if (!kcaller &&
-                    !user_range_readable((uint32_t)(uintptr_t)&envp[envc],
-                                         sizeof(char *))) {
-                    return -1;
-                }
-                if (envp[envc] == NULL) {
-                    break;
-                }
-                int n = kcaller ? (int)strlen(envp[envc])
-                                : user_strnlen(envp[envc], MAX_ARG_STR_LEN);
-                if (n < 0) {
-                    return -1;
-                }
-                envlens[envc] = (uint32_t)n + 1;
-                envc++;
+            envc = count_strs(envp, envlens, kcaller);
+            if (envc < 0) {
+                return -1;
             }
         }
     }
@@ -807,37 +764,15 @@ int32_t sys_execve(const char *path, const char *argv[], const char *envp[],
         }
     }
     if (regs != NULL) {
-        memset(regs, 0, sizeof(struct Registers));
-        regs->rip = (uint64_t)(uint32_t)entry_point;
-        regs->cs = is64 ? SELECTOR_USER64_CODE : SELECTOR_U_CODE;
-        regs->rflags = EFLAGS_IOPL_0 | EFLAGS_MBS | EFLAGS_IF_1;
-        regs->user_rsp = ustack_ptr;
-        regs->ss = SELECTOR_U_DATA;
-        if (is64) {
-            regs->rdi = argc;
-            regs->rsi = argv_user_base;
-        } else {
-            regs->rbx = argv_user_base;
-            regs->rcx = argc;
-        }
+        fill_entry_regs(regs, (uint32_t)entry_point, is64, ustack_ptr, argc,
+                        argv_user_base);
         return 0;
     }
 
     ps =
         (struct Registers *)(cur->kernel_stack_top - THREAD_STACK_SIZE + 0x100);
-    memset(ps, 0, sizeof(struct Registers));
-    ps->rip = (uint64_t)(uint32_t)entry_point;
-    ps->cs = is64 ? SELECTOR_USER64_CODE : SELECTOR_U_CODE;
-    ps->rflags = EFLAGS_IOPL_0 | EFLAGS_MBS | EFLAGS_IF_1;
-    ps->user_rsp = ustack_ptr;
-    ps->ss = SELECTOR_U_DATA;
-    if (is64) {
-        ps->rdi = argc;
-        ps->rsi = argv_user_base;
-    } else {
-        ps->rbx = argv_user_base;
-        ps->rcx = argc;
-    }
+    fill_entry_regs(ps, (uint32_t)entry_point, is64, ustack_ptr, argc,
+                    argv_user_base);
 
     __asm__ volatile("mov %0, %%ds; mov %0, %%es; mov %0, %%fs;" ::"r"(
                          (uint16_t)SELECTOR_U_DATA)

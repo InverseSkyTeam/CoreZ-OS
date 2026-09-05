@@ -167,6 +167,7 @@ void irq_handler(struct Registers *r) {
     if (irq == 0) {
         irq_eoi(irq);
         tick++;
+        thread_timer_wake();
         if (current != 0) {
             check_pending_signals(r);
             schedule();

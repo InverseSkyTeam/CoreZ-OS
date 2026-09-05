@@ -439,23 +439,6 @@ int wm_bar_check_dirty(void) {
     return d;
 }
 
-static void bar_itoa(uint32_t v, char *buf) {
-    int n = 0;
-    if (v == 0) {
-        buf[n++] = '0';
-    } else {
-        char digits[12];
-        int m = 0;
-        while (v) {
-            digits[m++] = (char)('0' + v % 10);
-            v /= 10;
-        }
-        while (m--)
-            buf[n++] = digits[m];
-    }
-    buf[n] = 0;
-}
-
 void wm_draw_bar(struct gfx_canvas *c, struct gfx_rect *clip) {
     struct gfx_rect bar = {0, 0, comp_screen_w(), COMP_BAR_H}, v;
     if (!gfx_rect_intersect(bar, *clip, &v))
@@ -486,7 +469,7 @@ void wm_draw_bar(struct gfx_canvas *c, struct gfx_rect *clip) {
 
     char right[48];
     char num[12];
-    bar_itoa(tick / PIT_HZ, num);
+    u32_to_dec(tick / PIT_HZ, num);
     right[0] = 0;
     strcat(right, "up ");
     strcat(right, num);

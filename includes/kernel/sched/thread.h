@@ -87,6 +87,8 @@ void switch_to(uint64_t **cur_kstack, uint64_t **next_kstack);
 void kernel_thread_entry(void);
 void thread_block(void);
 void thread_unblock(struct task_struct *t);
+void thread_sleep_ticks(uint32_t ticks);
+void thread_timer_wake(void);
 void thread_yield(void);
 void thread_block_with_status(enum task_status status);
 struct task_struct *pid2thread(int32_t pid);

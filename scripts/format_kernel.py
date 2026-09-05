@@ -19,7 +19,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 KERNEL_DIR = ROOT / "src" / "kernel"
 
-# Vendored third-party header: do not reformat upstream code.
 SKIP = {"stb_truetype.h"}
 
 
@@ -66,8 +65,6 @@ def main(argv: list[str]) -> int:
                         [clang_format, "--style=file", str(path)],
                         stdout=subprocess.PIPE, text=True)
                     orig = path.read_text(encoding="utf-8", errors="replace")
-                    # clang-format prints the formatted text to stdout above;
-                    # do a minimal unified diff instead.
                     diff = subprocess.run(
                         [clang_format, "--style=file", str(path)],
                         capture_output=True, text=True)

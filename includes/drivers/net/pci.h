@@ -1,4 +1,3 @@
-// 轻量 PCI 配置空间访问与设备探测
 #ifndef NT_PCI_H
 #define NT_PCI_H
 

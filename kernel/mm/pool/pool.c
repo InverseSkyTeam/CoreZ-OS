@@ -372,10 +372,15 @@ void *palloc(struct pool *pool) {
 }
 
 uint32_t kernel_pool_free_count(void) {
+    const struct bitmap *btmp = &kernel_pool.pool_bitmap;
+    const uint64_t *words = (const uint64_t *)btmp->bits;
+    uint32_t nwords = btmp->btmp_bytes_len >> 3;
     uint32_t n = 0;
-    for (uint32_t i = 0; i < kernel_pool.pool_bitmap.btmp_bytes_len * 8; i++) {
-        if (!bitmap_scan_test(&kernel_pool.pool_bitmap, i))
-            n++;
+    for (uint32_t i = 0; i < nwords; i++) {
+        n += (uint32_t)__builtin_popcountll(~words[i]);
+    }
+    for (uint32_t byte = nwords << 3; byte < btmp->btmp_bytes_len; byte++) {
+        n += 8 - (uint32_t)__builtin_popcount(btmp->bits[byte]);
     }
     return n;
 }
